@@ -16,11 +16,16 @@ describe('the seam stays aggregate-read-free', () => {
     // this senator", it becomes possible to let that influence a verdict — and
     // it would look like an ordinary feature in review. The absence of those
     // methods is the design, so it is asserted.
-    const methods = ['startSession', 'saveQuery', 'getQuery'] as const;
-    for (const store of [new NullQueryStore(), new SupabaseQueryStore('postgresql://x@127.0.0.1:1/x')]) {
-      for (const m of methods) expect(typeof (store as never)[m]).toBe('function');
+    const methods = ['startSession', 'saveQuery', 'getQuery'];
+    const stores: unknown[] = [
+      new NullQueryStore(),
+      new SupabaseQueryStore('postgresql://x@127.0.0.1:1/x'),
+    ];
+    for (const store of stores) {
+      const bag = store as Record<string, unknown>;
+      for (const m of methods) expect(typeof bag[m]).toBe('function');
       for (const forbidden of ['countQueriesFor', 'getSimilarQueries', 'listQueries', 'search']) {
-        expect((store as Record<string, unknown>)[forbidden]).toBeUndefined();
+        expect(bag[forbidden]).toBeUndefined();
       }
     }
   });

@@ -93,17 +93,17 @@ export interface QueryStore {
 export class NullQueryStore implements QueryStore {
   readonly kind = 'local' as const;
 
-  async startSession(): Promise<string> {
+  async startSession(_meta: { userAgent?: string; clientHash?: string } = {}): Promise<string> {
     return crypto.randomUUID();
   }
 
-  async saveQuery(): Promise<string> {
+  async saveQuery(_query: Omit<StoredQuery, 'id'>): Promise<string> {
     // Nothing is written. Callers must treat persistence as best-effort and
     // never gate the user's result on it.
     return crypto.randomUUID();
   }
 
-  async getQuery(): Promise<StoredQuery | null> {
+  async getQuery(_id: string): Promise<StoredQuery | null> {
     return null;
   }
 }
