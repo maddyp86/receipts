@@ -93,6 +93,18 @@ export interface QueryStore {
 export class NullQueryStore implements QueryStore {
   readonly kind = 'local' as const;
 
+  /** Warn once, not per query — a log line per request is noise, not signal. */
+  private warned = false;
+
+  private warnOnce(): void {
+    if (this.warned) return;
+    this.warned = true;
+    console.warn(
+      '[persist] DATABASE_URL is not set — queries are NOT being stored. ' +
+        'The app answers normally; app_queries stays empty and share links 404.',
+    );
+  }
+
   async startSession(_meta: { userAgent?: string; clientHash?: string } = {}): Promise<string> {
     return crypto.randomUUID();
   }
@@ -100,6 +112,7 @@ export class NullQueryStore implements QueryStore {
   async saveQuery(_query: Omit<StoredQuery, 'id'>): Promise<string> {
     // Nothing is written. Callers must treat persistence as best-effort and
     // never gate the user's result on it.
+    this.warnOnce();
     return crypto.randomUUID();
   }
 

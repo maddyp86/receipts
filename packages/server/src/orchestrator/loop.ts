@@ -324,7 +324,20 @@ async function runLive(session: QuerySession, emit: Emit): Promise<void> {
 async function persist(session: QuerySession, sessionId: string | null): Promise<void> {
   // Nothing worth storing until the promise was at least interpreted. A row
   // with no classification is not a training example, it is noise.
-  if (!session.interpretation || !sessionId) return;
+  //
+  // Logged rather than returned silently: "no row appeared" and "no row was
+  // attempted" look identical in the database, and only one of them is a bug.
+  if (!sessionId) {
+    console.warn('[persist] skipped — no session id (startSession failed above).');
+    return;
+  }
+  if (!session.interpretation) {
+    console.warn(
+      `[persist] skipped — query never got past interpretation ` +
+        `(uncached senator or an early error). politician=${session.politicianId}`,
+    );
+    return;
+  }
 
   try {
     await queryStore.saveQuery({
@@ -345,8 +358,15 @@ async function persist(session: QuerySession, sessionId: string | null): Promise
         relevance_applied: Boolean(session.relevance),
       },
     });
+    // Only claim a write when one actually happened. NullQueryStore returns a
+    // plausible uuid and stores nothing, so an unconditional "stored" here
+    // would assert a row that does not exist — the exact silent-success shape
+    // this codebase exists to avoid.
+    if (queryStore.kind !== 'local') {
+      console.info(`[persist] stored query for ${session.politicianId}`);
+    }
   } catch (err) {
-    console.error('[persist] query not saved (non-fatal):', err instanceof Error ? err.message : err);
+    console.error('[persist] query NOT saved (non-fatal):', err instanceof Error ? err.message : err);
   }
 }
 
