@@ -1,5 +1,5 @@
 import { fail, ok, type Envelope, type MatchedAction, type MatchStrength } from '@receipts/shared';
-import type { ActionStore, SearchParams } from './ActionStore.js';
+import type { ActionStore, SearchParams, SearchResult } from './ActionStore.js';
 import { config, namespaceFor } from '../config.js';
 import { SIMILARITY } from '../scoring/config.js';
 
@@ -76,7 +76,7 @@ function sourceUrl(md: Record<string, unknown>): string {
 export class PineconeActionStore implements ActionStore {
   readonly kind = 'pinecone' as const;
 
-  async search(params: SearchParams): Promise<Envelope<MatchedAction[]>> {
+  async search(params: SearchParams): Promise<Envelope<SearchResult>> {
     const { host, apiKey, embeddingVersion } = config.pinecone;
     if (!host || !apiKey) {
       return fail({
@@ -160,12 +160,24 @@ export class PineconeActionStore implements ActionStore {
       });
     }
 
-    const matches = raw
-      .map((m) => this.toMatchedAction(m))
-      .filter((m) => m.score >= SIMILARITY.WEAK)
-      .sort((a, b) => b.score - a.score);
+    const all = raw.map((m) => this.toMatchedAction(m)).sort((a, b) => b.score - a.score);
+    const matches = all.filter((m) => m.score >= SIMILARITY.WEAK);
 
-    return ok(matches);
+    // Logged as well as returned: when a query comes back empty this is the
+    // first thing anyone will want, and it should not require a database read.
+    console.info(
+      `[retrieval] ${namespaceFor(params.politicianId)} topK=${params.topK} ` +
+        `returned=${all.length} aboveFloor=${matches.length} ` +
+        `belowFloor=${all.length - matches.length} ` +
+        `topScore=${all[0]?.score?.toFixed(3) ?? 'n/a'}`,
+    );
+
+    return ok({
+      matches,
+      returned: all.length,
+      belowFloor: all.length - matches.length,
+      topScore: all[0]?.score ?? null,
+    });
   }
 
   private toMatchedAction(m: PineconeMatch): MatchedAction {

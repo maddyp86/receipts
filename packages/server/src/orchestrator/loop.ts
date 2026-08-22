@@ -463,7 +463,15 @@ async function persist(session: QuerySession, sessionId: string | null): Promise
         demo_mode: config.demoMode,
         fixture_mode: config.fixtureMode,
         relevance_applied: Boolean(session.relevance),
+        // `retrieved` counts candidates that CLEARED the WEAK floor. The raw
+        // backend count is separate on purpose — conflating them made a thin
+        // namespace indistinguishable from a namespace full of dissimilar
+        // vectors.
         retrieved: session.evaluated?.length ?? 0,
+        pinecone_returned: session.retrieval?.returned ?? null,
+        below_floor: session.retrieval?.belowFloor ?? null,
+        top_score: session.retrieval?.topScore ?? null,
+        top_k: session.retrieval?.topK ?? null,
       },
       matches: buildMatches(session),
       alignments: buildAlignments(session),

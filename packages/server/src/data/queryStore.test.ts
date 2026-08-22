@@ -123,3 +123,49 @@ describe('the trace keeps non-matches, not just matches', () => {
     expect(errored).not.toBe('NEUTRAL');
   });
 });
+
+// ===========================================================================
+// Retrieval counts: an empty result must be diagnosable.
+//
+// The store used to return only the survivors of the WEAK floor, which made two
+// different problems look identical — a thin namespace, and a full namespace
+// nothing was similar to. The first is a coverage problem upstream; the second
+// is a query or threshold problem. The survivor count alone cannot tell them
+// apart, and the raw count is unrecoverable after the fact.
+// ===========================================================================
+
+describe('search reports pre-filter counts', () => {
+  it('separates what the backend returned from what cleared the floor', async () => {
+    const { FixtureActionStore } = await import('./FixtureActionStore.js');
+    const r = await new FixtureActionStore().search({
+      politicianId: 'S000148',
+      vector: [],
+      queryText: 'lower prescription drug prices for seniors',
+      topK: 10,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    // The distinction that matters: more came back than survived.
+    expect(r.data.returned).toBeGreaterThan(r.data.matches.length);
+    expect(r.data.belowFloor).toBe(r.data.returned - r.data.matches.length);
+    expect(r.data.topScore).not.toBeNull();
+  });
+
+  it('reports a genuinely empty namespace as returned: 0', async () => {
+    const { FixtureActionStore } = await import('./FixtureActionStore.js');
+    const r = await new FixtureActionStore().search({
+      politicianId: 'NOBODY-999',
+      vector: [],
+      queryText: 'anything',
+      topK: 10,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // returned 0 means the backend had nothing — distinct from returned 10 with
+    // everything below the floor, which would mean the query was the problem.
+    expect(r.data.returned).toBe(0);
+    expect(r.data.belowFloor).toBe(0);
+    expect(r.data.topScore).toBeNull();
+  });
+});

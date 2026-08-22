@@ -21,12 +21,34 @@ export interface SearchParams {
   topK: number;
 }
 
+/**
+ * A search result, with the counts that make an empty one diagnosable.
+ *
+ * `matches` is already filtered to the WEAK floor, which used to be the only
+ * number anyone saw — and it made two very different situations look identical:
+ * a namespace with almost nothing in it, and a namespace full of vectors that
+ * simply are not similar to this query. The first is a coverage problem; the
+ * second is a query or threshold problem. Reporting only the survivors made
+ * that distinction unrecoverable after the fact.
+ */
+export interface SearchResult {
+  /** Above the WEAK floor, ordered by descending similarity. */
+  matches: MatchedAction[];
+  /** How many vectors the backend actually returned, BEFORE the floor. */
+  returned: number;
+  /** How many of those fell below the WEAK floor and were dropped. */
+  belowFloor: number;
+  /** The best score seen, floor or no floor. Null when nothing came back. */
+  topScore: number | null;
+}
+
 export interface ActionStore {
   /** Identifies the backing implementation for logging and the UI mode banner. */
   readonly kind: 'fixture' | 'pinecone';
   /**
    * Returns matches ordered by descending similarity, already filtered to the
-   * WEAK floor. Never throws — an unreachable backend is a structured error.
+   * WEAK floor, plus the pre-filter counts. Never throws — an unreachable
+   * backend is a structured error.
    */
-  search(params: SearchParams): Promise<Envelope<MatchedAction[]>>;
+  search(params: SearchParams): Promise<Envelope<SearchResult>>;
 }

@@ -1,5 +1,5 @@
 import { ok, type Envelope, type MatchedAction, type MatchStrength } from '@receipts/shared';
-import type { ActionStore, SearchParams } from './ActionStore.js';
+import type { ActionStore, SearchParams, SearchResult } from './ActionStore.js';
 import { FIXTURE_ACTIONS, type FixtureAction } from './fixtures/actions.js';
 import { SIMILARITY } from '../scoring/config.js';
 
@@ -109,21 +109,29 @@ function strengthOf(score: number): MatchStrength {
 export class FixtureActionStore implements ActionStore {
   readonly kind = 'fixture' as const;
 
-  async search(params: SearchParams): Promise<Envelope<MatchedAction[]>> {
+  async search(params: SearchParams): Promise<Envelope<SearchResult>> {
     const queryTokens = tokenize(params.queryText);
 
-    const matches = FIXTURE_ACTIONS.filter((a) => a.politician_id === params.politicianId)
+    const all = FIXTURE_ACTIONS.filter((a) => a.politician_id === params.politicianId)
       .map((action) => {
         const score = lexicalScore(queryTokens, action);
         const { match_terms, politician_id, ...rest } = action;
         return { ...rest, score, strength: strengthOf(score) } satisfies MatchedAction;
       })
-      // Same floor the live store applies, so "nothing close enough" is a real
-      // outcome here rather than something only the live path can produce.
-      .filter((m) => m.score >= SIMILARITY.WEAK)
       .sort((a, b) => b.score - a.score)
       .slice(0, params.topK);
 
-    return ok(matches);
+    // Same floor the live store applies, so "nothing close enough" is a real
+    // outcome here rather than something only the live path can produce — and
+    // the pre-filter counts are reported the same way, so a fixture run
+    // diagnoses identically to a live one.
+    const matches = all.filter((m) => m.score >= SIMILARITY.WEAK);
+
+    return ok({
+      matches,
+      returned: all.length,
+      belowFloor: all.length - matches.length,
+      topScore: all[0]?.score ?? null,
+    });
   }
 }

@@ -65,6 +65,8 @@ export interface QuerySession {
   evaluated?: import('../evaluation/relevance.js').EvaluatedCandidate[];
   /** The orchestrating model's advisory effects, kept as the evaluator cross-check. */
   orchestratorEffects?: Record<string, string>;
+  /** Pre-filter retrieval counts, so an empty result set is diagnosable. */
+  retrieval?: { returned: number; belowFloor: number; topScore: number | null; topK: number };
   /** Fulfillment results keyed by action_uid, from evaluate_effects. */
   fulfillment?: Record<string, import('../evaluation/fulfillment.js').FulfillmentResult>;
   /** Injected in tests/fixtures; live path builds its own. */
@@ -421,7 +423,16 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
   });
   if (!result.ok) return result;
 
-  const candidatesIn = result.data;
+  const candidatesIn = result.data.matches;
+  // Pre-filter counts, kept so an empty result is diagnosable: "the namespace
+  // is thin" and "nothing in it was similar enough" are different problems and
+  // the survivor count alone cannot tell them apart.
+  session.retrieval = {
+    returned: result.data.returned,
+    belowFloor: result.data.belowFloor,
+    topScore: result.data.topScore,
+    topK: config.retrieval.topK,
+  };
 
   // ---- RELEVANCE LEG ----------------------------------------------------
   // Skipped when there is no evaluator to call. This is NOT a silent bypass:
