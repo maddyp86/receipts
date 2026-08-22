@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { normalizeRelevanceResponse, parseRelevanceResponse } from './relevance.js';
 import {
@@ -342,5 +343,33 @@ describe('classify routing', () => {
       }
     }
     expect(checked).toBe(121);
+  });
+});
+
+// ===========================================================================
+// Regression: the classify call must not inherit the loop's max_tokens.
+//
+// It did, and it made every live classification fail with "Streaming is
+// required for operations that may take longer than 10 minutes" — the SDK
+// refusing a non-streamed request with a 64000 ceiling. The two calls have
+// different shapes and cannot share a budget.
+// ===========================================================================
+
+describe('classify max_tokens is independent of the loop', () => {
+  it('is small enough for a non-streaming request', async () => {
+    const src = await readFile(
+      new URL('./classify.ts', import.meta.url),
+      'utf8',
+    );
+    const declared = /const CLASSIFY_MAX_TOKENS = (\d+);/.exec(src)?.[1];
+    expect(declared, 'CLASSIFY_MAX_TOKENS must be declared').toBeDefined();
+    expect(Number(declared)).toBeLessThanOrEqual(8000);
+  });
+
+  it('does not reference config.anthropic.maxTokens', async () => {
+    // The loop's ceiling is sized for a streamed turn sharing budget with
+    // adaptive thinking. Reusing it here is the exact bug this guards.
+    const src = await readFile(new URL('./classify.ts', import.meta.url), 'utf8');
+    expect(src).not.toMatch(/max_tokens:\s*config\.anthropic\.maxTokens/);
   });
 });

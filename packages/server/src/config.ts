@@ -105,7 +105,8 @@ export const config = {
     apiKey: anthropicKey,
 
     /**
-     * Ceiling for a single streamed turn, NOT a spend target — billing is on
+     * Ceiling for a single streamed turn of the EXPLAIN LOOP, NOT a spend target
+     * and NOT a global default — billing is on
      * tokens generated, so headroom is free and truncation is not.
      *
      * Raised from 8000. Three facts make the old value too tight:
@@ -119,6 +120,11 @@ export const config = {
      *
      * Sizing alone is not the guard — see the `max_tokens` stop check in
      * orchestrator/loop.ts. A truncated turn must be surfaced, never rendered.
+     *
+     * ⚠ Do NOT reuse this for a non-streaming call. The SDK rejects
+     * `messages.create` when max_tokens implies a >10 minute operation, so a
+     * non-streamed call needs its own, much smaller ceiling — see
+     * CLASSIFY_MAX_TOKENS in evaluation/classify.ts.
      */
     maxTokens: num(process.env.ANTHROPIC_MAX_TOKENS, 64000),
   },

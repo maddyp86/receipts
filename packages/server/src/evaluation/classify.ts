@@ -28,6 +28,23 @@ import { TOOL_DEFINITIONS } from '../orchestrator/toolDefs.js';
 
 const interpretTool = TOOL_DEFINITIONS.find((t) => t.name === 'interpret_promise')!;
 
+/**
+ * Output ceiling for the classify call — deliberately NOT config.anthropic.maxTokens.
+ *
+ * That value (64000) is sized for the EXPLAIN LOOP, which streams and shares its
+ * budget with adaptive thinking. This call is a single non-streamed
+ * `messages.create` returning one forced tool_use block of roughly a dozen short
+ * fields, and the SDK rejects a non-streaming request whose max_tokens implies a
+ * >10 minute operation:
+ *
+ *   "Streaming is required for operations that may take longer than 10 minutes."
+ *
+ * So the two ceilings are not interchangeable, and reusing the loop's here made
+ * every live classification fail. 4000 is far more than this output needs and
+ * far below the streaming threshold.
+ */
+const CLASSIFY_MAX_TOKENS = 4000;
+
 export const CLASSIFY_SYSTEM_PROMPT = `You are a nonpartisan legislative analyst classifying a policy statement so it can be matched against a senator's recorded legislative actions.
 
 Classify the statement the user supplies. Call the \`interpret_promise\` tool exactly once. Do not answer in prose.
@@ -84,7 +101,7 @@ export function liveClassifyFetcher(): ClassifyFetcher {
     const client = new Anthropic({ apiKey: config.anthropic.apiKey });
     const message = await client.messages.create({
       model: config.models.classify,
-      max_tokens: config.anthropic.maxTokens,
+      max_tokens: CLASSIFY_MAX_TOKENS,
       system: CLASSIFY_SYSTEM_PROMPT,
       tools: [interpretTool as unknown as Anthropic.Tool],
       tool_choice: { type: 'tool', name: 'interpret_promise' },
