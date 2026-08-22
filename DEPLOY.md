@@ -74,7 +74,15 @@ must be in the allowlist.
 | Root directory | repo root |
 | Install | `npm ci` |
 | Start | `npm start --workspace @receipts/server` |
-| Health check | `GET /api/senators` |
+| Health check | `GET /api/health` |
+
+**Health check: `/api/health`.** Deliberately dependency-free — it returns 200
+without touching Anthropic, OpenAI, Pinecone or Supabase, so a vendor blip
+cannot mark the whole service unhealthy. It is a liveness probe, not a
+readiness one: `ok` is always true if the process is up. The payload carries
+`demo_mode` / `fixture_mode` / `store` / `embedder` as diagnostics, which is how
+you spot "running, but serving fixtures because a secret is missing" without
+the probe itself failing.
 
 `start` runs `tsx src/index.ts` — TypeScript directly, no build step. `tsx` is a
 **runtime dependency** for exactly this reason; a `--omit=dev` install would
