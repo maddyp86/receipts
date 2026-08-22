@@ -3,6 +3,8 @@ import type { QueryResult, StepId, StreamEvent, ToolError } from '@receipts/shar
 import { config } from '../config.js';
 import { dispatchTool, newSession, type QuerySession } from './dispatch.js';
 import { queryStore } from '../services.js';
+import type { StoredAlignment, StoredMatch } from '../data/QueryStore.js';
+import { derivePartialSubtype } from '../evaluation/evidenceGate.js';
 import type { Corrections } from '@receipts/shared';
 import { systemPrompt, EXPLANATION_CONSTRAINTS } from './prompts.js';
 import { TOOL_DEFINITIONS } from './toolDefs.js';
@@ -321,6 +323,111 @@ async function runLive(session: QuerySession, emit: Emit): Promise<void> {
  * Runs after the result has been emitted, so it cannot add latency to the
  * answer either.
  */
+const S = (v: unknown): string | null =>
+  v === null || v === undefined || v === '' ? null : String(v);
+const N = (v: unknown): number | null => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * Every retrieved candidate, admitted or not.
+ *
+ * Built from `session.evaluated` rather than the gate's output, because the
+ * gate reports rejections as counts by reason — the rejected ROWS only exist
+ * here.
+ */
+function buildMatches(session: QuerySession): StoredMatch[] {
+  const evaluated = session.evaluated ?? [];
+  const admittedUids = new Set(
+    (session.relevance?.admitted ?? []).map((a) => String(a.action_uid ?? '')),
+  );
+
+  return evaluated.map((c) => {
+    const r = c.relevance;
+    const verdict = String(r.verdict ?? '').toUpperCase();
+    const subtype = derivePartialSubtype({
+      verdict,
+      confidence: r.confidence,
+      effort_relevant: r.effort_relevant,
+      action_relevant: r.action_relevant,
+      specificity_match: r.specificity_match,
+    });
+    const admitted = admittedUids.has(String(c.action_uid ?? ''));
+
+    return {
+      action_uid: String(c.action_uid ?? ''),
+      bill_id: String(c.bill_id ?? ''),
+      bill_title: String(c.bill_title ?? ''),
+      bill_summary: String(c.bill_summary ?? ''),
+      bill_primary_issue: String(c.bill_primary_issue ?? ''),
+      bill_sub_issue: String(c.bill_sub_issue ?? ''),
+      similarity_score: N(c.similarity_score),
+      match_strength: null,
+      match_rank: N(c.match_rank),
+      match_direction: S(c.match_direction),
+      vote: S(c.vote),
+      cloture_vote: S(c.cloture_vote),
+      passage_vote: S(c.passage_vote),
+      is_sponsor: S(c.is_sponsor),
+      is_cosponsor: S(c.is_cosponsor),
+      action_type: S(r.action_type),
+      relevance_verdict: S(r.verdict),
+      topic_relevant: S(r.topic_relevant),
+      action_relevant: S(r.action_relevant),
+      effort_relevant: S(r.effort_relevant),
+      specificity_match: S(r.specificity_match),
+      no_vote_available: typeof r.no_vote_available === 'boolean' ? r.no_vote_available : null,
+      confidence: N(r.confidence),
+      composite_score: N(r.composite_score),
+      evaluation_status: S(r.evaluation_status),
+      terminal_status: S(r.terminal_status),
+      llm_reasoning: S(r.reasoning),
+      admitted,
+      partial_subtype: subtype,
+      // The gate's own vocabulary, so a stored row reads the same as the
+      // counter it was aggregated into.
+      exclusion_reason: admitted
+        ? null
+        : verdict === 'PARTIAL'
+          ? `PARTIAL/${subtype}`
+          : verdict || 'BLANK',
+    };
+  });
+}
+
+/** The admitted matches that went through fulfillment — the KEPT/BROKE half. */
+function buildAlignments(session: QuerySession): StoredAlignment[] {
+  const evidence = session.scored?.evidence ?? [];
+  const fulfillment = session.fulfillment ?? {};
+  const modelEffects = session.orchestratorEffects ?? {};
+
+  return evidence.map((e) => {
+    const f = fulfillment[e.action_uid];
+    const modelEffect = modelEffects[e.action_uid] ?? null;
+    return {
+      action_uid: e.action_uid,
+      bill_id: String(e.bill_id ?? ''),
+      bill_effect: e.bill_effect,
+      bill_effect_reasoning: e.bill_effect_reasoning,
+      promise_alignment: S(f?.alignment),
+      alignment_confidence: N(f?.confidence),
+      alignment_reasoning: S(f?.reasoning),
+      model_bill_effect: modelEffect,
+      // null, not false, when there is nothing to compare — "we did not check"
+      // is a different claim from "they disagreed".
+      model_agreed: modelEffect ? modelEffect === e.bill_effect : null,
+      outcome: S(e.outcome),
+      direction: S(e.direction),
+      evidence_type: S(e.evidence_type),
+      action_tier: S(e.action_tier),
+      vote_pattern: S(e.vote_pattern),
+      weight: N(e.weight),
+      scoring_flags: e.scoring_flags ?? null,
+    };
+  });
+}
+
 async function persist(session: QuerySession, sessionId: string | null): Promise<void> {
   // Nothing worth storing until the promise was at least interpreted. A row
   // with no classification is not a training example, it is noise.
@@ -356,14 +463,22 @@ async function persist(session: QuerySession, sessionId: string | null): Promise
         demo_mode: config.demoMode,
         fixture_mode: config.fixtureMode,
         relevance_applied: Boolean(session.relevance),
+        retrieved: session.evaluated?.length ?? 0,
       },
+      matches: buildMatches(session),
+      alignments: buildAlignments(session),
     });
     // Only claim a write when one actually happened. NullQueryStore returns a
     // plausible uuid and stores nothing, so an unconditional "stored" here
     // would assert a row that does not exist — the exact silent-success shape
     // this codebase exists to avoid.
     if (queryStore.kind !== 'local') {
-      console.info(`[persist] stored query for ${session.politicianId}`);
+      const m = buildMatches(session);
+      console.info(
+        `[persist] stored query for ${session.politicianId} — ` +
+          `${m.length} candidates (${m.filter((x) => x.admitted).length} admitted), ` +
+          `${buildAlignments(session).length} alignments`,
+      );
     }
   } catch (err) {
     console.error('[persist] query NOT saved (non-fatal):', err instanceof Error ? err.message : err);

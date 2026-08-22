@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { config } from '../config.js';
-import type { QueryStore, StoredQuery } from './QueryStore.js';
+import type { QueryStore, StoredAlignment, StoredMatch, StoredQuery } from './QueryStore.js';
 
 // ===========================================================================
 // The real QueryStore, over a plain Postgres connection.
@@ -102,35 +102,111 @@ export class SupabaseQueryStore implements QueryStore {
     return rows[0]!.id;
   }
 
+  /**
+   * Writes the parent row and its full trace in ONE transaction.
+   *
+   * All-or-nothing on purpose: a query row with half its matches missing is
+   * worse than no row, because it looks complete. Anyone later asking "how many
+   * candidates did retrieval return" would get a number that is quietly wrong
+   * rather than absent.
+   */
   async saveQuery(query: Omit<StoredQuery, 'id'>): Promise<string> {
-    const { rows } = await this.pool.query<{ id: string }>(
-      `insert into app.app_queries (
-         session_id, politician_id, promise_text, classification,
-         corrections_applied, statement_type, provenance, user_asserted_premise,
-         result, verdict, band, models_used, degraded
-       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-       returning id`,
-      [
-        query.session_id,
-        query.politician_id,
-        query.promise_text,
-        JSON.stringify(query.interpretation),
-        query.interpretation.corrections_applied
-          ? JSON.stringify(query.interpretation.corrections_applied)
-          : null,
-        query.interpretation.statement_type,
-        query.interpretation.provenance,
-        query.user_asserted_premise,
-        query.result ? JSON.stringify(query.result) : null,
-        // verdict/band are denormalised out of the frozen result so they are
-        // filterable in SQL without unpacking jsonb on every analysis query.
-        query.result?.scored.verdict ?? null,
-        query.result?.scored.band ?? null,
-        query.models_used ? JSON.stringify(query.models_used) : null,
-        query.degraded ? JSON.stringify(query.degraded) : null,
-      ],
-    );
-    return rows[0]!.id;
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+
+      const { rows } = await client.query<{ id: string }>(
+        `insert into app.app_queries (
+           session_id, politician_id, promise_text, classification,
+           corrections_applied, statement_type, provenance, user_asserted_premise,
+           result, verdict, band, models_used, degraded
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         returning id`,
+        [
+          query.session_id,
+          query.politician_id,
+          query.promise_text,
+          JSON.stringify(query.interpretation),
+          query.interpretation.corrections_applied
+            ? JSON.stringify(query.interpretation.corrections_applied)
+            : null,
+          query.interpretation.statement_type,
+          query.interpretation.provenance,
+          query.user_asserted_premise,
+          query.result ? JSON.stringify(query.result) : null,
+          // Denormalised out of the frozen result so they are filterable in SQL
+          // without unpacking jsonb on every analysis query.
+          query.result?.scored.verdict ?? null,
+          query.result?.scored.band ?? null,
+          query.models_used ? JSON.stringify(query.models_used) : null,
+          query.degraded ? JSON.stringify(query.degraded) : null,
+        ],
+      );
+      const queryId = rows[0]!.id;
+
+      // action_uid -> match row id, so alignments can point back at the
+      // candidate they came from.
+      const matchIdByAction = new Map<string, string>();
+
+      for (const m of query.matches ?? []) {
+        const { rows: mr } = await client.query<{ id: string }>(
+          `insert into app.app_query_matches (
+             query_id, action_uid, bill_id, bill_title, bill_summary,
+             bill_primary_issue, bill_sub_issue, similarity_score, match_strength,
+             match_rank, match_direction, vote, cloture_vote, passage_vote,
+             is_sponsor, is_cosponsor, action_type, relevance_verdict,
+             topic_relevant, action_relevant, effort_relevant, specificity_match,
+             no_vote_available, confidence, composite_score, evaluation_status,
+             terminal_status, llm_reasoning, admitted, partial_subtype,
+             exclusion_reason
+           ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+                     $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
+           returning id`,
+          [
+            queryId, m.action_uid, m.bill_id, m.bill_title, m.bill_summary,
+            m.bill_primary_issue, m.bill_sub_issue, m.similarity_score, m.match_strength,
+            m.match_rank, m.match_direction, m.vote, m.cloture_vote, m.passage_vote,
+            m.is_sponsor, m.is_cosponsor, m.action_type, m.relevance_verdict,
+            m.topic_relevant, m.action_relevant, m.effort_relevant, m.specificity_match,
+            m.no_vote_available, m.confidence, m.composite_score, m.evaluation_status,
+            m.terminal_status, m.llm_reasoning, m.admitted, m.partial_subtype,
+            m.exclusion_reason,
+          ],
+        );
+        if (m.action_uid) matchIdByAction.set(m.action_uid, mr[0]!.id);
+      }
+
+      for (const a of query.alignments ?? []) {
+        await client.query(
+          `insert into app.app_query_alignments (
+             query_id, match_id, action_uid, bill_id, bill_effect,
+             bill_effect_reasoning, promise_alignment, alignment_confidence,
+             alignment_reasoning, model_bill_effect, model_agreed, outcome,
+             direction, evidence_type, action_tier, vote_pattern, weight,
+             scoring_flags
+           ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+          [
+            queryId,
+            matchIdByAction.get(a.action_uid) ?? null,
+            a.action_uid, a.bill_id, a.bill_effect, a.bill_effect_reasoning,
+            a.promise_alignment, a.alignment_confidence, a.alignment_reasoning,
+            a.model_bill_effect, a.model_agreed, a.outcome, a.direction,
+            a.evidence_type, a.action_tier, a.vote_pattern, a.weight,
+            a.scoring_flags ? JSON.stringify(a.scoring_flags) : null,
+          ],
+        );
+      }
+
+      await client.query('commit');
+      return queryId;
+    } catch (err) {
+      await client.query('rollback').catch(() => {
+        /* the connection is already broken; the original error is what matters */
+      });
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   /**

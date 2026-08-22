@@ -54,6 +54,17 @@ export interface QuerySession {
   result?: import('@receipts/shared').QueryResult;
   /** Evidence-gate outcome from search_actions, for the trace. */
   relevance?: import('../evaluation/evidenceGate.js').EvidenceGateResult;
+  /**
+   * EVERY evaluated candidate, admitted or not.
+   *
+   * The gate reports rejections as counts by reason, not rows, so without this
+   * the non-matches are aggregated away before anything can store them — and
+   * "retrieval found nothing" becomes indistinguishable from "the gate rejected
+   * everything".
+   */
+  evaluated?: import('../evaluation/relevance.js').EvaluatedCandidate[];
+  /** The orchestrating model's advisory effects, kept as the evaluator cross-check. */
+  orchestratorEffects?: Record<string, string>;
   /** Fulfillment results keyed by action_uid, from evaluate_effects. */
   fulfillment?: Record<string, import('../evaluation/fulfillment.js').FulfillmentResult>;
   /** Injected in tests/fixtures; live path builds its own. */
@@ -461,6 +472,7 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
   );
 
   const gate = applyEvidenceGate(evaluated);
+  session.evaluated = evaluated;
 
   // ASSERTION — admitted ≤ candidates.
   // A gate that returns more rows than it was given has duplicated evidence,
@@ -567,6 +579,12 @@ async function evaluateEffectsTool(
 
   const authoritative = new Map(evaluated.map((e) => [e.action_uid, e.result]));
   session.fulfillment = Object.fromEntries(authoritative);
+  // WF10A records this as Model Verdict / Model Agreed. Kept so a disagreement
+  // between the orchestrator and the evaluator is reviewable later, not just
+  // resolved silently in the evaluator's favour at request time.
+  session.orchestratorEffects = Object.fromEntries(
+    [...byUid.entries()].map(([uid, j]) => [uid, j.bill_effect]),
+  );
 
   const disagreements: string[] = [];
 
