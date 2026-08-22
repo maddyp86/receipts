@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { QueryResult, StepId, StreamEvent, ToolError } from '@receipts/shared';
 import { config } from '../config.js';
 import { dispatchTool, newSession, type QuerySession } from './dispatch.js';
+import { queryStore } from '../services.js';
 import type { Corrections } from '@receipts/shared';
 import { systemPrompt, EXPLANATION_CONSTRAINTS } from './prompts.js';
 import { TOOL_DEFINITIONS } from './toolDefs.js';
@@ -105,6 +106,9 @@ function finish(session: QuerySession, emit: Emit): boolean {
     demo_mode: config.demoMode,
     fixture_mode: config.fixtureMode,
   };
+  // Stashed so persistence stores exactly what the user saw, rather than
+  // rebuilding it later from parts that may have moved on.
+  session.result = result;
   emit({ type: 'result', result });
   return true;
 }
@@ -307,13 +311,62 @@ async function runLive(session: QuerySession, emit: Emit): Promise<void> {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Persist the completed query.
+ *
+ * BEST EFFORT, ALWAYS. Every failure path here is swallowed after logging: a
+ * database problem must never turn a query the user already got an answer to
+ * into an error. Persistence is for us, not for them.
+ *
+ * Runs after the result has been emitted, so it cannot add latency to the
+ * answer either.
+ */
+async function persist(session: QuerySession, sessionId: string | null): Promise<void> {
+  // Nothing worth storing until the promise was at least interpreted. A row
+  // with no classification is not a training example, it is noise.
+  if (!session.interpretation || !sessionId) return;
+
+  try {
+    await queryStore.saveQuery({
+      session_id: sessionId,
+      politician_id: session.politicianId,
+      promise_text: session.promiseText,
+      interpretation: session.interpretation,
+      result: session.result ?? null,
+      user_asserted_premise: Boolean(session.interpretation.user_asserted_premise),
+      models_used: {
+        classify: config.models.classify,
+        fulfill: config.models.fulfill,
+        explain: config.models.explain,
+      },
+      degraded: {
+        demo_mode: config.demoMode,
+        fixture_mode: config.fixtureMode,
+        relevance_applied: Boolean(session.relevance),
+      },
+    });
+  } catch (err) {
+    console.error('[persist] query not saved (non-fatal):', err instanceof Error ? err.message : err);
+  }
+}
+
 export async function runQuery(
   politicianId: string,
   promiseText: string,
   emit: Emit,
   corrections?: Corrections,
+  meta: { userAgent?: string } = {},
 ): Promise<void> {
   const session = newSession(politicianId, promiseText, corrections);
+
+  // Opened up front so a query that later fails still has a session to hang
+  // off. Best effort, like the write itself.
+  let sessionId: string | null = null;
+  try {
+    sessionId = await queryStore.startSession(meta);
+  } catch (err) {
+    console.error('[persist] session not opened (non-fatal):', err instanceof Error ? err.message : err);
+  }
 
   try {
     if (config.demoMode) {
@@ -332,5 +385,7 @@ export async function runQuery(
     emit({ type: 'error', error });
   } finally {
     emit({ type: 'done' });
+    // After `done`, so persistence never delays the answer.
+    await persist(session, sessionId);
   }
 }

@@ -33,6 +33,7 @@ const anthropicKey = str(process.env.ANTHROPIC_API_KEY);
 const openaiKey = str(process.env.OPENAI_API_KEY);
 const pineconeKey = str(process.env.PINECONE_API_KEY);
 const pineconeHost = str(process.env.PINECONE_HOST).replace(/\/+$/, '');
+const databaseUrl = str(process.env.DATABASE_URL);
 
 const demoOverride = boolOverride(process.env.DEMO_MODE);
 const fixtureOverride = boolOverride(process.env.FIXTURE_MODE);
@@ -149,6 +150,27 @@ export const config = {
     topK: num(process.env.RETRIEVAL_TOP_K, 10),
   },
 
+  database: {
+    /**
+     * Postgres connection string for query/session persistence.
+     *
+     * MUST connect as the `receipts_app` role — never `postgres`, never a
+     * service_role key. The corpus firewall is built out of roles:
+     * `receipts_trust` being locked out of the `app` schema only means
+     * something if the app connects as the role that is actually walled.
+     * Connecting with blanket privileges leaves everything working and the
+     * firewall decorative.
+     *
+     * Prefer the transaction-mode POOLER (port 6543) over a direct 5432
+     * connection: a persistent server should not hold a real backend open.
+     *
+     * Absent -> NullQueryStore. The app boots and answers queries, but nothing
+     * is persisted and share links resolve to nothing. Same degrade-honestly
+     * pattern as the other credentials.
+     */
+    url: databaseUrl,
+  },
+
   /**
    * Origins allowed to call this API, comma-separated.
    *
@@ -226,7 +248,8 @@ export function describeCredentials(): string {
   const mark = (v: string) => (v ? 'present' : 'ABSENT');
   return [
     `credentials: anthropic=${mark(anthropicKey)}  openai=${mark(openaiKey)}  ` +
-      `pinecone=${mark(pineconeKey)}  pinecone_host=${mark(pineconeHost)}`,
+      `pinecone=${mark(pineconeKey)}  pinecone_host=${mark(pineconeHost)}  ` +
+      `supabase=${mark(databaseUrl)}`,
     config.pinecone.embeddingVersion
       ? `  embedding_version PINNED to "${config.pinecone.embeddingVersion}" — a stale pin ` +
         'returns zero vectors; the store asserts on this.'

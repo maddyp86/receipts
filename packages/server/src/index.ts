@@ -4,6 +4,8 @@ import type { StreamEvent } from '@receipts/shared';
 import { config, describeCredentials, describeMode, describeModels } from './config.js';
 import { senatorCache } from './data/SenatorCache.js';
 import { runQuery } from './orchestrator/loop.js';
+import { queryStore } from './services.js';
+import { SupabaseQueryStore } from './data/SupabaseQueryStore.js';
 import { primaryIssues, subIssuesFor } from './embeddings/taxonomy.js';
 import type { Corrections } from '@receipts/shared';
 import { actionStore, embedder } from './services.js';
@@ -37,6 +39,39 @@ app.get('/api/health', (_req, res) => {
     model: config.models.explain,
     taxonomy_complete: TAXONOMY_IS_COMPLETE,
   });
+});
+
+/**
+ * Share link: read one stored query back by id.
+ *
+ * By id ONLY — no list, no search, no filter by senator. See QueryStore.ts.
+ * Returns 404 on a miss rather than reconstructing anything, so a link to a
+ * query that was never persisted says so honestly.
+ */
+app.get('/api/query/:id', async (req, res) => {
+  try {
+    const stored = await queryStore.getQuery(String(req.params.id));
+    if (!stored) {
+      res.status(404).json({
+        error: {
+          code: 'BAD_INPUT',
+          message: 'No stored result for that link.',
+          recoverable: false,
+        },
+      });
+      return;
+    }
+    res.json(stored);
+  } catch (err) {
+    console.error('[share]', err);
+    res.status(503).json({
+      error: {
+        code: 'UPSTREAM_UNAVAILABLE',
+        message: 'Could not read that result.',
+        recoverable: true,
+      },
+    });
+  }
 });
 
 app.get('/api/senators', (_req, res) => {
@@ -121,7 +156,9 @@ app.get('/api/query', async (req, res) => {
   }, 15000);
 
   try {
-    await runQuery(politicianId, promiseText, emit, corrections);
+    await runQuery(politicianId, promiseText, emit, corrections, {
+      userAgent: String(req.headers['user-agent'] ?? '').slice(0, 500) || undefined,
+    });
   } finally {
     clearInterval(heartbeat);
     if (!closed) res.end();
@@ -150,4 +187,27 @@ app.listen(config.port, () => {
     );
   }
   console.info('');
+
+  // Confirms the write path can actually open, and reports WHICH ROLE it
+  // opened as. Deliberately non-fatal: persistence is best effort and must not
+  // gate the service booting. But it says plainly what it found, because a
+  // working connection as the WRONG role looks identical to a correct one
+  // until someone audits the firewall months later.
+  if (queryStore instanceof SupabaseQueryStore) {
+    void queryStore.verifyConnection().then((r) => {
+      if (!r.ok) {
+        console.error(`  supabase: CONNECTION FAILED — ${r.error}`);
+        console.error('  queries will NOT be persisted. The app still serves answers.');
+        return;
+      }
+      console.info(`  supabase: connected as "${r.role}" to "${r.database}"`);
+      if (!r.firewallIntact) {
+        console.error(
+          `  ⚠ WRONG ROLE: connected as "${r.role}", expected "receipts_app". ` +
+            'The corpus firewall is only enforced when the app connects as the ' +
+            'role that is actually walled. Fix DATABASE_URL before going live.',
+        );
+      }
+    });
+  }
 });

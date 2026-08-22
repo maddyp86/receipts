@@ -50,6 +50,8 @@ export interface QuerySession {
   matches?: MatchedAction[];
   scored?: ScoredResult;
   explanation?: Explanation;
+  /** The frozen QueryResult exactly as emitted, for persistence. */
+  result?: import('@receipts/shared').QueryResult;
   /** Evidence-gate outcome from search_actions, for the trace. */
   relevance?: import('../evaluation/evidenceGate.js').EvidenceGateResult;
   /** Fulfillment results keyed by action_uid, from evaluate_effects. */
