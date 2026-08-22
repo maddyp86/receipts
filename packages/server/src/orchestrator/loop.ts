@@ -1,0 +1,336 @@
+import Anthropic from '@anthropic-ai/sdk';
+import type { QueryResult, StepId, StreamEvent, ToolError } from '@receipts/shared';
+import { config } from '../config.js';
+import { dispatchTool, newSession, type QuerySession } from './dispatch.js';
+import type { Corrections } from '@receipts/shared';
+import { systemPrompt, EXPLANATION_CONSTRAINTS } from './prompts.js';
+import { TOOL_DEFINITIONS } from './toolDefs.js';
+import { stubBillEffects, stubExplanation, stubInterpretation } from '../llm/stub.js';
+
+// ===========================================================================
+// The orchestration loop.
+//
+// A workflow, not an autonomous agent (ADR-008, docs/adr/README.md): a fixed sequence over data we
+// already have, so a Messages API tool-use loop is the right-sized primitive and
+// deploys anywhere. Hand-rolled rather than using the SDK's tool runner because
+// we own the wire format to the browser and want no beta dependency on what will
+// be an ordinary stateless function.
+//
+// What the model streams is NARRATION. The verdict the user sees is read from
+// `session.scored` — the deterministic service's output — no matter what the
+// model says. That is the difference between this and a chatbot with citations.
+// ===========================================================================
+
+const MAX_ITERATIONS = 12;
+
+const STEP_FOR_TOOL: Record<string, StepId> = {
+  interpret_promise: 'interpret',
+  resolve_senator: 'resolve_senator',
+  embed_text: 'embed',
+  search_actions: 'search',
+  evaluate_effects: 'score',
+  explain_result: 'explain',
+};
+
+const STEP_LABEL: Record<StepId, string> = {
+  interpret: 'Reading your promise',
+  resolve_senator: 'Checking coverage for this senator',
+  embed: 'Preparing the search',
+  search: 'Searching their record',
+  score: 'Weighing the evidence',
+  explain: 'Writing it up',
+};
+
+export type Emit = (event: StreamEvent) => void;
+
+function detailFor(tool: string, env: { ok: boolean; data?: unknown }): string | undefined {
+  if (!env.ok) return undefined;
+  const d = env.data as Record<string, unknown> | undefined;
+  switch (tool) {
+    case 'search_actions': {
+      const n = Number(d?.count ?? 0);
+      return n === 0 ? 'no related actions found' : `found ${n} related ${n === 1 ? 'action' : 'actions'}`;
+    }
+    case 'embed_text':
+      return `${d?.dimensions ?? '?'} dimensions`;
+    case 'evaluate_effects':
+      return 'verdict computed';
+    default:
+      return undefined;
+  }
+}
+
+/** Run one tool, narrating it to the client as it resolves. */
+async function runTool(
+  session: QuerySession,
+  emit: Emit,
+  name: string,
+  input: Record<string, unknown>,
+) {
+  const step = STEP_FOR_TOOL[name];
+  if (step) emit({ type: 'step', id: step, label: STEP_LABEL[step], status: 'running' });
+
+  const env = await dispatchTool(session, name, input);
+
+  if (step) {
+    emit({
+      type: 'step',
+      id: step,
+      label: STEP_LABEL[step],
+      status: env.ok ? 'done' : 'error',
+      detail: env.ok ? detailFor(name, env) : env.error.message,
+    });
+  }
+
+  if (name === 'interpret_promise' && env.ok && session.interpretation) {
+    emit({ type: 'interpretation', interpretation: session.interpretation });
+  }
+
+  return env;
+}
+
+/** Assemble the user-facing result from server-held state, never from prose. */
+function finish(session: QuerySession, emit: Emit): boolean {
+  if (!session.senator || !session.interpretation || !session.scored) return false;
+
+  const result: QueryResult = {
+    senator: session.senator,
+    interpretation: session.interpretation,
+    scored: session.scored,
+    explanation: session.explanation ?? {
+      why: '',
+      connectors: {},
+      confidence: 0,
+    },
+    demo_mode: config.demoMode,
+    fixture_mode: config.fixtureMode,
+  };
+  emit({ type: 'result', result });
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Demo path — same handlers, same validation, deterministic judgements.
+// ---------------------------------------------------------------------------
+
+async function runDemo(session: QuerySession, emit: Emit): Promise<void> {
+  const interpretation = stubInterpretation(session.promiseText);
+  await runTool(session, emit, 'interpret_promise', { ...interpretation });
+
+  const resolved = await runTool(session, emit, 'resolve_senator', {
+    politician_id: session.politicianId,
+  });
+  if (!resolved.ok) {
+    emit({ type: 'error', error: resolved.error });
+    return;
+  }
+  if (session.uncached && session.senator) {
+    await runTool(session, emit, 'queue_senator', {});
+    emit({ type: 'uncached', senator: session.senator, queued: session.queued });
+    return;
+  }
+
+  // Nothing specific enough to check — don't spend a retrieval round trip
+  // searching for bills on a subject we couldn't identify.
+  if (session.interpretation && !session.interpretation.is_evaluable) {
+    const unscored = await runTool(session, emit, 'evaluate_effects', { effects: [] });
+    if (!unscored.ok) {
+      emit({ type: 'error', error: unscored.error });
+      return;
+    }
+    await runTool(
+      session,
+      emit,
+      'explain_result',
+      stubExplanation(session.scored!, session.senator!),
+    );
+    finish(session, emit);
+    return;
+  }
+
+  const embedded = await runTool(session, emit, 'embed_text', {});
+  if (!embedded.ok) {
+    emit({ type: 'error', error: embedded.error });
+    return;
+  }
+
+  const searched = await runTool(session, emit, 'search_actions', {});
+  if (!searched.ok) {
+    emit({ type: 'error', error: searched.error });
+    return;
+  }
+
+  const effects = stubBillEffects(session.matches ?? [], {
+    primary_issue: session.interpretation!.primary_issue,
+    sub_issue: session.interpretation!.sub_issue,
+    stance: session.interpretation!.stance,
+  });
+  const scored = await runTool(session, emit, 'evaluate_effects', { effects });
+  if (!scored.ok) {
+    emit({ type: 'error', error: scored.error });
+    return;
+  }
+
+  await runTool(session, emit, 'explain_result', stubExplanation(session.scored!, session.senator!));
+
+  if (!finish(session, emit)) {
+    emit({
+      type: 'error',
+      error: { code: 'INTERNAL', message: 'Could not assemble a result.', recoverable: true },
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Live path — Messages API tool use.
+// ---------------------------------------------------------------------------
+
+async function runLive(session: QuerySession, emit: Emit): Promise<void> {
+  const client = new Anthropic({ apiKey: config.anthropic.apiKey });
+
+  const messages: Anthropic.MessageParam[] = [
+    {
+      role: 'user',
+      content: [
+        `A voter has asked whether this senator kept a promise.`,
+        ``,
+        `Senator id: ${session.politicianId}`,
+        `Promise, in the voter's own words: "${session.promiseText}"`,
+        ``,
+        `Run the sequence. When you reach explain_result, follow these constraints:`,
+        ``,
+        EXPLANATION_CONSTRAINTS,
+      ].join('\n'),
+    },
+  ];
+
+  for (let i = 0; i < MAX_ITERATIONS; i += 1) {
+    // Streamed so a long turn never hits an HTTP timeout. Note there is no
+    // temperature or top_p here — current models reject them — and no prefill.
+    const stream = client.messages.stream({
+      model: config.models.explain,
+      max_tokens: config.anthropic.maxTokens,
+      system: systemPrompt(),
+      tools: TOOL_DEFINITIONS as unknown as Anthropic.Tool[],
+      messages,
+    });
+
+    const message = await stream.finalMessage();
+
+    // Check the stop reason before reading content: a refusal has no usable
+    // content and must not be rendered as an answer.
+    if (message.stop_reason === 'refusal') {
+      emit({
+        type: 'error',
+        error: {
+          code: 'INTERNAL',
+          message: 'The model declined to process this request.',
+          recoverable: false,
+        },
+      });
+      return;
+    }
+
+    // A turn that hit the ceiling is TRUNCATED, not finished. Without this the
+    // loop falls through the `!== 'tool_use'` break below and the half-written
+    // turn is rendered as a completed answer — a partial explanation reads as a
+    // whole one, which is the silent-success shape this project keeps guarding
+    // against. Adaptive thinking counts against the same ceiling, so this can
+    // fire even when the visible prose is short.
+    if (message.stop_reason === 'max_tokens') {
+      emit({
+        type: 'error',
+        error: {
+          code: 'INTERNAL',
+          message:
+            'The model hit its output ceiling mid-turn, so the result is incomplete. ' +
+            'Nothing partial is shown.',
+          recoverable: true,
+          details: { max_tokens: config.anthropic.maxTokens, model: config.models.explain },
+        },
+      });
+      return;
+    }
+
+    messages.push({ role: 'assistant', content: message.content });
+
+    if (message.stop_reason !== 'tool_use') break;
+
+    const toolUses = message.content.filter(
+      (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+    );
+
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    for (const use of toolUses) {
+      const env = await runTool(
+        session,
+        emit,
+        use.name,
+        (use.input ?? {}) as Record<string, unknown>,
+      );
+
+      toolResults.push({
+        type: 'tool_result',
+        tool_use_id: use.id,
+        content: JSON.stringify(env),
+        is_error: !env.ok,
+      });
+
+      // The uncached path is terminal: there is no honest answer to give, so we
+      // stop rather than letting the loop improvise around it.
+      if (use.name === 'resolve_senator' && session.uncached) {
+        await runTool(session, emit, 'queue_senator', {});
+        if (session.senator) {
+          emit({ type: 'uncached', senator: session.senator, queued: session.queued });
+        }
+        return;
+      }
+    }
+
+    // All results go back in a single user message — splitting them trains the
+    // model out of parallel tool calls.
+    messages.push({ role: 'user', content: toolResults });
+  }
+
+  if (!finish(session, emit)) {
+    emit({
+      type: 'error',
+      error: {
+        code: 'INTERNAL',
+        message:
+          'The query finished without producing a scored result. Nothing was rendered rather than guessing.',
+        recoverable: true,
+      },
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+export async function runQuery(
+  politicianId: string,
+  promiseText: string,
+  emit: Emit,
+  corrections?: Corrections,
+): Promise<void> {
+  const session = newSession(politicianId, promiseText, corrections);
+
+  try {
+    if (config.demoMode) {
+      await runDemo(session, emit);
+    } else {
+      await runLive(session, emit);
+    }
+  } catch (err) {
+    console.error('[loop]', err);
+    const error: ToolError = {
+      code: 'INTERNAL',
+      message: 'Something went wrong while checking this promise.',
+      recoverable: true,
+      details: { cause: err instanceof Error ? err.message : String(err) },
+    };
+    emit({ type: 'error', error });
+  } finally {
+    emit({ type: 'done' });
+  }
+}

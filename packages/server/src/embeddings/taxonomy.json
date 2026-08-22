@@ -1,0 +1,618 @@
+{
+  "_provenance": {
+    "status": "COMPLETE:2026-08-21",
+    "gid": "1287072268",
+    "row_count": 121,
+    "source": "Google Sheets — 'Issue Taxonomy' doc, tab 'Approved Taxonomy'",
+    "source_file": "taxonomy_roundtrip.csv",
+    "generated_by": "tools/export-taxonomy.mjs",
+    "generated_never_edited": "Do NOT hand-edit this file. Apply any sheet change by re-running the exporter. Keyword cells are stored VERBATIM — splitting and re-joining would substitute our separator for the sheet's and move every query vector built from that row."
+  },
+  "rows": [
+    {
+      "primary_issue": "Abortion",
+      "sub_issue": "Abortion",
+      "taxonomy_keywords": "abortion, pro-life, pro-choice, pregnancy termination, abortion access, abortion restrictions, Hyde Amendment, Planned Parenthood, abortion providers, abortion funding, federal abortion policy, abortion ban, abortion rights, fetal rights, unborn, termination of pregnancy, Title X, federal family planning funds, taxpayer funding abortion, abortion providers funding, Protect Life Rule, abortion clinic funding"
+    },
+    {
+      "primary_issue": "Abortion",
+      "sub_issue": "Reproductive Rights",
+      "taxonomy_keywords": "reproductive rights, reproductive health, family planning, contraception, birth control, reproductive freedom, reproductive healthcare, reproductive services, women's health, fertility, pregnancy, maternal health"
+    },
+    {
+      "primary_issue": "Abortion",
+      "sub_issue": "Roe v. Wade / Dobbs",
+      "taxonomy_keywords": "Roe v. Wade, Dobbs, Supreme Court abortion, abortion ruling, constitutional right to abortion, abortion precedent, judicial decision, abortion case, overturn Roe, abortion jurisprudence, abortion legality"
+    },
+    {
+      "primary_issue": "Budget & Economy",
+      "sub_issue": "Inflation",
+      "taxonomy_keywords": "inflation, prices, cost of living, consumer prices, purchasing power, CPI, price increases, economic inflation, rising costs, price stability, inflation rate, deflation, hyperinflation"
+    },
+    {
+      "primary_issue": "Budget & Economy",
+      "sub_issue": "Taxes",
+      "taxonomy_keywords": "taxes, taxation, tax policy, tax rates, tax cuts, tax credits, IRS, Internal Revenue Service, income tax, tax brackets, tax deductions, tax relief, tax reform, tax code, tax burden, tax incentives, tax compliance, payroll tax, estate tax, capital gains"
+    },
+    {
+      "primary_issue": "Budget & Economy",
+      "sub_issue": "Small Business",
+      "taxonomy_keywords": "small business, entrepreneurs, small business owners, SBA, Small Business Administration, small business loans, startups, Main Street, mom and pop, local business, small business tax, entrepreneurship, business formation, small employers"
+    },
+    {
+      "primary_issue": "Budget & Economy",
+      "sub_issue": "Trade / Free Trade",
+      "taxonomy_keywords": "trade, international trade, imports, exports, tariffs, trade agreements, trade policy, free trade, trade deficit, international commerce, global trade, trade deals, trade negotiations, customs, trade relations, USMCA, trade barriers, trade war, supply chains, Ocean Shipping Reform Act, Federal Maritime Commission, maritime trade, shipping costs, trade supply chain, agricultural exports, trade opportunities"
+    },
+    {
+      "primary_issue": "Budget & Economy",
+      "sub_issue": "Agriculture & Food",
+      "taxonomy_keywords": "agriculture, farmers, ranchers, farm programs, livestock, cattle, dairy, crop insurance, rural economy, agricultural policy, farm bill, commodity programs, conservation reserve program, beef production, grain farmers, hog producers, poultry, agricultural subsidies, farm income, rural development, agricultural research, food production, farm equipment, agricultural loans, USDA, farming"
+    },
+    {
+      "primary_issue": "Budget & Economy",
+      "sub_issue": "Finance & Banking",
+      "taxonomy_keywords": "finance, banking, financial services, financial institutions, financial sector, banks, credit, loans, financial regulation, Wall Street, investment, financial markets, securities, financial industry, consumer finance, financial products, Dodd-Frank, FDIC, credit unions"
+    },
+    {
+      "primary_issue": "Budget & Economy",
+      "sub_issue": "Government Budget & Spending",
+      "taxonomy_keywords": "budget, federal spending, appropriations, deficit, debt, fiscal policy, government spending, federal budget, national debt, debt ceiling, spending cuts, budget resolution, omnibus, continuing resolution, fiscal responsibility, balanced budget, IRS funding, IRS oversight, agency funding, Inflation Reduction Act spending, government accountability, entitlement spending, Medicare spending, Medicaid spending"
+    },
+    {
+      "primary_issue": "Budget & Economy",
+      "sub_issue": "Monetary Policy",
+      "taxonomy_keywords": "Federal Reserve, interest rates, monetary policy, money supply, inflation targeting, central bank, Fed, quantitative easing, federal funds rate, monetary stimulus, currency, dollar"
+    },
+    {
+      "primary_issue": "Budget & Economy",
+      "sub_issue": "Manufacturing & Industry",
+      "taxonomy_keywords": "manufacturing, domestic manufacturing, semiconductor manufacturing, chip production, microchip, semiconductor industry, supply chains, reshoring, onshoring, industrial policy, CHIPS Act, factory, production, advanced manufacturing, manufacturing jobs, manufacturing hub, bioproduction, fabrication, foundry, GlobalFoundries, battery manufacturing, electric vehicle manufacturing, critical minerals, rare earth, industrial base, defense industrial base, made in America, Buy American"
+    },
+    {
+      "primary_issue": "Budget & Economy",
+      "sub_issue": "Transportation & Infrastructure",
+      "taxonomy_keywords": "transportation, infrastructure, roads, highways, bridges, transit, public transportation, transportation infrastructure, transportation policy, transportation funding, mass transit, rail, aviation, airports, ports, transportation systems, infrastructure investment, infrastructure bill"
+    },
+    {
+      "primary_issue": "Budget & Economy",
+      "sub_issue": "Cost of Living / Consumer Prices",
+      "taxonomy_keywords": "cost of living, consumer prices, inflation, affordability, purchasing power, household expenses, grocery prices, gas prices, rent, housing costs, utility costs, everyday expenses, price increases, economic hardship"
+    },
+    {
+      "primary_issue": "Civil Rights & Liberties",
+      "sub_issue": "Civil Liberties",
+      "taxonomy_keywords": "civil liberties, constitutional rights, freedoms, Bill of Rights, individual rights, privacy rights, free speech, freedom of assembly, due process, liberty, personal freedom, government overreach"
+    },
+    {
+      "primary_issue": "Civil Rights & Liberties",
+      "sub_issue": "Criminal Justice Reform",
+      "taxonomy_keywords": "criminal justice reform, sentencing reform, prison reform, mass incarceration, recidivism, rehabilitation, mandatory minimums, criminal justice system, corrections, reentry, justice reform, incarceration rates"
+    },
+    {
+      "primary_issue": "Civil Rights & Liberties",
+      "sub_issue": "Death Penalty",
+      "taxonomy_keywords": "death penalty, capital punishment, execution, death row, lethal injection, capital cases, death sentence, capital crimes, abolish death penalty, moratorium"
+    },
+    {
+      "primary_issue": "Civil Rights & Liberties",
+      "sub_issue": "Constitution / Bill of Rights",
+      "taxonomy_keywords": "Constitution, Bill of Rights, constitutional amendments, founding documents, constitutional rights, First Amendment, Second Amendment, Fourth Amendment, Fifth Amendment, constitutional interpretation, framers, constitutional law"
+    },
+    {
+      "primary_issue": "Civil Rights & Liberties",
+      "sub_issue": "Elections & Voting Rights",
+      "taxonomy_keywords": "voting rights, elections, voter ID, voter suppression, election integrity, ballot access, Voting Rights Act, election security, voter registration, absentee voting, mail-in voting, early voting, polling places, electoral process"
+    },
+    {
+      "primary_issue": "Civil Rights & Liberties",
+      "sub_issue": "Employment & Affirmative Action",
+      "taxonomy_keywords": "affirmative action, employment discrimination, equal opportunity, workplace diversity, hiring practices, diversity programs, racial preferences, college admissions, equal employment, EEOC, workplace equality"
+    },
+    {
+      "primary_issue": "Civil Rights & Liberties",
+      "sub_issue": "Indigenous Peoples",
+      "taxonomy_keywords": "Native Americans, tribal nations, indigenous peoples, tribal sovereignty, tribal lands, Indian affairs, tribal governments, Native American rights, tribal communities, reservation, indigenous rights, tribal programs, Bureau of Indian Affairs, Indian Health Service"
+    },
+    {
+      "primary_issue": "Civil Rights & Liberties",
+      "sub_issue": "Judicial Branch",
+      "taxonomy_keywords": "judiciary, courts, judges, Supreme Court, federal courts, judicial appointments, judicial independence, court system, federal judges, appellate courts, judicial nominations, court rulings, judicial review"
+    },
+    {
+      "primary_issue": "Civil Rights & Liberties",
+      "sub_issue": "Legislative Branch",
+      "taxonomy_keywords": "Congress, legislative branch, Senate, House of Representatives, congressional procedures, legislative process, congressional operations, Capitol, congressional oversight, legislative rules, legislation, lawmakers, congressional authority"
+    },
+    {
+      "primary_issue": "Civil Rights & Liberties",
+      "sub_issue": "Minors & Children",
+      "taxonomy_keywords": "children, minors, child protection, child welfare, juvenile, youth, child safety, child rights, parental rights, child abuse, child neglect, foster care, adoption, child services"
+    },
+    {
+      "primary_issue": "Civil Rights & Liberties",
+      "sub_issue": "Religion & Religious Freedom",
+      "taxonomy_keywords": "religious freedom, faith, religion, religious liberty, church and state, free exercise, religious organizations, First Amendment religion, religious expression, faith-based, religious accommodation, conscience rights"
+    },
+    {
+      "primary_issue": "Civil Rights & Liberties",
+      "sub_issue": "Sexual Orientation & Gender Identity",
+      "taxonomy_keywords": "LGBTQ, sexual orientation, gender identity, same-sex marriage, transgender rights, equality, gay rights, lesbian, bisexual, transgender, queer, marriage equality, discrimination, gender expression"
+    },
+    {
+      "primary_issue": "Civil Rights & Liberties",
+      "sub_issue": "Women's Rights",
+      "taxonomy_keywords": "women's rights, gender equality, equal pay, women's issues, Title IX, gender discrimination, pay equity, women in workplace, women's health, gender gap, women's empowerment"
+    },
+    {
+      "primary_issue": "Corporations & Business",
+      "sub_issue": "Corporate Regulation",
+      "taxonomy_keywords": "corporate regulation, business regulation, corporate accountability, antitrust, monopolies, corporate governance, corporate oversight, SEC, regulatory compliance, business oversight, corporate responsibility, market regulation"
+    },
+    {
+      "primary_issue": "Corporations & Business",
+      "sub_issue": "Campaign Finance / Dark Money",
+      "taxonomy_keywords": "campaign finance, dark money, Citizens United, political donations, PACs, Super PACs, election spending, political contributions, money in politics, campaign contributions, political advertising, disclosure"
+    },
+    {
+      "primary_issue": "Corporations & Business",
+      "sub_issue": "Consumer Protection",
+      "taxonomy_keywords": "consumer protection, consumer rights, consumer safety, FTC, product safety, consumer advocacy, consumer fraud, consumer complaints, consumer regulations, buyer protection, fair trade practices"
+    },
+    {
+      "primary_issue": "Crime & Public Safety",
+      "sub_issue": "Law Enforcement",
+      "taxonomy_keywords": "law enforcement, police, policing, police officers, police departments, law enforcement agencies, cops, sheriffs, police funding, blue lives, back the blue, police training, police resources"
+    },
+    {
+      "primary_issue": "Crime & Public Safety",
+      "sub_issue": "Violent Crime",
+      "taxonomy_keywords": "violent crime, murder, assault, robbery, crime rates, crime prevention, public safety, homicide, crime statistics, crime reduction, criminal activity, street crime, gang violence"
+    },
+    {
+      "primary_issue": "Crime & Public Safety",
+      "sub_issue": "Guns / Gun Control",
+      "taxonomy_keywords": "guns, firearms, Second Amendment, gun control, background checks, gun violence, gun rights, concealed carry, assault weapons, gun safety, NRA, gun laws, gun ownership, gun regulations, red flag laws, gun sales"
+    },
+    {
+      "primary_issue": "Crime & Public Safety",
+      "sub_issue": "Policing Reform",
+      "taxonomy_keywords": "police reform, policing reform, police accountability, use of force, police training, community policing, police oversight, police brutality, defund police, police misconduct, qualified immunity"
+    },
+    {
+      "primary_issue": "Crime & Public Safety",
+      "sub_issue": "Human Trafficking & Exploitation",
+      "taxonomy_keywords": "human trafficking, trafficking in persons, sex trafficking,\nforced labor, bonded labor, involuntary servitude,\ncommercial sexual exploitation, organ trafficking,\nchild exploitation, child soldiers, trafficking victims,\nanti-trafficking enforcement"
+    },
+    {
+      "primary_issue": "Culture, Arts & History",
+      "sub_issue": "Arts & Humanities",
+      "taxonomy_keywords": "arts, humanities, NEA, National Endowment for the Arts, arts funding, cultural programs, artistic expression, fine arts, performing arts, visual arts, arts education"
+    },
+    {
+      "primary_issue": "Culture, Arts & History",
+      "sub_issue": "Historic Sites & Preservation",
+      "taxonomy_keywords": "historic preservation, historic sites, landmarks, historical buildings, preservation, National Register, heritage sites, historic districts, architectural preservation, cultural landmarks"
+    },
+    {
+      "primary_issue": "Culture, Arts & History",
+      "sub_issue": "Museums, Archives, Libraries",
+      "taxonomy_keywords": "museums, archives, libraries, cultural institutions, Smithsonian, Library of Congress, national museums, public libraries, archival records, museum funding, library services"
+    },
+    {
+      "primary_issue": "Culture, Arts & History",
+      "sub_issue": "Cultural Heritage & Commemorations",
+      "taxonomy_keywords": "cultural heritage, commemorations, memorials, monuments, cultural recognition, national holidays, heritage months, historical commemorations, memorial designations"
+    },
+    {
+      "primary_issue": "Culture, Arts & History",
+      "sub_issue": "U.S. History / Social Sciences",
+      "taxonomy_keywords": "history, social sciences, American history, historical research, social studies, historical records, historical education, civics, historical scholarship"
+    },
+    {
+      "primary_issue": "Drugs & Controlled Substances",
+      "sub_issue": "Marijuana Legalization",
+      "taxonomy_keywords": "marijuana, cannabis, marijuana legalization, recreational marijuana, medical marijuana, pot, weed, decriminalization, marijuana dispensaries, cannabis industry, marijuana policy"
+    },
+    {
+      "primary_issue": "Drugs & Controlled Substances",
+      "sub_issue": "Opioid Crisis",
+      "taxonomy_keywords": "opioids, opioid crisis, fentanyl, overdose, opioid addiction, prescription opioids, opioid epidemic, narcotics, heroin, drug overdose deaths, naloxone, addiction treatment"
+    },
+    {
+      "primary_issue": "Drugs & Controlled Substances",
+      "sub_issue": "Drug Policy",
+      "taxonomy_keywords": "drug policy, controlled substances, DEA, Drug Enforcement Administration, drug enforcement, drug scheduling, substance abuse, drug trafficking, illegal drugs, drug crimes, narcotics policy"
+    },
+    {
+      "primary_issue": "Education",
+      "sub_issue": "K-12 Education",
+      "taxonomy_keywords": "K-12, elementary schools, middle schools, high schools, public schools, school districts, education funding, primary education, secondary education, school systems, K-12 funding, school boards"
+    },
+    {
+      "primary_issue": "Education",
+      "sub_issue": "Higher Education",
+      "taxonomy_keywords": "higher education, colleges, universities, college education, university funding, academic institutions, postsecondary education, community colleges, degree programs, college enrollment"
+    },
+    {
+      "primary_issue": "Education",
+      "sub_issue": "Student Loans / College Affordability",
+      "taxonomy_keywords": "student loans, college affordability, tuition, student debt, Pell Grants, financial aid, student loan forgiveness, loan repayment, college costs, education debt, student borrowers"
+    },
+    {
+      "primary_issue": "Education",
+      "sub_issue": "Curriculum & Standards",
+      "taxonomy_keywords": "curriculum, education standards, Common Core, academic standards, school curriculum, educational content, teaching standards, learning standards, academic requirements"
+    },
+    {
+      "primary_issue": "Education",
+      "sub_issue": "Teacher Pay / Workforce",
+      "taxonomy_keywords": "teachers, teacher pay, teacher salaries, educator workforce, teacher shortage, teaching profession, educator compensation, teacher retention, teacher recruitment, teaching jobs"
+    },
+    {
+      "primary_issue": "Energy & Oil",
+      "sub_issue": "Oil & Gas Production",
+      "taxonomy_keywords": "oil, gas, petroleum, natural gas, drilling, oil production, gas production, fossil fuels, fracking, hydraulic fracturing, oil wells, gas wells, offshore drilling, shale, oil industry, gas industry"
+    },
+    {
+      "primary_issue": "Energy & Oil",
+      "sub_issue": "Energy Efficiency & Conservation",
+      "taxonomy_keywords": "energy efficiency, energy conservation, energy standards, appliance standards, building standards, HVAC standards, efficiency regulations, energy codes, conservation standards, DOE efficiency, ENERGY STAR, energy performance, fuel economy, MPG standards, vehicle efficiency, lighting standards, walk-in coolers, refrigeration standards, energy savings"
+    },
+    {
+      "primary_issue": "Energy & Oil",
+      "sub_issue": "Energy Regulation & Policy",
+      "taxonomy_keywords": "energy regulation, energy policy, FERC, energy rulemaking, energy rule, Congressional Review Act energy, energy deregulation, pipeline regulation, utility regulation, energy grid, electric grid, power grid, grid reliability, energy markets, electricity markets, rate regulation, energy permitting"
+    },
+    {
+      "primary_issue": "Energy & Oil",
+      "sub_issue": "Energy Independence",
+      "taxonomy_keywords": "energy independence, domestic energy, energy security, American energy, energy self-sufficiency, energy dominance, domestic production, reduce foreign oil, energy exports, conventional energy, conventional energy production, American energy dominance, biofuels energy independence, energy costs, fuel costs, energy prices"
+    },
+    {
+      "primary_issue": "Energy & Oil",
+      "sub_issue": "Renewable Energy",
+      "taxonomy_keywords": "renewable energy, solar, wind, clean energy, green energy, alternative energy, sustainable energy, solar panels, wind turbines, renewable power, clean power, green technology, biofuels, ethanol, biodiesel, renewable fuels, bioenergy, corn ethanol, cellulosic biofuel, RFS, Renewable Fuel Standard, E15"
+    },
+    {
+      "primary_issue": "Energy & Oil",
+      "sub_issue": "Nuclear Energy",
+      "taxonomy_keywords": "nuclear energy, nuclear power, nuclear plants, atomic energy, nuclear reactors, nuclear facilities, nuclear generation, nuclear industry, nuclear waste"
+    },
+    {
+      "primary_issue": "Environment",
+      "sub_issue": "Climate Change",
+      "taxonomy_keywords": "climate change, global warming, greenhouse gases, carbon emissions, climate action, Paris Agreement, climate policy, carbon footprint, climate crisis, emissions reduction, net zero, decarbonization"
+    },
+    {
+      "primary_issue": "Environment",
+      "sub_issue": "Conservation / Natural Resources",
+      "taxonomy_keywords": "conservation, natural resources, public lands, national parks, wilderness, land management, BLM, Bureau of Land Management, Forest Service, federal lands, conservation programs, land conservation, resource management, wildlife habitat, WOTUS, Waters of the United States, wetlands regulation, federal water jurisdiction, property rights conservation, regulatory overreach environment"
+    },
+    {
+      "primary_issue": "Environment",
+      "sub_issue": "Pollution & Clean Air/Water",
+      "taxonomy_keywords": "pollution, clean air, clean water, air quality, water quality, EPA, Environmental Protection Agency, environmental regulations, emissions, pollutants, water pollution, air pollution, toxic waste, contamination"
+    },
+    {
+      "primary_issue": "Environment",
+      "sub_issue": "Wildlife Protection",
+      "taxonomy_keywords": "wildlife, endangered species, wildlife protection, animal habitats, species conservation, Endangered Species Act, wildlife management, biodiversity, protected species, wildlife refuges"
+    },
+    {
+      "primary_issue": "Environment",
+      "sub_issue": "Science & Research",
+      "taxonomy_keywords": "science, research, scientific research, R&D, research funding, scientific advancement, science policy, federal research, research grants, scientific studies, innovation"
+    },
+    {
+      "primary_issue": "Families",
+      "sub_issue": "Family Policy",
+      "taxonomy_keywords": "families, family policy, family support, family programs, family services, family values, family assistance, working families, family welfare, family resources"
+    },
+    {
+      "primary_issue": "Families",
+      "sub_issue": "Marriage",
+      "taxonomy_keywords": "marriage, same-sex marriage, marriage policy, family formation, marital rights, marriage law, marriage equality, traditional marriage, marriage benefits, spouse"
+    },
+    {
+      "primary_issue": "Families",
+      "sub_issue": "Child Care",
+      "taxonomy_keywords": "child care, daycare, childcare, early childhood, child care costs, child care access, preschool, child care providers, child care subsidies, working parents, child care funding"
+    },
+    {
+      "primary_issue": "Foreign Policy & Defense",
+      "sub_issue": "Defense Spending",
+      "taxonomy_keywords": "defense spending, military budget, Pentagon budget, defense appropriations, military funding, NDAA, National Defense Authorization Act, defense contractors, weapons procurement, defense programs, military equipment, defense authorization, military spending, weapons systems, aircraft, bombers, fighters, ships, submarines, tanks, missiles"
+    },
+    {
+      "primary_issue": "Foreign Policy & Defense",
+      "sub_issue": "Foreign Affairs / Diplomacy",
+      "taxonomy_keywords": "foreign affairs, diplomacy, State Department, diplomatic relations, international relations, foreign policy, ambassadors, embassies, diplomatic missions, bilateral relations, multilateral diplomacy, Iran, nuclear deal, JCPOA, Iran Nuclear Agreement Review Act, INARA, sanctions, Russia, Ukraine, China, Taiwan, NATO, alliances, treaty, international agreements"
+    },
+    {
+      "primary_issue": "Foreign Policy & Defense",
+      "sub_issue": "Foreign Aid",
+      "taxonomy_keywords": "foreign aid, international assistance, USAID, development aid, humanitarian aid, foreign assistance, international development, aid programs, overseas assistance, global health aid"
+    },
+    {
+      "primary_issue": "Foreign Policy & Defense",
+      "sub_issue": "Homeland Security",
+      "taxonomy_keywords": "homeland security, DHS, Department of Homeland Security, domestic security, terrorism prevention, border protection, TSA, Coast Guard, FEMA, national preparedness, security threats"
+    },
+    {
+      "primary_issue": "Foreign Policy & Defense",
+      "sub_issue": "Military Personnel / Veterans",
+      "taxonomy_keywords": "military personnel, veterans, VA, Veterans Affairs, service members, troops, active duty, military families, veteran benefits, military housing, military pay, GI Bill, veteran healthcare, military readiness, military bases, Air Force, Navy, Army, Marine Corps, Space Force, National Guard, reserves"
+    },
+    {
+      "primary_issue": "Foreign Policy & Defense",
+      "sub_issue": "National Security / Terrorism",
+      "taxonomy_keywords": "national security, terrorism, counterterrorism, terrorist threats, security threats, intelligence, CIA, FBI, NSA, homeland defense, terrorist organizations, security agencies, national defense"
+    },
+    {
+      "primary_issue": "Foreign Policy & Defense",
+      "sub_issue": "War & Peace / Military Action",
+      "taxonomy_keywords": "war, peace, military action, military operations, armed conflict, military intervention, combat operations, deployment, overseas operations, war powers, military force, troop deployment, combat missions"
+    },
+    {
+      "primary_issue": "Foreign Policy & Defense",
+      "sub_issue": "Military Capabilities & Readiness",
+      "taxonomy_keywords": "military capabilities, military readiness, combat readiness, force modernization, weapons systems, military equipment, defense technology, military training, operational readiness, strategic capabilities, bomber fleet, fighter aircraft, naval vessels, military aircraft, defense procurement, B-21 Raider, B-1 bomber, F-35, aircraft programs, airspace, FAA, dynamic airspace, training airspace, flight testing, bomber mission"
+    },
+    {
+      "primary_issue": "Foreign Policy & Defense",
+      "sub_issue": "Military Facilities and Property",
+      "taxonomy_keywords": "military facilities, military construction, military bases, Air Force bases, Navy bases, Army installations, military infrastructure, base realignment, BRAC, military housing, barracks, hangars, military property, military community, base community, school district, military families housing, base infrastructure, Ellsworth, installation support, community capacity"
+    },
+    {
+      "primary_issue": "Government Reform",
+      "sub_issue": "Executive Branch Power",
+      "taxonomy_keywords": "executive power, presidential authority, executive orders, executive branch, White House, presidential actions, executive authority, executive privilege, presidential power"
+    },
+    {
+      "primary_issue": "Government Reform",
+      "sub_issue": "Federal / State / Local Relations",
+      "taxonomy_keywords": "federalism, states rights, federal-state relations, intergovernmental, local government, state sovereignty, federal mandates, state authority, local control, federal preemption"
+    },
+    {
+      "primary_issue": "Government Reform",
+      "sub_issue": "Government Operations & Oversight",
+      "taxonomy_keywords": "government oversight, congressional oversight, accountability, government operations, inspector general, government accountability, GAO, federal agencies, bureaucracy, government efficiency, waste fraud abuse, IRS accountability, IRS oversight, agency oversight, congressional reporting, quarterly reports, annual reports, taxpayer transparency, oversight legislation"
+    },
+    {
+      "primary_issue": "Government Reform",
+      "sub_issue": "Filibuster & Senate Rules",
+      "taxonomy_keywords": "filibuster, Senate rules, cloture, Senate procedures, legislative procedures, Senate norms, parliamentary procedure, Senate filibuster, 60 votes, supermajority"
+    },
+    {
+      "primary_issue": "Health Care",
+      "sub_issue": "Health Insurance",
+      "taxonomy_keywords": "health insurance, insurance coverage, healthcare coverage, ACA, Affordable Care Act, Obamacare, insurance premiums, health plans, insurance marketplace, uninsured, insurance mandate"
+    },
+    {
+      "primary_issue": "Health Care",
+      "sub_issue": "Public Health & Pandemics",
+      "taxonomy_keywords": "public health, pandemics, COVID, coronavirus, infectious disease, disease prevention, CDC, Centers for Disease Control, health emergencies, epidemic, vaccination, quarantine, public health response, telehealth, rural health care, rural health access, Indian Health Service, tribal health, remote healthcare, telemedicine, rural medicine"
+    },
+    {
+      "primary_issue": "Health Care",
+      "sub_issue": "Medicare / Medicaid",
+      "taxonomy_keywords": "Medicare, Medicaid, senior healthcare, government healthcare, CMS, Centers for Medicare and Medicaid Services, Medicare benefits, Medicaid expansion, Medicare eligibility, healthcare entitlements"
+    },
+    {
+      "primary_issue": "Health Care",
+      "sub_issue": "Prescription Drugs",
+      "taxonomy_keywords": "prescription drugs, drug prices, pharmaceutical, medication, drug costs, pharmacy, prescription costs, drug pricing, pharmaceutical industry, medication affordability, generic drugs, drug companies"
+    },
+    {
+      "primary_issue": "Health Care",
+      "sub_issue": "Mental Health",
+      "taxonomy_keywords": "mental health, mental illness, behavioral health, mental health services, psychological health, mental healthcare, psychiatric care, counseling, therapy, mental wellness, suicide prevention"
+    },
+    {
+      "primary_issue": "Health Care",
+      "sub_issue": "Stem Cell Research",
+      "taxonomy_keywords": "stem cell, stem cell research, biomedical research, regenerative medicine, embryonic stem cells, medical research, cellular research, stem cell therapy"
+    },
+    {
+      "primary_issue": "Health Care",
+      "sub_issue": "Medical Liability / Tort Reform",
+      "taxonomy_keywords": "medical malpractice, malpractice lawsuits, tort reform, liability reform,\ndefensive medicine, malpractice caps, lawsuit abuse, medical liability,\nmalpractice insurance, malpractice costs, legal liability healthcare"
+    },
+    {
+      "primary_issue": "Health Care",
+      "sub_issue": "Health Workforce & Provider Capacity",
+      "taxonomy_keywords": "healthcare workforce, provider shortage, primary care shortage,\ncommunity health workers, care workforce, medical workforce,\nhealth professional pipeline, workforce diversity healthcare,\nprovider capacity, clinical staffing, home visiting programs,\nhealthcare training programs, residency expansion, nursing workforce,\nhealthcare access workforce"
+    },
+    {
+      "primary_issue": "Housing & Property",
+      "sub_issue": "Affordable Housing",
+      "taxonomy_keywords": "affordable housing, housing affordability, low-income housing, housing assistance, Section 8, housing vouchers, subsidized housing, affordable rent, housing programs, HUD, housing supply, Housing Supply Expansion Act, construction costs, housing shortage, housing production, new housing, housing development"
+    },
+    {
+      "primary_issue": "Housing & Property",
+      "sub_issue": "Homeownership",
+      "taxonomy_keywords": "homeownership, home buying, first-time buyers, mortgage, home ownership, home purchase, down payment, home buyers, residential property, owning a home"
+    },
+    {
+      "primary_issue": "Housing & Property",
+      "sub_issue": "Public Housing",
+      "taxonomy_keywords": "public housing, housing projects, government housing, HUD housing, public housing authority, housing developments, low-income public housing"
+    },
+    {
+      "primary_issue": "Housing & Property",
+      "sub_issue": "Real Estate & Property Rights",
+      "taxonomy_keywords": "real estate, property rights, property ownership, land rights, property law, eminent domain, property taxes, landowners, private property, property protections, WOTUS, waters of the United States"
+    },
+    {
+      "primary_issue": "Housing & Property",
+      "sub_issue": "Land Use & Zoning",
+      "taxonomy_keywords": "land use, zoning, zoning regulations, land development, urban planning, zoning laws, land use planning, development regulations, building codes"
+    },
+    {
+      "primary_issue": "Housing & Property",
+      "sub_issue": "Housing Finance & Mortgages",
+      "taxonomy_keywords": "mortgages, housing finance, Fannie Mae, Freddie Mac, home loans, mortgage rates, mortgage lending, FHA loans, VA loans, mortgage insurance, housing market"
+    },
+    {
+      "primary_issue": "Housing & Property",
+      "sub_issue": "Homelessness",
+      "taxonomy_keywords": "homelessness, homeless, housing insecurity, shelter, homeless services, homeless population, unsheltered, homeless assistance, housing first, homeless veterans"
+    },
+    {
+      "primary_issue": "Housing & Property",
+      "sub_issue": "Tenant Rights & Evictions",
+      "taxonomy_keywords": "tenant rights, renter protections, eviction prevention,\ntenant organizing, rent stabilization, eviction defense,\nrenter bill of rights, housing courts, tenant legal aid"
+    },
+    {
+      "primary_issue": "Immigration",
+      "sub_issue": "Border Security",
+      "taxonomy_keywords": "border security, border wall, border patrol, CBP, Customs and Border Protection, southern border, border enforcement, border agents, border infrastructure, border crossings"
+    },
+    {
+      "primary_issue": "Immigration",
+      "sub_issue": "Path to Citizenship",
+      "taxonomy_keywords": "path to citizenship, citizenship, naturalization, DACA, Dreamers, immigration reform, legal status, undocumented, amnesty, green card, permanent residency"
+    },
+    {
+      "primary_issue": "Immigration",
+      "sub_issue": "Refugees & Asylum Policy",
+      "taxonomy_keywords": "refugees, asylum, asylum seekers, refugee resettlement, asylum policy, refugee admissions, asylum claims, refugee programs, humanitarian protection, asylum process"
+    },
+    {
+      "primary_issue": "Immigration",
+      "sub_issue": "Immigration Enforcement & Removal",
+      "taxonomy_keywords": "deportation, removal, aggravated felony, expedited removal, ICE enforcement, detention, criminal aliens, immigration violations, order of removal, immigration court, cancellation of removal, voluntary departure"
+    },
+    {
+      "primary_issue": "Immigration",
+      "sub_issue": "Guest Workers & Visa Programs",
+      "taxonomy_keywords": "H-2B visa, H-2A visa, guest worker, nonimmigrant visa, work visa, temporary worker, seasonal worker, visa program, visa allocation, visa cap, H-1B, L-1 visa, visa expansion, foreign worker, temporary work authorization, nonimmigrant worker, visa petition, employer visa sponsorship, labor certification, DHS visa, supplemental visa"
+    },
+    {
+      "primary_issue": "Jobs & Labor",
+      "sub_issue": "Jobs & Employment",
+      "taxonomy_keywords": "jobs, employment, job creation, unemployment, workforce, hiring, job market, job growth, employment rate, job opportunities, labor force, employers, job losses"
+    },
+    {
+      "primary_issue": "Jobs & Labor",
+      "sub_issue": "Labor Unions",
+      "taxonomy_keywords": "labor unions, unions, collective bargaining, union membership, organized labor, union rights, unionization, union workers, labor organizing, NLRB, National Labor Relations Board"
+    },
+    {
+      "primary_issue": "Jobs & Labor",
+      "sub_issue": "Worker Rights",
+      "taxonomy_keywords": "worker rights, employee rights, workplace protections, labor rights, worker protections, workplace safety, OSHA, employee protections, labor standards, worker safety"
+    },
+    {
+      "primary_issue": "Jobs & Labor",
+      "sub_issue": "Minimum Wage",
+      "taxonomy_keywords": "minimum wage, wage increase, living wage, wage floor, hourly wages, federal minimum wage, wage laws, pay increase, low-wage workers, wage standards"
+    },
+    {
+      "primary_issue": "Principles / Values",
+      "sub_issue": "General Sentiment",
+      "taxonomy_keywords": "values, principles, beliefs, ideals, general, bipartisan, unity, common ground, American values"
+    },
+    {
+      "primary_issue": "Principles / Values",
+      "sub_issue": "Patriotism / Leadership Rhetoric",
+      "taxonomy_keywords": "patriotism, leadership, America, American values, national pride, country, freedom, liberty, founding fathers, American dream, patriotic"
+    },
+    {
+      "primary_issue": "Sports & Recreation",
+      "sub_issue": "Professional Sports & Athletes",
+      "taxonomy_keywords": "professional sports, athletes, sports leagues, NFL, NBA, MLB, NHL, professional athletes, sports franchises, major league"
+    },
+    {
+      "primary_issue": "Sports & Recreation",
+      "sub_issue": "Amateur & Olympic Sports",
+      "taxonomy_keywords": "amateur sports, Olympics, Olympic athletes, college sports, youth sports, NCAA, Olympic games, amateur athletics, student athletes"
+    },
+    {
+      "primary_issue": "Sports & Recreation",
+      "sub_issue": "Sports Facilities & Recreation Areas",
+      "taxonomy_keywords": "sports facilities, stadiums, arenas, recreation areas, sports venues, athletic facilities, recreational facilities, parks, sports complexes"
+    },
+    {
+      "primary_issue": "Sports & Recreation",
+      "sub_issue": "Outdoor Recreation & Hunting/Fishing",
+      "taxonomy_keywords": "outdoor recreation, hunting, fishing, camping, hiking, outdoor activities, sportsmen, hunting rights, fishing rights, wildlife management, recreational hunting, game management"
+    },
+    {
+      "primary_issue": "Sports & Recreation",
+      "sub_issue": "Gambling & Gaming",
+      "taxonomy_keywords": "gambling, gaming, casinos, sports betting, lottery, gaming industry, wagering, gambling regulation, online gambling, tribal gaming"
+    },
+    {
+      "primary_issue": "Social Security & Entitlements",
+      "sub_issue": "Senior Citizens",
+      "taxonomy_keywords": "seniors, elderly, senior citizens, aging, older Americans, retirement, retirees, senior services, aging population, senior programs"
+    },
+    {
+      "primary_issue": "Social Security & Entitlements",
+      "sub_issue": "Entitlements & Safety Net",
+      "taxonomy_keywords": "entitlements, safety net, social programs, government benefits, social insurance, Social Security, entitlement reform, benefit programs, social safety net"
+    },
+    {
+      "primary_issue": "Social Security & Entitlements",
+      "sub_issue": "Welfare",
+      "taxonomy_keywords": "welfare, public assistance, SNAP, food stamps, welfare programs, welfare benefits, TANF, welfare reform, assistance programs, government assistance"
+    },
+    {
+      "primary_issue": "Tax Reform",
+      "sub_issue": "Corporate Taxes",
+      "taxonomy_keywords": "corporate taxes, business taxes, corporate tax rate, corporate tax reform, business tax, corporate income tax, corporate tax cuts, company taxes"
+    },
+    {
+      "primary_issue": "Tax Reform",
+      "sub_issue": "Individual Income Taxes",
+      "taxonomy_keywords": "income taxes, individual taxes, tax brackets, personal income tax, income tax rates, tax returns, individual tax rates, taxpayers, tax filing"
+    },
+    {
+      "primary_issue": "Tax Reform",
+      "sub_issue": "Tax Cuts & Credits",
+      "taxonomy_keywords": "tax cuts, tax credits, tax relief, tax incentives, tax breaks, child tax credit, earned income tax credit, tax deductions, tax savings"
+    },
+    {
+      "primary_issue": "Tax Reform",
+      "sub_issue": "Tax-Exempt Organizations",
+      "taxonomy_keywords": "tax-exempt, tax exemption, 501c3, 501c, nonprofit, non-profit, fraternal benefit societies, charitable organizations, tax-exempt status, exempt organizations, IRS exemption, charitable deduction, nonprofit tax, exempt status"
+    },
+    {
+      "primary_issue": "Technology",
+      "sub_issue": "Technology & Communication",
+      "taxonomy_keywords": "technology, communications, telecommunications, tech industry, digital technology, tech companies, communication technology, wireless, spectrum, 5G"
+    },
+    {
+      "primary_issue": "Technology",
+      "sub_issue": "Internet Regulation",
+      "taxonomy_keywords": "internet regulation, net neutrality, online regulation, internet policy, FCC, internet governance, online platforms, internet rules, open internet, Big Tech, tech regulation, platform transparency, algorithm accountability, tech accountability, online bias, digital platforms, platform liability"
+    },
+    {
+      "primary_issue": "Technology",
+      "sub_issue": "Social Media / Disinformation",
+      "taxonomy_keywords": "social media, disinformation, misinformation, online platforms, content moderation, fake news, social networks, Facebook, Twitter, platform accountability, Section 230, Filter Bubble Transparency Act, PACT Act, Platform Accountability and Transparency Act, algorithm transparency, Big Tech accountability, political bias algorithm"
+    },
+    {
+      "primary_issue": "Technology",
+      "sub_issue": "Data Privacy & Cybersecurity",
+      "taxonomy_keywords": "data privacy, cybersecurity, privacy, data protection, cyber attacks, hacking, data security, personal data, cyber threats, information security, data breach"
+    },
+    {
+      "primary_issue": "Technology",
+      "sub_issue": "Broadband & Infrastructure",
+      "taxonomy_keywords": "broadband, internet access, rural broadband, digital infrastructure, connectivity, high-speed internet, broadband expansion, digital divide, internet service, broadband funding"
+    },
+    {
+      "primary_issue": "Technology",
+      "sub_issue": "Science & Research",
+      "taxonomy_keywords": "federal research funding, R&D investment, research grants, NIH funding, NSF funding, STEM education, scientific research, innovation policy, research institutions, laboratory funding"
+    },
+    {
+      "primary_issue": "Other",
+      "sub_issue": "Needs Context",
+      "taxonomy_keywords": ""
+    }
+  ]
+}
