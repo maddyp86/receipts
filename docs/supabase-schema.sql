@@ -418,26 +418,141 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA app
 
 
 -- ---------------------------------------------------------------------------
--- 6. RLS — defence in depth.
+-- 6. ROW LEVEL SECURITY — on every table, each with a policy.
 --
--- The schemas are not exposed to PostgREST, so this is a second lock rather
--- than the primary one. receipts_app gets an explicit permissive policy;
--- everyone else gets nothing, because with RLS on and no policy the answer is
--- zero rows.
+-- WHY ALL 16, when the grants already do the real work:
+--
+--   1. Supabase's advisor flags any table without RLS. A permanently-warning
+--      advisor trains people to ignore it, and the next warning is the one
+--      that mattered.
+--   2. If anyone ever adds `app` or `mirror` to the API's exposed schemas,
+--      PostgREST reaches them and RLS becomes the only thing standing between
+--      an anon key and this data.
+--   3. It costs nothing here: access is via three named roles, so the policies
+--      are simple and permissive rather than per-user predicates.
+--
+-- WHAT RLS IS NOT: it is not the corpus firewall. RLS filters rows for a role
+-- that can already reach the table. `receipts_trust` cannot reach app at all -
+-- no USAGE on the schema - which is strictly stronger. Do not let RLS being
+-- present tempt anyone into loosening the grants.
+--
+-- NOTE ON `FORCE ROW LEVEL SECURITY`: deliberately NOT used. The table owner
+-- (postgres) bypasses RLS, and FORCE would apply policies to the owner too -
+-- which would make the Supabase SQL editor return zero rows from your own
+-- tables and read exactly like data loss. Owner-bypass is the safer default.
 -- ---------------------------------------------------------------------------
-ALTER TABLE app.app_sessions          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE app.app_queries           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE app.app_senator_requests  ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS app_sessions_server  ON app.app_sessions;
-DROP POLICY IF EXISTS app_queries_server   ON app.app_queries;
-DROP POLICY IF EXISTS app_requests_server  ON app.app_senator_requests;
+ALTER TABLE mirror.mirror_politicians ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mirror.mirror_promise_alignment_matches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mirror.mirror_decision_scores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mirror.mirror_platform_matches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mirror.mirror_affected_stakeholders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mirror.mirror_impact_statements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mirror.mirror_party_vote_positions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mirror.mirror_donor_alignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mirror.mirror_donors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mirror.mirror_politician_bill_actions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mirror.mirror_promise_matches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mirror.mirror_roll_call_votes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mirror.mirror_approved_taxonomy ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS mirror_politicians_sync ON mirror.mirror_politicians;
+DROP POLICY IF EXISTS mirror_politicians_read ON mirror.mirror_politicians;
+DROP POLICY IF EXISTS mirror_promise_alignment_matches_sync ON mirror.mirror_promise_alignment_matches;
+DROP POLICY IF EXISTS mirror_promise_alignment_matches_read ON mirror.mirror_promise_alignment_matches;
+DROP POLICY IF EXISTS mirror_decision_scores_sync ON mirror.mirror_decision_scores;
+DROP POLICY IF EXISTS mirror_decision_scores_read ON mirror.mirror_decision_scores;
+DROP POLICY IF EXISTS mirror_platform_matches_sync ON mirror.mirror_platform_matches;
+DROP POLICY IF EXISTS mirror_platform_matches_read ON mirror.mirror_platform_matches;
+DROP POLICY IF EXISTS mirror_affected_stakeholders_sync ON mirror.mirror_affected_stakeholders;
+DROP POLICY IF EXISTS mirror_affected_stakeholders_read ON mirror.mirror_affected_stakeholders;
+DROP POLICY IF EXISTS mirror_impact_statements_sync ON mirror.mirror_impact_statements;
+DROP POLICY IF EXISTS mirror_impact_statements_read ON mirror.mirror_impact_statements;
+DROP POLICY IF EXISTS mirror_party_vote_positions_sync ON mirror.mirror_party_vote_positions;
+DROP POLICY IF EXISTS mirror_party_vote_positions_read ON mirror.mirror_party_vote_positions;
+DROP POLICY IF EXISTS mirror_donor_alignments_sync ON mirror.mirror_donor_alignments;
+DROP POLICY IF EXISTS mirror_donor_alignments_read ON mirror.mirror_donor_alignments;
+DROP POLICY IF EXISTS mirror_donors_sync ON mirror.mirror_donors;
+DROP POLICY IF EXISTS mirror_donors_read ON mirror.mirror_donors;
+DROP POLICY IF EXISTS mirror_politician_bill_actions_sync ON mirror.mirror_politician_bill_actions;
+DROP POLICY IF EXISTS mirror_politician_bill_actions_read ON mirror.mirror_politician_bill_actions;
+DROP POLICY IF EXISTS mirror_promise_matches_sync ON mirror.mirror_promise_matches;
+DROP POLICY IF EXISTS mirror_promise_matches_read ON mirror.mirror_promise_matches;
+DROP POLICY IF EXISTS mirror_roll_call_votes_sync ON mirror.mirror_roll_call_votes;
+DROP POLICY IF EXISTS mirror_roll_call_votes_read ON mirror.mirror_roll_call_votes;
+DROP POLICY IF EXISTS mirror_approved_taxonomy_sync ON mirror.mirror_approved_taxonomy;
+DROP POLICY IF EXISTS mirror_approved_taxonomy_read ON mirror.mirror_approved_taxonomy;
+
+-- receipts_sync writes the mirror; receipts_app and receipts_trust read it.
+CREATE POLICY mirror_politicians_sync ON mirror.mirror_politicians
+  FOR ALL TO receipts_sync USING (true) WITH CHECK (true);
+CREATE POLICY mirror_politicians_read ON mirror.mirror_politicians
+  FOR SELECT TO receipts_app, receipts_trust USING (true);
+CREATE POLICY mirror_promise_alignment_matches_sync ON mirror.mirror_promise_alignment_matches
+  FOR ALL TO receipts_sync USING (true) WITH CHECK (true);
+CREATE POLICY mirror_promise_alignment_matches_read ON mirror.mirror_promise_alignment_matches
+  FOR SELECT TO receipts_app, receipts_trust USING (true);
+CREATE POLICY mirror_decision_scores_sync ON mirror.mirror_decision_scores
+  FOR ALL TO receipts_sync USING (true) WITH CHECK (true);
+CREATE POLICY mirror_decision_scores_read ON mirror.mirror_decision_scores
+  FOR SELECT TO receipts_app, receipts_trust USING (true);
+CREATE POLICY mirror_platform_matches_sync ON mirror.mirror_platform_matches
+  FOR ALL TO receipts_sync USING (true) WITH CHECK (true);
+CREATE POLICY mirror_platform_matches_read ON mirror.mirror_platform_matches
+  FOR SELECT TO receipts_app, receipts_trust USING (true);
+CREATE POLICY mirror_affected_stakeholders_sync ON mirror.mirror_affected_stakeholders
+  FOR ALL TO receipts_sync USING (true) WITH CHECK (true);
+CREATE POLICY mirror_affected_stakeholders_read ON mirror.mirror_affected_stakeholders
+  FOR SELECT TO receipts_app, receipts_trust USING (true);
+CREATE POLICY mirror_impact_statements_sync ON mirror.mirror_impact_statements
+  FOR ALL TO receipts_sync USING (true) WITH CHECK (true);
+CREATE POLICY mirror_impact_statements_read ON mirror.mirror_impact_statements
+  FOR SELECT TO receipts_app, receipts_trust USING (true);
+CREATE POLICY mirror_party_vote_positions_sync ON mirror.mirror_party_vote_positions
+  FOR ALL TO receipts_sync USING (true) WITH CHECK (true);
+CREATE POLICY mirror_party_vote_positions_read ON mirror.mirror_party_vote_positions
+  FOR SELECT TO receipts_app, receipts_trust USING (true);
+CREATE POLICY mirror_donor_alignments_sync ON mirror.mirror_donor_alignments
+  FOR ALL TO receipts_sync USING (true) WITH CHECK (true);
+CREATE POLICY mirror_donor_alignments_read ON mirror.mirror_donor_alignments
+  FOR SELECT TO receipts_app, receipts_trust USING (true);
+CREATE POLICY mirror_donors_sync ON mirror.mirror_donors
+  FOR ALL TO receipts_sync USING (true) WITH CHECK (true);
+CREATE POLICY mirror_donors_read ON mirror.mirror_donors
+  FOR SELECT TO receipts_app, receipts_trust USING (true);
+CREATE POLICY mirror_politician_bill_actions_sync ON mirror.mirror_politician_bill_actions
+  FOR ALL TO receipts_sync USING (true) WITH CHECK (true);
+CREATE POLICY mirror_politician_bill_actions_read ON mirror.mirror_politician_bill_actions
+  FOR SELECT TO receipts_app, receipts_trust USING (true);
+CREATE POLICY mirror_promise_matches_sync ON mirror.mirror_promise_matches
+  FOR ALL TO receipts_sync USING (true) WITH CHECK (true);
+CREATE POLICY mirror_promise_matches_read ON mirror.mirror_promise_matches
+  FOR SELECT TO receipts_app, receipts_trust USING (true);
+CREATE POLICY mirror_roll_call_votes_sync ON mirror.mirror_roll_call_votes
+  FOR ALL TO receipts_sync USING (true) WITH CHECK (true);
+CREATE POLICY mirror_roll_call_votes_read ON mirror.mirror_roll_call_votes
+  FOR SELECT TO receipts_app, receipts_trust USING (true);
+CREATE POLICY mirror_approved_taxonomy_sync ON mirror.mirror_approved_taxonomy
+  FOR ALL TO receipts_sync USING (true) WITH CHECK (true);
+CREATE POLICY mirror_approved_taxonomy_read ON mirror.mirror_approved_taxonomy
+  FOR SELECT TO receipts_app, receipts_trust USING (true);
+
+-- app: receipts_app only. No policy exists for receipts_trust or receipts_sync,
+-- and none should - they cannot reach these tables anyway. The absence is the
+-- point, and is load-bearing rather than an omission.
+ALTER TABLE app.app_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.app_queries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.app_senator_requests ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS app_sessions_server ON app.app_sessions;
+DROP POLICY IF EXISTS app_queries_server ON app.app_queries;
+DROP POLICY IF EXISTS app_senator_requests_server ON app.app_senator_requests;
 
 CREATE POLICY app_sessions_server ON app.app_sessions
   FOR ALL TO receipts_app USING (true) WITH CHECK (true);
 CREATE POLICY app_queries_server ON app.app_queries
   FOR ALL TO receipts_app USING (true) WITH CHECK (true);
-CREATE POLICY app_requests_server ON app.app_senator_requests
+CREATE POLICY app_senator_requests_server ON app.app_senator_requests
   FOR ALL TO receipts_app USING (true) WITH CHECK (true);
 
 
