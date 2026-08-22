@@ -575,3 +575,50 @@ SELECT grantee, privilege_type
 FROM information_schema.table_privileges
 WHERE table_schema = 'app' AND table_name = 'app_queries'
 ORDER BY grantee, privilege_type;
+
+-- Expect: 16 rows, rls_enabled = true on every one, policy_count > 0.
+-- A table with RLS on and zero policies is deny-all for non-owners.
+SELECT
+  n.nspname                                                  AS schema,
+  c.relname                                                  AS table_name,
+  c.relrowsecurity                                           AS rls_enabled,
+  (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policy_count
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname IN ('app', 'mirror') AND c.relkind = 'r'
+ORDER BY n.nspname, c.relname;
+
+
+-- ===========================================================================
+-- 8. IF YOUR BACKEND USES THE service_role KEY — READ THIS.
+--
+-- service_role ALWAYS bypasses RLS (Supabase docs). So on any code path using
+-- that key, every policy above is inert. That is expected, and fine on its own.
+--
+-- The part that is NOT fine if left unexamined: service_role also leaves the
+-- three custom roles unused, and the corpus firewall is built out of those
+-- roles. A connection as service_role is not receipts_trust, so "receipts_trust
+-- cannot see schema app" protects nothing on that path.
+--
+-- Note service_role has NO grant on these custom schemas by default — Supabase
+-- only auto-grants on `public`. A service_role client will therefore get
+-- "permission denied for schema app" until you grant it. That error is the wall
+-- working, not a bug to route around.
+--
+-- THE RULE: the app server may use service_role if you grant it. The TRUST /
+-- PIPELINE reader must NOT — it must connect directly as receipts_trust, or the
+-- firewall is decorative.
+--
+-- Uncomment ONLY the block you mean:
+
+-- Safe: lets a service_role client read the mirror replica.
+-- GRANT USAGE ON SCHEMA mirror TO service_role;
+-- GRANT SELECT ON ALL TABLES IN SCHEMA mirror TO service_role;
+-- ALTER DEFAULT PRIVILEGES IN SCHEMA mirror GRANT SELECT ON TABLES TO service_role;
+
+-- Collapses the wall for anything holding the service_role key. Only do this if
+-- the app server uses service_role AND the trust reader provably does not.
+-- GRANT USAGE ON SCHEMA app TO service_role;
+-- GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA app TO service_role;
+-- ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT, INSERT, UPDATE ON TABLES TO service_role;
+-- ===========================================================================
