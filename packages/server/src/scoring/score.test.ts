@@ -8,8 +8,25 @@ import {
   type StatementType,
 } from '@receipts/shared';
 import { scoreMatches, type ScorableMatch } from './score.js';
-import { deriveAlignment, effectiveVote, voteOf } from './deriveAlignment.js';
+import {
+  capSplitConfidence,
+  deriveAlignment,
+  effectiveVote,
+  isSplitVote,
+  voteOf,
+  type AlignmentInput,
+} from './deriveAlignment.js';
 import { PATTERN_NARRATIVE, actionTier, votePattern } from './votePattern.js';
+
+/**
+ * `deriveAlignment` returns { verdict, governing, split } since the fix/06 port.
+ * Most tests here assert the table, so they read the verdict through this.
+ * Tests that care about disclosure call `deriveAlignment` directly.
+ */
+const verdictOf = (
+  input: AlignmentInput,
+  statementType: StatementType = 'Campaign Promise',
+): string => deriveAlignment(input, statementType).verdict;
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -56,8 +73,8 @@ const run = (
 
 describe('deriveAlignment — the two-factor table', () => {
   it('ADVANCE + YEA is KEPT; ADVANCE + NAY is BROKE', () => {
-    expect(deriveAlignment({ bill_effect: 'ADVANCE', passage_vote: 'YEA' }, 'Campaign Promise')).toBe('KEPT');
-    expect(deriveAlignment({ bill_effect: 'ADVANCE', passage_vote: 'NAY' }, 'Campaign Promise')).toBe('BROKE');
+    expect(verdictOf({ bill_effect: 'ADVANCE', passage_vote: 'YEA' }, 'Campaign Promise')).toBe('KEPT');
+    expect(verdictOf({ bill_effect: 'ADVANCE', passage_vote: 'NAY' }, 'Campaign Promise')).toBe('BROKE');
   });
 
   // THE REGRESSION GUARD. A NAY on a bill that would set the goal back is
@@ -66,8 +83,8 @@ describe('deriveAlignment — the two-factor table', () => {
   // error rate on HINDER rows got shipped once already. If this test fails,
   // someone has re-introduced a stance term.
   it('HINDER + NAY is KEPT (CRA-shaped inversion)', () => {
-    expect(deriveAlignment({ bill_effect: 'HINDER', passage_vote: 'NAY' }, 'Campaign Promise')).toBe('KEPT');
-    expect(deriveAlignment({ bill_effect: 'HINDER', passage_vote: 'YEA' }, 'Campaign Promise')).toBe('BROKE');
+    expect(verdictOf({ bill_effect: 'HINDER', passage_vote: 'NAY' }, 'Campaign Promise')).toBe('KEPT');
+    expect(verdictOf({ bill_effect: 'HINDER', passage_vote: 'YEA' }, 'Campaign Promise')).toBe('BROKE');
   });
 
   // Stance never enters the table. Same effect + same action must give the same
@@ -77,30 +94,30 @@ describe('deriveAlignment — the two-factor table', () => {
     // statementType picks the LABEL PAIR; it is not a stance and must not act
     // like one. The same effect + action yields the same direction under both
     // vocabularies — only the words change.
-    expect(deriveAlignment(input, 'Campaign Promise')).toBe('KEPT');
-    expect(deriveAlignment(input, 'Policy Position')).toBe('CONSISTENT');
+    expect(verdictOf(input, 'Campaign Promise')).toBe('KEPT');
+    expect(verdictOf(input, 'Policy Position')).toBe('CONSISTENT');
     expect(Object.keys(input)).not.toContain('stance');
   });
 
   it('NEUTRAL or unreadable effect is NOT_DETERMINABLE, never a forced verdict', () => {
-    expect(deriveAlignment({ bill_effect: 'NEUTRAL', passage_vote: 'YEA' }, 'Campaign Promise')).toBe(
+    expect(verdictOf({ bill_effect: 'NEUTRAL', passage_vote: 'YEA' }, 'Campaign Promise')).toBe(
       'NOT_DETERMINABLE',
     );
-    expect(deriveAlignment({ bill_effect: '', passage_vote: 'YEA' }, 'Campaign Promise')).toBe('NOT_DETERMINABLE');
-    expect(deriveAlignment({ bill_effect: 'ERROR', passage_vote: 'YEA' }, 'Campaign Promise')).toBe('ERROR');
+    expect(verdictOf({ bill_effect: '', passage_vote: 'YEA' }, 'Campaign Promise')).toBe('NOT_DETERMINABLE');
+    expect(verdictOf({ bill_effect: 'ERROR', passage_vote: 'YEA' }, 'Campaign Promise')).toBe('ERROR');
   });
 
   it('no vote and no sponsorship is NOT_DETERMINABLE', () => {
-    expect(deriveAlignment({ bill_effect: 'ADVANCE' }, 'Campaign Promise')).toBe('NOT_DETERMINABLE');
+    expect(verdictOf({ bill_effect: 'ADVANCE' }, 'Campaign Promise')).toBe('NOT_DETERMINABLE');
   });
 
   it('sponsorship without a vote counts as support', () => {
-    expect(deriveAlignment({ bill_effect: 'ADVANCE', is_cosponsor: true }, 'Campaign Promise')).toBe('KEPT');
-    expect(deriveAlignment({ bill_effect: 'HINDER', is_sponsor: true }, 'Campaign Promise')).toBe('BROKE');
+    expect(verdictOf({ bill_effect: 'ADVANCE', is_cosponsor: true }, 'Campaign Promise')).toBe('KEPT');
+    expect(verdictOf({ bill_effect: 'HINDER', is_sponsor: true }, 'Campaign Promise')).toBe('BROKE');
   });
 
   it('sponsored then voted NAY is a procedural switch, not opposition', () => {
-    expect(deriveAlignment({ bill_effect: 'ADVANCE', is_sponsor: true, passage_vote: 'NAY' }, 'Campaign Promise')).toBe(
+    expect(verdictOf({ bill_effect: 'ADVANCE', is_sponsor: true, passage_vote: 'NAY' }, 'Campaign Promise')).toBe(
       'PROCEDURAL_SWITCH',
     );
   });
@@ -120,20 +137,20 @@ describe('abstentions cannot read as support', () => {
   });
 
   it('abstain-only + ADVANCE is not KEPT', () => {
-    const outcome = deriveAlignment({ bill_effect: 'ADVANCE', vote: 'Not Voting' }, 'Campaign Promise');
+    const outcome = verdictOf({ bill_effect: 'ADVANCE', vote: 'Not Voting' }, 'Campaign Promise');
     expect(outcome).not.toBe('KEPT');
     expect(outcome).toBe('NOT_DETERMINABLE');
   });
 
   it('abstain-only + HINDER is not KEPT', () => {
-    const outcome = deriveAlignment({ bill_effect: 'HINDER', vote: 'Not Voting' }, 'Campaign Promise');
+    const outcome = verdictOf({ bill_effect: 'HINDER', vote: 'Not Voting' }, 'Campaign Promise');
     expect(outcome).not.toBe('KEPT');
     expect(outcome).toBe('NOT_DETERMINABLE');
   });
 
   it('a real NAY still governs when mixed with an abstention', () => {
     expect(
-      deriveAlignment(
+      verdictOf(
         { bill_effect: 'ADVANCE', cloture_vote: 'Not Voting', passage_vote: 'NAY' },
         'Campaign Promise',
       ),
@@ -151,6 +168,88 @@ describe('abstentions cannot read as support', () => {
 });
 
 // ===========================================================================
+// Split votes — the "ANY NAY GOVERNS" regression set (fix/06, 2026-09-05)
+//
+// The removed rule read every split as opposition, in both directions. That
+// produced 14 false accusations in the 79-row audit. These tests pin the
+// binding-threshold rule that replaced it, and the disclosure that must travel
+// with any split row.
+// ===========================================================================
+
+describe('split cloture/passage votes', () => {
+  // THE REGRESSION GUARD. This is the case the old rule got wrong: the March
+  // 2025 CR shape, where the cloture YEA was the operative 60-vote act and the
+  // passage NAY was symbolic. "ANY NAY GOVERNS" called this BROKE. It is KEPT.
+  // If this test fails, someone has reinstated a rule that any NAY decides.
+  it('cloture YEA over a passage NAY is KEPT on an ADVANCE bill', () => {
+    const d = deriveAlignment(
+      { bill_effect: 'ADVANCE', cloture_vote: 'YEA', passage_vote: 'NAY' },
+      'Campaign Promise',
+    );
+    expect(d.verdict).toBe('KEPT');
+    expect(d.governing).toContain('CLOTURE');
+    expect(d.split).toBe(true);
+  });
+
+  it('is symmetric — the same split on a HINDER bill is BROKE', () => {
+    expect(
+      verdictOf({ bill_effect: 'HINDER', cloture_vote: 'YEA', passage_vote: 'NAY' }),
+    ).toBe('BROKE');
+  });
+
+  it('passage governs only when no cloture vote was taken', () => {
+    const d = deriveAlignment({ bill_effect: 'ADVANCE', passage_vote: 'NAY' }, 'Campaign Promise');
+    expect(d.verdict).toBe('BROKE');
+    expect(d.governing).toBe('PASSAGE (no cloture vote)');
+    expect(d.split).toBe(false);
+  });
+
+  it('agreeing votes are not a split and say so', () => {
+    const d = deriveAlignment(
+      { bill_effect: 'ADVANCE', cloture_vote: 'YEA', passage_vote: 'YEA' },
+      'Campaign Promise',
+    );
+    expect(d.split).toBe(false);
+    expect(d.governing).toBe('CLOTURE+PASSAGE (agree)');
+  });
+
+  it('an abstention on one leg is not a split', () => {
+    expect(isSplitVote({ bill_effect: 'ADVANCE', cloture_vote: 'Not Voting', passage_vote: 'NAY' })).toBe(
+      false,
+    );
+    expect(isSplitVote({ bill_effect: 'ADVANCE', cloture_vote: 'YEA', passage_vote: 'NAY' })).toBe(true);
+  });
+
+  // Contract 2. The cap is code, not a prompt instruction, so it holds even
+  // when the evaluator ignores it.
+  it('caps confidence at 0.75 on a split, and leaves clean rows alone', () => {
+    expect(capSplitConfidence(0.95, true)).toBe(0.75);
+    expect(capSplitConfidence(0.6, true)).toBe(0.6);
+    expect(capSplitConfidence(0.95, false)).toBe(0.95);
+  });
+
+  it('scoreMatches applies the cap and flags the row for disclosure', () => {
+    const scored = run([
+      match({
+        bill_effect: 'ADVANCE',
+        cloture_vote: 'YEA',
+        passage_vote: 'NAY',
+        alignment_confidence: 0.92,
+      }),
+    ]);
+    const row = scored.evidence[0]!;
+    expect(row.alignment_confidence).toBe(0.75);
+    expect(row.vote_flags).toContain('SPLIT_VOTE');
+    expect(row.vote_governing).toContain('CLOTURE');
+  });
+
+  it('carries a null confidence through rather than inventing a zero', () => {
+    const scored = run([match({ bill_effect: 'ADVANCE', passage_vote: 'YEA' })]);
+    expect(scored.evidence[0]!.alignment_confidence).toBeNull();
+  });
+});
+
+// ===========================================================================
 // Vote patterns
 // ===========================================================================
 
@@ -164,10 +263,18 @@ describe('votePattern', () => {
     expect(votePattern('NA', 'NA', 'NA')).toBe('NO_FLOOR_ACTION');
   });
 
-  it('treats a cloture NAY followed by a passage YEA as opposition', () => {
-    expect(deriveAlignment({ bill_effect: 'ADVANCE', cloture_vote: 'NAY', passage_vote: 'YEA' }, 'Campaign Promise')).toBe(
-      'BROKE',
+  // Right answer, and now for the right reason: cloture is the binding
+  // 60-vote threshold, so a cloture NAY governs a later passage YEA. The old
+  // rule reached the same verdict by asserting that any NAY governs, which
+  // gave the wrong answer on the mirror case below.
+  it('reads a cloture NAY over a passage YEA — cloture governs', () => {
+    const d = deriveAlignment(
+      { bill_effect: 'ADVANCE', cloture_vote: 'NAY', passage_vote: 'YEA' },
+      'Campaign Promise',
     );
+    expect(d.verdict).toBe('BROKE');
+    expect(d.governing).toContain('CLOTURE');
+    expect(d.split).toBe(true);
   });
 
   it('falls back to the flat rollup only when no typed vote exists', () => {

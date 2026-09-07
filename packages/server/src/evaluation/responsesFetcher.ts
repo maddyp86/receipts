@@ -70,7 +70,18 @@ export function fixtureResponsesFetcher(
 ): (b: ResponsesRequestBody) => Promise<ResponsesEnvelope> {
   return async (body: ResponsesRequestBody): Promise<ResponsesEnvelope> => {
     const user = body.input.find((m) => m.role === 'user')?.content ?? '';
-    const uid = /- Action ID: (\S+)/.exec(user)?.[1] ?? /"action_uid":\s*"([^"]+)"/.exec(user)?.[1];
+    // Keyed off the message because that is what the model actually receives —
+    // a fixture keyed on the candidate object could pass while the payload was
+    // built wrong.
+    //
+    // Evaluator v7 DROPPED `Action ID` from the user template (v6 carried it),
+    // so Bill ID is the identifier now. Production does not depend on either:
+    // `evaluateFulfillment` correlates results positionally. The action_uid
+    // fallbacks are kept for fixtures written against the v6 shape.
+    const uid =
+      /- Bill ID: (\S+)/.exec(user)?.[1] ??
+      /- Action ID: (\S+)/.exec(user)?.[1] ??
+      /"action_uid":\s*"([^"]+)"/.exec(user)?.[1];
     const hit = uid ? envelopes[uid] : undefined;
     if (!hit) {
       throw new Error(

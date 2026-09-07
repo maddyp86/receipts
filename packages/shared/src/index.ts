@@ -57,11 +57,113 @@ export type AlignmentOutcome =
   | 'PROCEDURAL_SWITCH'
   | 'ERROR';
 
-/** The bill's direction of travel on the goal stated in the promise. */
-export type BillEffect = 'ADVANCE' | 'HINDER' | 'NEUTRAL' | 'ERROR';
+/**
+ * The bill's direction of travel on the goal stated in the promise.
+ *
+ * CONTESTED (evaluator v7) is not a weaker NEUTRAL. It means the bill's
+ * direction on this goal IS the partisan dispute — rival bills where each side
+ * claims theirs advances the same objective. The tool is not the referee of
+ * that dispute, so CONTESTED routes to NOT_DETERMINABLE.
+ *
+ * ERROR is the absence of a finding and must never collapse to NEUTRAL, which
+ * asserts "this bill does not move the goal" — a finding nobody made.
+ */
+export type BillEffect = 'ADVANCE' | 'HINDER' | 'NEUTRAL' | 'CONTESTED' | 'ERROR';
 
 /** Classifier stance vocabulary. These exact strings go into the embedded text. */
 export type Stance = 'In Favor' | 'Opposed' | 'Neutral/Unclear';
+
+// ---------------------------------------------------------------------------
+// Statement scope — what KIND of thing was said, and whether legislative action
+// can be tested against it at all.
+//
+// Source: docs/fix/01_statement_scope_classifier.v1_1.md (2026-09-07).
+// Runs BEFORE retrieval and can stop a query outright. This is a different
+// question from `promise_type`/`stance` (which ask what the statement is ABOUT)
+// and the two classifiers both run.
+// ---------------------------------------------------------------------------
+
+/** What kind of act the statement performs. */
+export type SpeechAct = 'POSITION' | 'COMMITMENT' | 'OPERATIONAL' | 'CREDIT_CLAIM' | 'RHETORIC';
+
+/**
+ * Speech acts no vote or sponsorship can fulfil or break.
+ *
+ * Scheduling remarks, credit claims and rhetoric are not commitments, so their
+ * absence from the record is not inaction and their presence is not a promise.
+ * Handoff v2 §7: counting them inflates the denominator with statements nobody
+ * made — ~26% of a sample statement set.
+ */
+export const NON_TESTABLE_SPEECH_ACTS: readonly SpeechAct[] = [
+  'OPERATIONAL',
+  'CREDIT_CLAIM',
+  'RHETORIC',
+] as const;
+
+export function isTestableSpeechAct(act: SpeechAct): boolean {
+  return !NON_TESTABLE_SPEECH_ACTS.includes(act);
+}
+
+/** Does the statement bind across the term, or only inside a window/vehicle/role? */
+export type StatementScope = 'STANDING' | 'BOUNDED';
+
+/** A precondition the statement presupposes about the speaker's office. */
+export type RoleCondition = 'NONE' | 'MAJORITY_LEADER' | 'COMMITTEE_CHAIR' | 'MAJORITY_PARTY';
+
+/** The marker `valid_until` carries when the window is relative and no date was given. */
+export const VALID_UNTIL_UNKNOWN = 'UNKNOWN';
+
+export interface ScopeClassification {
+  speech_act: SpeechAct;
+  scope: StatementScope;
+  /**
+   * ISO date, `UNKNOWN`, or empty.
+   *
+   * Empty means STANDING — no last testable date, which is not the same as
+   * `UNKNOWN` (bounded, but the window could not be resolved). Collapsing the
+   * two turns "never expires" into "we don't know", or worse, the reverse.
+   */
+  valid_until: string;
+  anchor_entity: string;
+  role_condition: RoleCondition;
+  confidence: number;
+  reasoning: string;
+  /** Deterministic post-check overrides that fired, e.g. `SCOPE_OVERRIDE_BOUNDED`. */
+  flags: string[];
+  /** e.g. 'claude-haiku-4-5 / scope-classifier-v1.1'. Stored with the result. */
+  model: string;
+}
+
+// ---------------------------------------------------------------------------
+// Query halts — terminal, and NOT errors.
+//
+// A halt is a correct, complete answer that happens not to be a verdict. The
+// tool declines to retrieve because retrieval could not produce evidence about
+// this statement, and says why. Rendering these as failures would teach users
+// the tool is broken when it is being careful.
+// ---------------------------------------------------------------------------
+
+export type QueryHaltReason =
+  /** speech_act ∈ {OPERATIONAL, CREDIT_CLAIM, RHETORIC} — nothing to fulfil or break. */
+  | 'NON_TESTABLE_SPEECH_ACT'
+  /** scope = BOUNDED with valid_until = UNKNOWN — we need the date to test the window. */
+  | 'STATEMENT_DATE_REQUIRED';
+
+export interface QueryHalt {
+  reason: QueryHaltReason;
+  /** User-facing copy. Safe to render verbatim. */
+  message: string;
+  /** True when supplying a statement date would let the query proceed. */
+  recoverable_with_date: boolean;
+  scope: ScopeClassification;
+}
+
+/** Copy for the non-testable speech acts, keyed by act. Source: fix/08. */
+export const SPEECH_ACT_HALT_NOUN: Record<string, string> = {
+  OPERATIONAL: 'scheduling',
+  CREDIT_CLAIM: 'credit-claiming',
+  RHETORIC: 'rhetorical',
+};
 
 /** Classifier promise-type vocabulary. Four values, not two. */
 export type PromiseType = 'policy' | 'process' | 'rhetorical' | 'non_legislative';
@@ -233,6 +335,31 @@ export interface DirectedAction extends MatchedAction {
   /** Deterministic weight = strength_factor × evidence_type_factor. */
   weight: number;
   scoring_flags: string[];
+
+  // -- Disclosure fields (handoff v2 §4). NOT bookkeeping. ------------------
+  /**
+   * Which vote decided this outcome, in words —
+   * e.g. 'CLOTURE (60-vote threshold; split vote)', 'SPONSORSHIP', 'NO_ACTION'.
+   *
+   * A row that reads "voted NAY -> BROKE" while hiding a cloture YEA is exactly
+   * the claim a senator's office knocks down. Anything that renders `outcome`
+   * must render this beside it.
+   */
+  vote_governing: string;
+  /**
+   * Disclosure flags travelling with the row. `SPLIT_VOTE` when cloture and
+   * passage diverge; more classes arrive with the pre-evaluator gates.
+   */
+  vote_flags: string[];
+  /**
+   * The evaluator's confidence for this single action, after the split-vote cap
+   * (contract 2). `null` when no evaluator ran.
+   *
+   * Stays numeric. The `NOT_EVALUATED` marker that gated rows carry is a
+   * separate field — see handoff v2 §3: a marker must never be replaced with a
+   * value from the column's own vocabulary, and `0` is a value.
+   */
+  alignment_confidence: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -319,6 +446,11 @@ export interface QueryResult {
 // ---------------------------------------------------------------------------
 
 export type StepId =
+  /**
+   * Statement scope classification. FIRST, before interpret — it can halt the
+   * query, and the cheapest wasted work is work never started.
+   */
+  | 'classify_scope'
   | 'interpret'
   | 'resolve_senator'
   | 'embed'
@@ -387,6 +519,20 @@ export interface StreamErrorEvent {
   error: ToolError;
 }
 
+/**
+ * The query stopped before retrieval, on purpose.
+ *
+ * Deliberately NOT a StreamErrorEvent. A halt is a complete answer — the tool
+ * declined to retrieve because retrieval could not produce evidence about this
+ * statement. The UI must render it as an explanation, never as a failure with a
+ * retry button: retrying changes nothing, and a `STATEMENT_DATE_REQUIRED` halt
+ * wants a date, not another attempt.
+ */
+export interface HaltEvent {
+  type: 'halt';
+  halt: QueryHalt;
+}
+
 export interface DoneEvent {
   type: 'done';
 }
@@ -396,6 +542,7 @@ export type StreamEvent =
   | InterpretationEvent
   | UncachedEvent
   | ResultEvent
+  | HaltEvent
   | StreamErrorEvent
   | DoneEvent;
 

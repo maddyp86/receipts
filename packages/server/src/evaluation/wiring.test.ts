@@ -10,9 +10,10 @@ import {
   type FulfillmentCandidate,
 } from './fulfillment.js';
 import {
-  FULFILLMENT_SYSTEM_PROMPT,
-  FULFILLMENT_SYSTEM_PROMPT_LENGTH,
-} from './fulfillmentPrompt.js';
+  EVALUATOR_SYSTEM_PROMPT,
+  EVALUATOR_SYSTEM_PROMPT_LENGTH,
+  EVALUATOR_SYSTEM_PROMPT_VERSION,
+} from './evaluatorPromptV7.js';
 import {
   MissingCredentialError,
   fixtureEnvelope,
@@ -170,11 +171,14 @@ describe('no silent success', () => {
 
   it('never loses a candidate', async () => {
     const fetcher = fixtureResponsesFetcher({
-      'ACT-1': fixtureEnvelope({ bill_effect: 'ADVANCE', alignment: 'CONSISTENT', confidence: 0.8 }),
-      'ACT-2': fixtureEnvelope({ bill_effect: 'HINDER', alignment: 'INCONSISTENT', confidence: 0.7 }),
+      'hr1-118': fixtureEnvelope({ bill_effect: 'ADVANCE', alignment: 'CONSISTENT', confidence: 0.8 }),
+      'hr2-118': fixtureEnvelope({ bill_effect: 'HINDER', alignment: 'INCONSISTENT', confidence: 0.7 }),
     });
     const out = await evaluateFulfillment(
-      [candidate({ action_uid: 'ACT-1' }), candidate({ action_uid: 'ACT-2' })],
+      [
+        candidate({ action_uid: 'ACT-1', bill_id: 'hr1-118' }),
+        candidate({ action_uid: 'ACT-2', bill_id: 'hr2-118' }),
+      ],
       fetcher,
     );
     expect(out).toHaveLength(2);
@@ -186,15 +190,16 @@ describe('no silent success', () => {
 // The extracted prompt is guarded at request time, not just at generation time.
 // ===========================================================================
 
-describe('fulfillment prompt integrity', () => {
-  it('is exactly the asserted length', () => {
-    expect(FULFILLMENT_SYSTEM_PROMPT).toHaveLength(FULFILLMENT_SYSTEM_PROMPT_LENGTH);
-    expect(FULFILLMENT_SYSTEM_PROMPT_LENGTH).toBe(32507);
+describe('evaluator prompt v7 integrity', () => {
+  it('is exactly the asserted length and version', () => {
+    expect(EVALUATOR_SYSTEM_PROMPT).toHaveLength(EVALUATOR_SYSTEM_PROMPT_LENGTH);
+    expect(EVALUATOR_SYSTEM_PROMPT_LENGTH).toBe(9343);
+    expect(EVALUATOR_SYSTEM_PROMPT_VERSION).toBe('promise-alignment-v7');
   });
 
   it('is a different prompt from the relevance one — never conflate them', async () => {
     const { RELEVANCE_SYSTEM_PROMPT } = await import('./relevancePrompt.js');
-    expect(FULFILLMENT_SYSTEM_PROMPT).not.toBe(RELEVANCE_SYSTEM_PROMPT);
+    expect(EVALUATOR_SYSTEM_PROMPT).not.toBe(RELEVANCE_SYSTEM_PROMPT);
     expect(RELEVANCE_SYSTEM_PROMPT).toHaveLength(13740);
   });
 
@@ -210,49 +215,93 @@ describe('fulfillment prompt integrity', () => {
   // =========================================================================
 
   it('hashes exactly — any silent trim anywhere fails here', () => {
-    const hash = createHash('sha256').update(FULFILLMENT_SYSTEM_PROMPT, 'utf8').digest('hex');
-    expect(hash).toBe('96757c84d17b284fe3df5b44e067e2b417f2c2c812ceba17fbd2cbe557017a1f');
+    const hash = createHash('sha256').update(EVALUATOR_SYSTEM_PROMPT, 'utf8').digest('hex');
+    expect(hash).toBe('e181a26b83807a314f06f03c8c6a8d48c8c0fb0e18a9d57b02667c6f066672a5');
   });
 
-  it('carries BOTH -0.1 penalty statements in the system prompt', () => {
-    // Two here; the third lives in the node's user template, asserted below.
-    const hits = FULFILLMENT_SYSTEM_PROMPT.match(/-0\.1 confidence penalty/g) ?? [];
-    expect(hits).toHaveLength(2);
-    expect(FULFILLMENT_SYSTEM_PROMPT).toContain(
-      '-0.1 confidence penalty relative to what you would assign for an equivalent',
+  it('carries the Policy Position penalty and its ceiling', () => {
+    expect(EVALUATOR_SYSTEM_PROMPT).toContain(
+      'Apply a -0.1 confidence penalty; maximum 0.9',
     );
-    expect(FULFILLMENT_SYSTEM_PROMPT).toContain('Apply -0.1 confidence penalty for Policy Positions');
   });
 
-  it('carries both ceilings that cap Policy Position confidence', () => {
-    // The hard NEVER rule...
-    expect(FULFILLMENT_SYSTEM_PROMPT).toContain('Use confidence 0.9 or above for Policy Positions');
-    // ...and the band table's Campaign-Promise-only top band, which is the
-    // other half of the same cap and just as easy to trim unnoticed.
-    expect(FULFILLMENT_SYSTEM_PROMPT).toContain('(Campaign Promise only)');
+  // Contract 2 lives in code (capSplitConfidence) AND here. Both, deliberately:
+  // the prompt asks the model to cap itself, the code enforces it when it
+  // doesn't. Losing the prompt half means every split row argues for a higher
+  // confidence that then gets clamped, which shows up as reasoning that
+  // contradicts the number beside it.
+  it('carries the hard confidence caps', () => {
+    expect(EVALUATOR_SYSTEM_PROMPT).toContain(
+      'Hard caps: split vote 0.75; broad vehicle 0.7; policy position 0.9',
+    );
   });
 
-  it('carries the third penalty statement through the hand-ported user template', () => {
-    // The user template is an n8n expression and cannot be extracted verbatim,
-    // so this is the one penalty statement a regeneration would NOT catch.
+  it('carries the v7 additions — same_object gate and CONTESTED', () => {
+    expect(EVALUATOR_SYSTEM_PROMPT).toContain('STEP 0: SAME OBJECT?');
+    expect(EVALUATOR_SYSTEM_PROMPT).toContain(
+      'same_object = false -> bill_effect NEUTRAL -> NOT_DETERMINABLE',
+    );
+    expect(EVALUATOR_SYSTEM_PROMPT).toContain('CONTESTED -> NOT_DETERMINABLE');
+  });
+
+  // Contract: cloture governs in BOTH directions. The prompt and
+  // deriveAlignment must agree, or the model argues for one verdict while the
+  // code returns the other and the reasoning shown to the user is about a
+  // verdict nobody reached.
+  it('states the symmetric cloture rule that deriveAlignment implements', () => {
+    expect(EVALUATOR_SYSTEM_PROMPT).toContain('cloture governs, in BOTH directions');
+    expect(EVALUATOR_SYSTEM_PROMPT).toContain('A split vote is disclosed, never collapsed.');
+  });
+
+  // =========================================================================
+  // THE REMOVED v6 RULES.
+  //
+  // Each of these produced a specific false accusation in the 79-row audit.
+  // They are asserted ABSENT because the failure mode is reintroduction —
+  // someone restoring a clause "for coverage" after seeing NOT_DETERMINABLE
+  // rates rise, which is exactly what v7 is supposed to cause.
+  // =========================================================================
+
+  it.each([
+    ['the 0.6 confidence floor', 'An indirect or inferred link does NOT drop below 0.6'],
+    ['the anti-NEUTRAL rule', 'NEVER return NEUTRAL'],
+    ['cloture as always determinative', 'always determinative'],
+    ['the mechanism-is-not-the-test section', 'MECHANISM IS NOT THE TEST'],
+  ])('does not reintroduce %s', (_name, clause) => {
+    expect(EVALUATOR_SYSTEM_PROMPT).not.toContain(clause);
+  });
+
+  // v6 passed the relevance step's conclusion into this call, which anchored
+  // the fulfilment answer on a different question's reasoning. fix/07 removes
+  // it from the payload entirely.
+  it('does not send prior relevance reasoning in the payload', () => {
     const msg = buildFulfillmentUserMessage(candidate({ statement_type: 'Policy Position' }));
-    expect(msg).toContain(
-      'apply the -0.1 confidence penalty per the system rules; maximum confidence is 0.9',
-    );
+    expect(msg).not.toContain('Prior LLM Reasoning');
+    expect(msg).not.toContain('PRIOR EVALUATION CONTEXT');
+  });
+
+  it('sends the v7 context fields, with explicit markers when absent', () => {
+    const msg = buildFulfillmentUserMessage(candidate());
+    expect(msg).toContain('- Scope: UNKNOWN');
+    expect(msg).toContain('- Anchor entity: none');
+    expect(msg).toContain('- Role condition: UNKNOWN');
+    expect(msg).toContain('- Bill class: UNKNOWN');
+    expect(msg).toContain('- Senator role at the time: UNKNOWN');
+    expect(msg).toContain('- Vote flags: none');
   });
 
   it('sends the system prompt and routes the model through config', () => {
     const body = buildFulfillmentRequest(candidate());
     expect(body.model).toBe('gpt-5.4-mini');
     expect(body.input[0]!.role).toBe('system');
-    expect(body.input[0]!.content).toHaveLength(32507);
+    expect(body.input[0]!.content).toHaveLength(EVALUATOR_SYSTEM_PROMPT_LENGTH);
     expect(body.reasoning.effort).toBe('low');
   });
 
   it('renders the statement type into the user message', () => {
     const msg = buildFulfillmentUserMessage(candidate({ statement_type: 'Policy Position' }));
     expect(msg).toContain('- Statement Type: Policy Position');
-    expect(msg).toContain('- Action ID: ACT-hr5376-117-S000148');
+    expect(msg).toContain('- Bill ID: hr5376-117');
     expect(msg).toContain('  • N/A — no stakeholder data available');
   });
 });

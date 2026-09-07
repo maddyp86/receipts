@@ -4,7 +4,13 @@ import { useReceiptStream } from './lib/useReceiptStream.js';
 import { Entry, type ExamplePromise } from './components/Entry.js';
 import { ReasoningStream } from './components/ReasoningStream.js';
 import { Verdict } from './components/Verdict.js';
-import { DemoBanner, ErrorState, ThinResultActions, UncachedState } from './components/States.js';
+import {
+  DemoBanner,
+  ErrorState,
+  HaltState,
+  ThinResultActions,
+  UncachedState,
+} from './components/States.js';
 import {
   AppliedCorrections,
   AssertedPremiseBadge,
@@ -55,6 +61,12 @@ export default function App() {
   // there is no window in which an old verdict sits beside corrected values.
   const rerunWithCorrections = (corrections: Corrections) =>
     stream.run(selected, promise.trim(), corrections);
+
+  // A STATEMENT_DATE_REQUIRED halt is resolved by supplying the date, which
+  // re-runs the whole query — the date changes `valid_until`, which is what the
+  // scope gates test against.
+  const rerunWithDate = (isoDate: string) =>
+    stream.run(selected, promise.trim(), undefined, isoDate);
 
   const runExample = (example: ExamplePromise) => {
     setSelected(example.senatorId);
@@ -109,6 +121,10 @@ export default function App() {
 
           {stream.error ? <ErrorState error={stream.error} onRetry={submit} /> : null}
 
+          {stream.halt ? (
+            <HaltState halt={stream.halt} onReset={startOver} onRetryWithDate={rerunWithDate} />
+          ) : null}
+
           {stream.result && stream.interpretation ? (
             <>
               <AssertedPremiseBadge interpretation={stream.interpretation} />
@@ -119,7 +135,7 @@ export default function App() {
 
           {/* Offered only once a result exists: correcting a classification
               mid-flight would stage edits against values still changing. */}
-          {stream.phase === 'done' && stream.interpretation && !stream.uncached ? (
+          {stream.phase === 'done' && stream.interpretation && !stream.uncached && !stream.halt ? (
             <CorrectionPanel
               interpretation={stream.interpretation}
               taxonomy={taxonomy}
@@ -129,7 +145,7 @@ export default function App() {
             />
           ) : null}
 
-          {stream.phase === 'done' && !stream.uncached && !stream.error ? (
+          {stream.phase === 'done' && !stream.uncached && !stream.error && !stream.halt ? (
             <ThinResultActions onReset={startOver} senatorName={senatorName} />
           ) : null}
         </>

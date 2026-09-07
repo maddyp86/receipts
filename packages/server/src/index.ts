@@ -158,6 +158,9 @@ app.get('/api/query', async (req, res) => {
   try {
     await runQuery(politicianId, promiseText, emit, corrections, {
       userAgent: String(req.headers['user-agent'] ?? '').slice(0, 500) || undefined,
+      // Optional. Supplying it lets a bounded statement ("we vote next week")
+      // resolve its window instead of halting with STATEMENT_DATE_REQUIRED.
+      statementDate: String(req.query.date ?? '').trim() || undefined,
     });
   } finally {
     clearInterval(heartbeat);

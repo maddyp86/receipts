@@ -5,6 +5,7 @@ import { dispatchTool, newSession, type QuerySession } from './dispatch.js';
 import { queryStore } from '../services.js';
 import type { StoredAlignment, StoredMatch } from '../data/QueryStore.js';
 import { derivePartialSubtype } from '../evaluation/evidenceGate.js';
+import { classifyScope, haltForScope } from '../scope/classifyScope.js';
 import type { Corrections } from '@receipts/shared';
 import { systemPrompt, EXPLANATION_CONSTRAINTS } from './prompts.js';
 import { TOOL_DEFINITIONS } from './toolDefs.js';
@@ -36,6 +37,7 @@ const STEP_FOR_TOOL: Record<string, StepId> = {
 };
 
 const STEP_LABEL: Record<StepId, string> = {
+  classify_scope: 'Checking what kind of statement this is',
   interpret: 'Reading your promise',
   resolve_senator: 'Checking coverage for this senator',
   embed: 'Preparing the search',
@@ -536,14 +538,72 @@ async function persist(session: QuerySession, sessionId: string | null): Promise
   }
 }
 
+/**
+ * Statement scope classification, and the two halts it can produce.
+ *
+ * Runs FIRST — before senator resolution, before interpretation, before any
+ * retrieval. fix/08 §"Per-request flow" step 1: a scheduling remark or a
+ * credit claim has no deliverable a vote could fulfil, so retrieving bills for
+ * it would manufacture evidence about a commitment nobody made.
+ *
+ * Returns true when the query should stop. The halt is already emitted.
+ */
+async function classifyStatementScope(session: QuerySession, emit: Emit): Promise<boolean> {
+  // Demo mode has no Anthropic credential by construction, and its canned
+  // interpretation never reaches the gates. Skipping is honest here.
+  if (config.demoMode) return false;
+
+  emit({ type: 'step', id: 'classify_scope', label: STEP_LABEL.classify_scope, status: 'running' });
+
+  try {
+    session.scope = await classifyScope({
+      text: session.promiseText,
+      date: session.statementDate ?? '',
+    });
+  } catch (err) {
+    // FAILS OPEN, LOUDLY. Refusing the query over a config problem is worse
+    // than proceeding; pretending scope was checked is worse than either.
+    const message = err instanceof Error ? err.message : String(err);
+    session.scopeUnavailable = message;
+    console.error('[scope] classification unavailable (non-fatal):', message);
+    emit({
+      type: 'step',
+      id: 'classify_scope',
+      label: STEP_LABEL.classify_scope,
+      status: 'done',
+      detail: 'could not be checked — scope gates will not run',
+    });
+    return false;
+  }
+
+  const halt = haltForScope(session.scope);
+  emit({
+    type: 'step',
+    id: 'classify_scope',
+    label: STEP_LABEL.classify_scope,
+    status: 'done',
+    detail: halt
+      ? halt.reason === 'NON_TESTABLE_SPEECH_ACT'
+        ? `${session.scope.speech_act.toLowerCase().replace('_', ' ')} — nothing to test`
+        : 'needs the date it was said'
+      : `${session.scope.speech_act.toLowerCase().replace('_', ' ')}, ${session.scope.scope.toLowerCase()}`,
+  });
+
+  if (halt) {
+    emit({ type: 'halt', halt });
+    return true;
+  }
+  return false;
+}
+
 export async function runQuery(
   politicianId: string,
   promiseText: string,
   emit: Emit,
   corrections?: Corrections,
-  meta: { userAgent?: string } = {},
+  meta: { userAgent?: string; statementDate?: string } = {},
 ): Promise<void> {
-  const session = newSession(politicianId, promiseText, corrections);
+  const session = newSession(politicianId, promiseText, corrections, meta.statementDate);
 
   // Opened up front so a query that later fails still has a session to hang
   // off. Best effort, like the write itself.
@@ -555,6 +615,9 @@ export async function runQuery(
   }
 
   try {
+    // Before anything else — and before any model call that costs money.
+    if (await classifyStatementScope(session, emit)) return;
+
     if (config.demoMode) {
       await runDemo(session, emit);
     } else {

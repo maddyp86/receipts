@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type {
   Interpretation,
+  QueryHalt,
   QueryResult,
   Senator,
   StepEvent,
@@ -27,6 +28,15 @@ export interface StreamState {
   interpretation: Interpretation | null;
   result: QueryResult | null;
   uncached: { senator: Senator; queued: boolean } | null;
+  /**
+   * The query stopped before retrieval, on purpose.
+   *
+   * Kept SEPARATE from `error`. A halt is a complete answer — the tool declined
+   * to retrieve because retrieval could not produce evidence about this
+   * statement. Folding it into `error` would give it a retry button, and
+   * retrying changes nothing: a STATEMENT_DATE_REQUIRED halt wants a date.
+   */
+  halt: QueryHalt | null;
   error: ToolError | null;
 }
 
@@ -36,6 +46,7 @@ const EMPTY: StreamState = {
   interpretation: null,
   result: null,
   uncached: null,
+  halt: null,
   error: null,
 };
 
@@ -54,7 +65,13 @@ export function useReceiptStream() {
   }, [close]);
 
   const run = useCallback(
-    (politicianId: string, promise: string, corrections?: Corrections) => {
+    (
+      politicianId: string,
+      promise: string,
+      corrections?: Corrections,
+      /** ISO date the statement was made. Resolves a bounded window. */
+      statementDate?: string,
+    ) => {
       close();
       // FULL RESET, including the previous result and interpretation.
       //
@@ -66,6 +83,7 @@ export function useReceiptStream() {
       setState({ ...EMPTY, phase: 'streaming' });
 
       const query = new URLSearchParams({ senator: politicianId, promise });
+      if (statementDate) query.set('date', statementDate);
       if (corrections && Object.keys(corrections).length) {
         query.set('corrections', JSON.stringify(corrections));
       }
@@ -99,6 +117,8 @@ export function useReceiptStream() {
               return { ...prev, uncached: { senator: event.senator, queued: event.queued } };
             case 'result':
               return { ...prev, result: event.result };
+            case 'halt':
+              return { ...prev, halt: event.halt };
             case 'error':
               return { ...prev, error: event.error };
             case 'done':
@@ -115,7 +135,7 @@ export function useReceiptStream() {
         setState((prev) =>
           // A drop after the result landed is just the server closing the
           // stream; only surface a connection failure that cost us an answer.
-          prev.result || prev.uncached || prev.error || prev.phase === 'done'
+          prev.result || prev.uncached || prev.halt || prev.error || prev.phase === 'done'
             ? { ...prev, phase: 'done' }
             : {
                 ...prev,
@@ -137,6 +157,7 @@ export function useReceiptStream() {
 }
 
 export const STEP_ORDER: StepId[] = [
+  'classify_scope',
   'interpret',
   'resolve_senator',
   'embed',
