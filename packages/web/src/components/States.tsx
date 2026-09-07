@@ -1,4 +1,5 @@
-import type { Senator, ToolError } from '@receipts/shared';
+import { useState } from 'react';
+import type { QueryHalt, Senator, ToolError } from '@receipts/shared';
 
 // ===========================================================================
 // Honest states.
@@ -93,5 +94,79 @@ export function ThinResultActions({
         Broadening the promise sometimes finds more of {senatorName}’s record.
       </span>
     </div>
+  );
+}
+
+/**
+ * The query stopped before retrieval, on purpose.
+ *
+ * NOT an error surface, and deliberately not styled as one. The tool declined
+ * to retrieve because retrieval could not produce evidence about this
+ * statement — that is the product working. There is no "try again", because
+ * trying again produces the same halt.
+ *
+ * The two halts want different things from the user:
+ *   NON_TESTABLE_SPEECH_ACT   — a different statement. Offer the entry screen.
+ *   STATEMENT_DATE_REQUIRED   — a date. Offer a date field and re-run with it.
+ */
+export function HaltState({
+  halt,
+  onReset,
+  onRetryWithDate,
+}: {
+  halt: QueryHalt;
+  onReset: () => void;
+  onRetryWithDate: (isoDate: string) => void;
+}) {
+  const [date, setDate] = useState('');
+
+  return (
+    <section className="notice" aria-label="This statement can’t be checked against legislation">
+      <h2>
+        {halt.reason === 'STATEMENT_DATE_REQUIRED'
+          ? 'When was this said?'
+          : 'This isn’t something a vote can settle'}
+      </h2>
+      <p>{halt.message}</p>
+
+      {halt.recoverable_with_date ? (
+        <div className="actions">
+          <label className="visually-hidden" htmlFor="statement-date">
+            Date the statement was made
+          </label>
+          <input
+            id="statement-date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+          <button
+            type="button"
+            className="secondary"
+            disabled={!date}
+            onClick={() => onRetryWithDate(date)}
+          >
+            Check with this date
+          </button>
+          <button type="button" className="secondary" onClick={onReset}>
+            Ask something else
+          </button>
+        </div>
+      ) : (
+        <div className="actions">
+          <button type="button" className="secondary" onClick={onReset}>
+            Ask something else
+          </button>
+        </div>
+      )}
+
+      {/* The classification is shown because it is the reason. A user who
+          disagrees that this was a scheduling remark can see what we decided
+          and why, rather than being told the tool declined. */}
+      <p className="trust-cue">
+        Read as a {halt.scope.speech_act.toLowerCase().replace('_', ' ')} statement
+        {halt.scope.anchor_entity ? ` about ${halt.scope.anchor_entity}` : ''}. {halt.scope.reasoning}
+      </p>
+    </section>
   );
 }

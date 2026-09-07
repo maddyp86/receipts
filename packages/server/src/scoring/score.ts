@@ -21,7 +21,12 @@ import {
   MEANINGFUL_MINORITY_SHARE,
   SIMILARITY,
 } from './config.js';
-import { deriveAlignment, isSponsored, type AlignmentInput } from './deriveAlignment.js';
+import {
+  capSplitConfidence,
+  deriveAlignment,
+  isSponsored,
+  type AlignmentInput,
+} from './deriveAlignment.js';
 import { PATTERN_MULTIPLIER, actionTier, votePattern } from './votePattern.js';
 
 // ===========================================================================
@@ -49,6 +54,12 @@ export type ScorableMatch = MatchedAction & {
   bill_effect_reasoning: string;
   /** Optional whip comparison; only affects tier selection for abstentions. */
   party_alignment?: string;
+  /**
+   * The evaluator's per-action confidence, uncapped. `scoreMatches` applies the
+   * split-vote cap (contract 2) — callers pass through what the evaluator said.
+   * Absent when no evaluator ran.
+   */
+  alignment_confidence?: number | null;
 };
 
 export interface ScoreInput {
@@ -217,7 +228,11 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
       is_cosponsor: m.is_cosponsor,
     };
 
-    const outcome = deriveAlignment(alignmentInput, input.statement_type);
+    // fix/06 call-site change: deriveAlignment returns an object now. The
+    // verdict is one of three things it tells us — `governing` and `split` are
+    // disclosure and must travel with it, not be recomputed by the renderer.
+    const derived = deriveAlignment(alignmentInput, input.statement_type);
+    const outcome = derived.verdict;
     const pattern = votePattern(m.cloture_vote, m.passage_vote, m.vote);
     const tier =
       outcome === 'PROCEDURAL_SWITCH'
@@ -234,6 +249,18 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
     if (m.missing_fields.length) rowFlags.push(`MISSING_METADATA:${m.missing_fields.join('|')}`);
     if (tier === 'ABSTAIN') rowFlags.push('SILENT_AVOIDANCE');
 
+    // Disclosure flags are a separate channel from scoring flags: these are
+    // shown to the user beside the verdict, not used to weight it.
+    const voteFlags: string[] = [];
+    if (derived.split) voteFlags.push('SPLIT_VOTE');
+
+    // Contract 2. Applied in code because it must hold even when the evaluator
+    // ignores the instruction to cap itself.
+    const alignment_confidence =
+      m.alignment_confidence === undefined || m.alignment_confidence === null
+        ? null
+        : capSplitConfidence(m.alignment_confidence, derived.split);
+
     return {
       ...m,
       outcome,
@@ -243,6 +270,9 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
       vote_pattern: pattern,
       weight: directed ? round(m.score * EVIDENCE_TYPE_FACTOR[evidence_type]) : 0,
       scoring_flags: rowFlags,
+      vote_governing: derived.governing,
+      vote_flags: voteFlags,
+      alignment_confidence,
     } as DirectedAction;
   });
 

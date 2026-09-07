@@ -79,14 +79,41 @@ export interface QuerySession {
   corrections?: Corrections;
   /** Set when the dedicated classifier disagreed with the orchestrator. */
   classifyDisagreements?: string[];
+  /**
+   * ISO date the statement was made, when the user supplied one.
+   *
+   * Load-bearing for scope: `valid_until` on a relative window ("next week") is
+   * derived from it, and without it a bounded statement resolves to UNKNOWN and
+   * halts the query rather than being tested against an unknown window.
+   */
+  statementDate?: string;
+  /** Statement scope classification — runs before retrieval, can halt. */
+  scope?: import('@receipts/shared').ScopeClassification;
+  /**
+   * Set when scope classification could not run at all.
+   *
+   * Fails OPEN, loudly. The gates already tolerate absent scope data (fix/03
+   * fails open on every missing input), so the query proceeds — but the flag
+   * travels with it so a result computed without scope data is never mistaken
+   * for one that passed the scope checks.
+   */
+  scopeUnavailable?: string;
 }
 
 export function newSession(
   politicianId: string,
   promiseText: string,
   corrections?: Corrections,
+  statementDate?: string,
 ): QuerySession {
-  return { politicianId, promiseText, corrections, uncached: false, queued: false };
+  return {
+    politicianId,
+    promiseText,
+    corrections,
+    statementDate,
+    uncached: false,
+    queued: false,
+  };
 }
 
 const lower = (s: string) => s.toLowerCase();
@@ -403,7 +430,29 @@ function toFulfillmentCandidate(session: QuerySession, m: MatchedAction): Fulfil
     passage_vote: m.passage_vote,
     is_sponsor: boolStr(m.is_sponsor),
     is_cosponsor: boolStr(m.is_cosponsor),
+
+    // ---- v7 context.
+    //
+    // Scope fields come from the live classifier. Everything below them —
+    // vote dates, whip vote, cloture result, senator role, action date — needs
+    // the enrichment reader, which needs the Supabase mirror, which is not
+    // synced (verified 2026-09-07: every mirror table has zero rows). They are
+    // deliberately left undefined so the v7 template renders its explicit
+    // UNKNOWN / NA markers. The prompt treats an absent field as "not
+    // established", never as the permissive value, so this degrades the
+    // evaluator's confidence rather than its correctness.
+    promise_date: session.statementDate,
+    scope: session.scope?.scope,
+    valid_until: session.scope?.valid_until,
+    anchor_entity: session.scope?.anchor_entity,
+    role_condition: session.scope?.role_condition,
+    bill_congress: congressOf(m.bill_id ?? ''),
   };
+}
+
+/** '…-119' -> '119'. The Congress is encoded in the bill id and nowhere else. */
+function congressOf(billId: string): string {
+  return /-(\d{3})$/.exec(String(billId ?? '').trim())?.[1] ?? '';
 }
 
 // ---------------------------------------------------------------------------
@@ -633,6 +682,11 @@ async function evaluateEffectsTool(
         evalResult?.reasoning ||
         judged?.bill_effect_reasoning ||
         'The fulfillment evaluator returned no judgement for this action.',
+      // Passed through uncapped. scoreMatches applies the split-vote cap, so
+      // the cap is enforced in exactly one place regardless of caller.
+      // Null rather than 0 when no evaluator ran: 0 is a confidence, absence
+      // is not (handoff v2 §3).
+      alignment_confidence: evalResult ? evalResult.confidence : null,
     };
   });
 
@@ -670,6 +724,12 @@ async function evaluateEffectsTool(
       is_cosponsor: e.is_cosponsor,
       bill_keywords: e.bill_keywords,
       scoring_flags: e.scoring_flags,
+      // Disclosure (handoff v2 §4). The model is shown which vote governed and
+      // whether the row was split so it cannot narrate "voted NAY" over a
+      // cloture YEA it never saw.
+      vote_governing: e.vote_governing,
+      vote_flags: e.vote_flags,
+      alignment_confidence: e.alignment_confidence,
     })),
     // Surfaced, not silently resolved. The evaluator's call is authoritative;
     // the model is told so explicitly so it does not narrate its own effect.
