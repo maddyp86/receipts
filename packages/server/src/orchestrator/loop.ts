@@ -343,7 +343,7 @@ function buildMatches(session: QuerySession): StoredMatch[] {
     (session.relevance?.admitted ?? []).map((a) => String(a.action_uid ?? '')),
   );
 
-  return evaluated.map((c) => {
+  const rows: StoredMatch[] = evaluated.map((c) => {
     const r = c.relevance;
     const verdict = String(r.verdict ?? '').toUpperCase();
     const subtype = derivePartialSubtype({
@@ -394,6 +394,45 @@ function buildMatches(session: QuerySession): StoredMatch[] {
           : verdict || 'BLANK',
     };
   });
+
+  // Candidates dropped at the WEAK floor never reach the relevance evaluator,
+  // so their evaluator fields are genuinely null rather than unrecorded. They
+  // are stored anyway: without them a "10 returned, 10 below floor" run says a
+  // query failed but not whether the namespace held anything on the subject.
+  const nearMisses: StoredMatch[] = (session.nearMisses ?? []).map((n) => ({
+    action_uid: n.action_uid,
+    bill_id: n.bill_id,
+    bill_title: n.title,
+    bill_summary: '',
+    bill_primary_issue: '',
+    bill_sub_issue: '',
+    similarity_score: n.score,
+    match_strength: 'BELOW_FLOOR',
+    match_rank: null,
+    match_direction: 'promise_to_bill',
+    vote: null,
+    cloture_vote: null,
+    passage_vote: null,
+    is_sponsor: null,
+    is_cosponsor: null,
+    action_type: null,
+    relevance_verdict: null,
+    topic_relevant: null,
+    action_relevant: null,
+    effort_relevant: null,
+    specificity_match: null,
+    no_vote_available: null,
+    confidence: null,
+    composite_score: null,
+    evaluation_status: null,
+    terminal_status: null,
+    llm_reasoning: null,
+    admitted: false,
+    partial_subtype: null,
+    exclusion_reason: 'BELOW_WEAK_FLOOR',
+  }));
+
+  return [...rows, ...nearMisses];
 }
 
 /** The admitted matches that went through fulfillment — the KEPT/BROKE half. */
@@ -472,6 +511,10 @@ async function persist(session: QuerySession, sessionId: string | null): Promise
         below_floor: session.retrieval?.belowFloor ?? null,
         top_score: session.retrieval?.topScore ?? null,
         top_k: session.retrieval?.topK ?? null,
+        // The literal string that was vectorised. This is the input to the
+        // whole retrieval step and had never been recorded anywhere, so a
+        // low-scoring query could not be inspected after the fact.
+        embedding_text: session.embeddingText ?? null,
       },
       matches: buildMatches(session),
       alignments: buildAlignments(session),

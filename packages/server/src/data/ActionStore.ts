@@ -40,6 +40,15 @@ export interface SearchResult {
   belowFloor: number;
   /** The best score seen, floor or no floor. Null when nothing came back. */
   topScore: number | null;
+  /**
+   * The candidates that fell BELOW the floor, with just enough to identify them.
+   *
+   * Without these, "10 returned, 10 below floor" says a query failed but not
+   * why. Ten healthcare bills at 0.49 is a calibration or template problem;
+   * ten unrelated bills at 0.49 is a namespace or embedding problem. Same
+   * counts, opposite diagnoses.
+   */
+  nearMisses: Array<{ action_uid: string; bill_id: string; title: string; score: number }>;
 }
 
 export interface ActionStore {

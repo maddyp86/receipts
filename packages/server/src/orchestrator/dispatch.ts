@@ -67,6 +67,8 @@ export interface QuerySession {
   orchestratorEffects?: Record<string, string>;
   /** Pre-filter retrieval counts, so an empty result set is diagnosable. */
   retrieval?: { returned: number; belowFloor: number; topScore: number | null; topK: number };
+  /** Candidates dropped at the WEAK floor, kept so a near-miss set is reviewable. */
+  nearMisses?: Array<{ action_uid: string; bill_id: string; title: string; score: number }>;
   /** Fulfillment results keyed by action_uid, from evaluate_effects. */
   fulfillment?: Record<string, import('../evaluation/fulfillment.js').FulfillmentResult>;
   /** Injected in tests/fixtures; live path builds its own. */
@@ -433,6 +435,7 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
     topScore: result.data.topScore,
     topK: config.retrieval.topK,
   };
+  session.nearMisses = result.data.nearMisses;
 
   // ---- RELEVANCE LEG ----------------------------------------------------
   // Skipped when there is no evaluator to call. This is NOT a silent bypass:

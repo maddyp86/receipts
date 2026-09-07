@@ -177,6 +177,14 @@ export class PineconeActionStore implements ActionStore {
       returned: all.length,
       belowFloor: all.length - matches.length,
       topScore: all[0]?.score ?? null,
+      nearMisses: all
+        .filter((m) => m.score < SIMILARITY.WEAK)
+        .map((m) => ({
+          action_uid: m.action_uid,
+          bill_id: String(m.bill_id ?? ''),
+          title: String(m.title ?? ''),
+          score: m.score,
+        })),
     });
   }
 
