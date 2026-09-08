@@ -438,7 +438,7 @@ function buildMatches(session: QuerySession): StoredMatch[] {
 }
 
 /** The admitted matches that went through fulfillment — the KEPT/BROKE half. */
-function buildAlignments(session: QuerySession): StoredAlignment[] {
+export function buildAlignments(session: QuerySession): StoredAlignment[] {
   const evidence = session.scored?.evidence ?? [];
   const fulfillment = session.fulfillment ?? {};
   const modelEffects = session.orchestratorEffects ?? {};
@@ -451,9 +451,23 @@ function buildAlignments(session: QuerySession): StoredAlignment[] {
       bill_id: String(e.bill_id ?? ''),
       bill_effect: e.bill_effect,
       bill_effect_reasoning: e.bill_effect_reasoning,
-      promise_alignment: S(f?.alignment),
-      alignment_confidence: N(f?.confidence),
+
+      // CONTRACT 1. `promise_alignment` is the DERIVED verdict — the same thing
+      // WF10A's column of that name holds. It was previously written from the
+      // model's own `alignment`, which inverted the pipeline's meaning: anyone
+      // reading this column expecting parity got the model's opinion instead of
+      // the table's result. The model's answer now goes where it belongs, in
+      // `model_verdict`, for agreement tracking only.
+      promise_alignment: S(e.outcome),
+      model_verdict: S(f?.alignment),
+
+      // CONTRACT 2. The SPLIT-VOTE-CAPPED confidence, not the evaluator's raw
+      // number. `scoreMatches` applies the 0.75 cap and puts the result on the
+      // evidence row; reading `f.confidence` here bypassed it, so a split row
+      // rendered capped in the UI and stored uncapped.
+      alignment_confidence: e.alignment_confidence ?? null,
       alignment_reasoning: S(f?.reasoning),
+
       model_bill_effect: modelEffect,
       // null, not false, when there is nothing to compare — "we did not check"
       // is a different claim from "they disagreed".
@@ -465,6 +479,17 @@ function buildAlignments(session: QuerySession): StoredAlignment[] {
       vote_pattern: S(e.vote_pattern),
       weight: N(e.weight),
       scoring_flags: e.scoring_flags ?? null,
+
+      // DISCLOSURE (handoff v2 §4). Stored beside the verdict because a row
+      // that reads "voted NAY → BROKE" while hiding a cloture YEA is the claim
+      // a senator's office knocks down.
+      vote_governing: e.vote_governing ?? null,
+      vote_flags: e.vote_flags?.length ? e.vote_flags : null,
+
+      // The gated-row markers stay ABSENT rather than null-as-a-value until the
+      // pre-evaluator gates are wired: these rows reached the evaluator, so
+      // nothing about them was "not evaluated". Writing NOT_EVALUATED here
+      // would assert a gating that never happened.
     };
   });
 }
@@ -500,6 +525,11 @@ async function persist(session: QuerySession, sessionId: string | null): Promise
         fulfill: config.models.fulfill,
         explain: config.models.explain,
       },
+      // The user's text IS the statement here, classified live, so scope
+      // belongs on the query row rather than a statements table. Absent — not
+      // defaulted — when the classifier could not run: a guessed scope changes
+      // whether the statement is testable at all.
+      scope: session.scope ?? undefined,
       degraded: {
         demo_mode: config.demoMode,
         fixture_mode: config.fixtureMode,

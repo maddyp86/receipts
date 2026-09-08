@@ -55,7 +55,20 @@ export type AlignmentOutcome =
   | 'CONSISTENT'
   | 'INCONSISTENT'
   | 'PROCEDURAL_SWITCH'
-  | 'ERROR';
+  | 'ERROR'
+  /**
+   * The statement's window had closed, or its precondition no longer held, when
+   * this action happened. Produced by the pre-evaluator gates, never by the
+   * alignment table.
+   *
+   * Distinct from NOT_DETERMINABLE on purpose: "we could not read this action"
+   * and "this action could not bear on this statement" are different findings,
+   * and only the second one is about the statement. Both render as
+   * NOT_DETERMINABLE, with their own reason.
+   */
+  | 'NOT_APPLICABLE_EXPIRED'
+  /** No legislative action can fulfil or break this kind of statement at all. */
+  | 'NOT_APPLICABLE';
 
 /**
  * The bill's direction of travel on the goal stated in the promise.

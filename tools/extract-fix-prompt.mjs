@@ -79,6 +79,26 @@ const TARGETS = {
       'a bill is about the statement at all. Different question, different call.',
     ],
   },
+  judge: {
+    source: 'docs/fix/12_wf13_judge_system_prompt.md',
+    extract: 'after-hr',
+    heading: null,
+    out: 'packages/server/src/judge/judgePrompt.ts',
+    constant: 'JUDGE_SYSTEM_PROMPT',
+    version: 'judge-v1',
+    length: 6373,
+    banner: [
+      'The ADVERSARIAL JUDGE prompt. Seven tests, stop at the first FAIL.',
+      '',
+      'Runs on a DIFFERENT model family from the evaluator, deliberately: a',
+      'second opinion from the same model is not a second opinion. Evaluator is',
+      'gpt-5.4-mini, judge is claude-sonnet-5.',
+      '',
+      'It grades whether a verdict is DEFENSIBLE; it does not re-evaluate the',
+      'statement. A PASS is invalid without a senator_counterargument, and the',
+      'parser downgrades a counterargument-free PASS rather than trusting it.',
+    ],
+  },
 };
 
 const generate = (key) => {
@@ -93,15 +113,24 @@ const generate = (key) => {
     die(`cannot read ${t.source}`);
   }
 
-  const at = md.indexOf(t.heading);
-  if (at === -1) die(`heading "${t.heading}" not found in ${t.source}`);
+  let prompt;
+  if (t.extract === 'after-hr') {
+    // The prompt IS the document body, after the horizontal rule that closes
+    // the front matter. fix/12 is written this way — its only fenced block is
+    // the output schema, which belongs INSIDE the prompt rather than being it.
+    const hr = md.indexOf('\n---\n');
+    if (hr === -1) die(`no '---' separator in ${t.source}`);
+    prompt = md.slice(hr + 5).trim();
+  } else {
+    const at = md.indexOf(t.heading);
+    if (at === -1) die(`heading "${t.heading}" not found in ${t.source}`);
 
-  // First fenced block after the heading. Tolerates an info string (```text).
-  const after = md.slice(at + t.heading.length);
-  const fence = after.match(/^```[^\n]*\n([\s\S]*?)\n```/m);
-  if (!fence) die(`no fenced block after "${t.heading}" in ${t.source}`);
-
-  const prompt = fence[1];
+    // First fenced block after the heading. Tolerates an info string (```text).
+    const after = md.slice(at + t.heading.length);
+    const fence = after.match(/^```[^\n]*\n([\s\S]*?)\n```/m);
+    if (!fence) die(`no fenced block after "${t.heading}" in ${t.source}`);
+    prompt = fence[1];
+  }
 
   if (prompt.length !== t.length) {
     die(
