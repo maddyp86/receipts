@@ -206,9 +206,9 @@ node-vs-spec disagreement in RECONCILIATION.md rather than fixing it silently.
 Commit per completed task. Flag the moment you need a credential — do not stub
 something that pretends to be live.
 
-Note before you plan: retrieval is NOT broken. An earlier handoff says it is;
-that was my misdiagnosis and START_HERE explains it. Don't spend the first hour
-there.
+Note before you plan: retrieval is NOT broken. An earlier handoff says it is —
+that was a previous thread's misdiagnosis, corrected at the top of START_HERE.
+Don't spend the first hour there.
 
 This phase: <SCOPE>
 
