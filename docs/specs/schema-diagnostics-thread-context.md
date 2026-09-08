@@ -18,7 +18,7 @@ crossings into `scoring/` and `orchestrator/dispatch.ts`.
 
 ---
 
-## Migrations — 002 through 007, all applied to the live database
+## Migrations — 002 through 007 applied to the live database; 008 written, not run
 
 | # | What |
 |---|---|
@@ -27,7 +27,8 @@ crossings into `scoring/` and `orchestrator/dispatch.ts`.
 | 004 | `app_verdict_audit_log` + `v_verdict_trace` |
 | 005 | Firewall restored structurally; `source` discriminator on the audit log |
 | 006 | Judge-gate view aligned with WF11's `Drop Unjudged Rows`; `v_accusations_rendered` |
-| 007 | Corpus verdict mirrors dropped |
+| 007 | Corpus verdict mirrors dropped — **applied 2026-09-07** |
+| 008 | `UNIQUE (vote_id)` on `mirror_roll_call_votes` — **written, not run**; diagnose with STEP 1 first |
 
 ### Load-bearing schema decisions
 
@@ -154,7 +155,7 @@ WITHHELD_LOW_CONFIDENCE`.
 
 | | Item | Owner |
 |---|---|---|
-| 1 | **Stop the n8n sync writing the two corpus verdict tables** — 007 drops them; the sync will recreate them | pipeline |
+| 1 | **Stop the n8n sync writing the two corpus verdict tables** — 007 is applied, but it is undone on the next sync run unless the sync set drops them | pipeline |
 | 2 | `ND_REASON_COPY.NO_MATCHES` copy + render `coverage` | app |
 | 3 | Add the **117th Congress** to collection — contains the IRA and the 2022 campaign cycle. WF6 already takes `target_congress`; cost is bill data + impact statements, not a rebuild | pipeline |
 | 4 | `min(Promise Date)` on Evaluable Statements — decides whether coverage goes further back. A number, not a judgement call | pipeline |
