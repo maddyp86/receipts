@@ -31,21 +31,33 @@
 -- reaches for a stored verdict now fails on privilege rather than succeeding
 -- quietly, which is the same standard the other direction already meets.
 -- ---------------------------------------------------------------------------
-revoke select on mirror.mirror_promise_alignment_matches from receipts_app;
-revoke select on mirror.mirror_decision_scores           from receipts_app;
+-- Guarded: the mirror sync is parked at 5 tables, so these two may not exist
+-- yet. A missing table here is not a problem — there is nothing to revoke — but
+-- an unguarded REVOKE would abort the whole migration.
+do $firewall$
+begin
+  if to_regclass('mirror.mirror_promise_alignment_matches') is not null then
+    execute 'revoke select on mirror.mirror_promise_alignment_matches from receipts_app';
+    execute $c$comment on table mirror.mirror_promise_alignment_matches is
+      'Corpus verdicts. receipts_app is REVOKED here by design (migration 005): the query tool evaluates fresh and must never read a pre-computed verdict back as its own finding. receipts_trust keeps SELECT - this is its table.'$c$;
+  else
+    raise notice 'mirror.mirror_promise_alignment_matches does not exist yet — nothing to revoke. Re-run 005 after the sync creates it.';
+  end if;
+
+  if to_regclass('mirror.mirror_decision_scores') is not null then
+    execute 'revoke select on mirror.mirror_decision_scores from receipts_app';
+    execute $c$comment on table mirror.mirror_decision_scores is
+      'Corpus decision scores. receipts_app is REVOKED here by design (migration 005) for the same reason as mirror_promise_alignment_matches.'$c$;
+  else
+    raise notice 'mirror.mirror_decision_scores does not exist yet — nothing to revoke. Re-run 005 after the sync creates it.';
+  end if;
+end
+$firewall$;
 
 -- Future tables in `mirror` still default to SELECT for receipts_app (set in
 -- 002); these two are the deliberate exceptions and are re-revoked here so a
 -- re-run of 002's grants does not silently reopen them.
 
-comment on table mirror.mirror_promise_alignment_matches is
-  'Corpus verdicts. receipts_app is REVOKED here by design (migration 005): the '
-  'query tool evaluates fresh and must never read a pre-computed verdict back as '
-  'its own finding. receipts_trust keeps SELECT - this is its table.';
-
-comment on table mirror.mirror_decision_scores is
-  'Corpus decision scores. receipts_app is REVOKED here by design (migration '
-  '005) for the same reason as mirror_promise_alignment_matches.';
 
 
 -- ---------------------------------------------------------------------------
@@ -77,7 +89,14 @@ create index if not exists idx_aval_source on app.app_verdict_audit_log (source)
 
 -- The view carries it through, so nobody reads a trace without knowing which
 -- product produced it.
-create or replace view app.v_verdict_trace as
+--
+-- DROP then CREATE, not CREATE OR REPLACE: adding `source` in position 2 shifts
+-- every later column, and Postgres reads a positional shift as RENAMING column 2
+-- (42P16). Dropping is safe — a view holds no data — but it also drops the
+-- grants, so they are re-applied below.
+drop view if exists app.v_verdict_trace;
+
+create view app.v_verdict_trace as
   select q.created_at            as query_at,
          l.source,
          q.politician_id,
@@ -95,7 +114,9 @@ create or replace view app.v_verdict_trace as
   join app.app_verdict_audit_log l on l.query_id = q.id
   order by q.created_at desc, l.seq;
 
+-- Re-applied after the drop above.
 grant select on app.v_verdict_trace to receipts_app;
+revoke all on app.v_verdict_trace from receipts_trust, receipts_sync;
 
 
 -- ---------------------------------------------------------------------------
