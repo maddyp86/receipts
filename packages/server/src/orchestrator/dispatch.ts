@@ -794,6 +794,11 @@ async function evaluateEffectsTool(
         evalResult?.reasoning ||
         judged?.bill_effect_reasoning ||
         'The fulfillment evaluator returned no judgement for this action.',
+      // Disclosure flags the GATES established. They hold the reference data
+      // the scorer does not — the senator's role at that Congress, and whether
+      // the action date is a stand-in — so FLOOR_LEADER can only originate
+      // here. Handoff v2 §4 lists it in `vote_flags` beside SPLIT_VOTE.
+      vote_flags: gates[m.action_uid]?.context.vote_flags ?? [],
       // Passed through uncapped. scoreMatches applies the split-vote cap, so
       // the cap is enforced in exactly one place regardless of caller.
       // Null rather than 0 when no evaluator ran: 0 is a confidence, absence

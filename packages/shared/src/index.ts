@@ -816,6 +816,67 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
 export const ND_NO_REASON_COPY =
   "We couldn't reach a defensible reading here, and the specific reason wasn't recorded. Anything we did find is below — read it and judge for yourself.";
 
+/**
+ * Plain-language rendering of `vote_governing`, for Level 1.
+ *
+ * The raw strings are analyst vocabulary and one of them —
+ * `CLOTURE (60-vote threshold; split vote)` — contains "threshold", which is in
+ * BANNED_LEVEL1_TERMS. Printing it verbatim to a voter would break the Level-1
+ * rule that the receipt carries no statistics, so the raw value stays in the
+ * analyst trace and these sentences stand in front of it.
+ *
+ * Unknown keys return null and render nothing. A `vote_governing` value this
+ * map has not been taught is jargon, and showing jargon is worse than showing
+ * one less line — the votes themselves are already named on the card.
+ */
+export const GOVERNING_VOTE_COPY: Record<string, string> = {
+  // The disclosure that matters most. Handoff v2 §4: a row reading "voted NAY
+  // -> BROKE" while hiding a cloture YEA is exactly the claim a senator's
+  // office knocks down.
+  'CLOTURE (60-vote threshold; split vote)':
+    'Two votes here, and they point different ways. The vote on whether to let the bill proceed is the one that governs, because that is the stage where a bill lives or dies.',
+  'CLOTURE+PASSAGE (agree)':
+    'They voted the same way twice — once on whether to let the bill proceed, once on the bill itself.',
+  'CLOTURE (only vote recorded)':
+    'The one recorded vote was on whether to let the bill proceed, not on the bill itself.',
+  'PASSAGE (no cloture vote)':
+    'The recorded vote was on the bill itself; there was no separate vote on whether to let it proceed.',
+  'VOTE (untyped)':
+    'The record shows a single vote on this bill without saying which stage it belonged to.',
+  SPONSORSHIP: 'There was no vote to read here — putting their name to the bill is the action.',
+  SPONSOR_NAY:
+    'They put their name to this bill and then voted against it. We do not read that as either keeping or breaking the statement.',
+};
+
+/**
+ * The Level-1 sentence for a governing vote, or null when there is nothing to
+ * say (`NA`, `NO_ACTION`, or a value this map has not been taught).
+ */
+export function governingVoteSentence(voteGoverning: string | null | undefined): string | null {
+  if (!voteGoverning) return null;
+  return GOVERNING_VOTE_COPY[voteGoverning] ?? null;
+}
+
+/**
+ * Reader-facing copy for the disclosure flags travelling on a row.
+ *
+ * These are a separate channel from `scoring_flags`: they are shown beside the
+ * verdict rather than used to weight it. Each says something that changes how
+ * the row should be read, which is why they are Level 1 rather than trace.
+ *
+ * Unknown flags render nothing here and appear raw in the analyst trace.
+ */
+export const VOTE_FLAG_COPY: Record<string, string> = {
+  SPLIT_VOTE: 'Split vote — the two votes on this bill went different ways.',
+  // Institutional fact, not a motive. The platform's non-goals rule out intent
+  // attribution, so this says what the role involves and leaves the reading to
+  // the reader.
+  FLOOR_LEADER:
+    'They held a floor leadership role at the time — a role that involves casting procedural votes on the chamber\'s behalf.',
+  ACTION_DATE_PROXY:
+    'We do not have an exact date for this action, so the start of that Congress was used when checking timing.',
+};
+
 /** Words that must never appear in Level-1 voter-facing copy. */
 export const BANNED_LEVEL1_TERMS = [
   'similarity',

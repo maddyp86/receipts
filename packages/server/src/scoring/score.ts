@@ -56,6 +56,20 @@ export type ScorableMatch = MatchedAction & {
   /** Optional whip comparison; only affects tier selection for abstentions. */
   party_alignment?: string;
   /**
+   * Disclosure flags already established upstream — `FLOOR_LEADER` and
+   * `ACTION_DATE_PROXY` come from the pre-evaluator gates, which know the
+   * senator's role and whether the action date is a stand-in.
+   *
+   * Handoff v2 §4 lists `vote_flags` as "';'-joined: SPLIT_VOTE, FLOOR_LEADER",
+   * and the scorer can only ever see the first of those: it derives SPLIT_VOTE
+   * from the votes in front of it and has no reference data for the rest.
+   * Without this channel the leader disclosure is computed and then dropped.
+   *
+   * DISCLOSURE ONLY. Nothing here is read for weighting — see `scoring_flags`
+   * for the channel that is.
+   */
+  vote_flags?: string[];
+  /**
    * The evaluator's per-action confidence, uncapped. `scoreMatches` applies the
    * split-vote cap (contract 2) — callers pass through what the evaluator said.
    * Absent when no evaluator ran.
@@ -285,8 +299,11 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
 
     // Disclosure flags are a separate channel from scoring flags: these are
     // shown to the user beside the verdict, not used to weight it.
-    const voteFlags: string[] = [];
-    if (derived.split) voteFlags.push('SPLIT_VOTE');
+    // Union, deduped: the gates compute SPLIT_VOTE too (on a slightly stricter
+    // rule that excludes NOT_VOTING), so the same flag can arrive from both
+    // sides and must not be listed twice.
+    const voteFlags: string[] = [...(m.vote_flags ?? [])];
+    if (derived.split && !voteFlags.includes('SPLIT_VOTE')) voteFlags.push('SPLIT_VOTE');
 
     // Contract 2. Applied in code because it must hold even when the evaluator
     // ignores the instruction to cap itself.

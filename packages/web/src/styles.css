@@ -462,6 +462,30 @@ textarea.promise::placeholder {
   border-color: var(--rule-strong);
 }
 
+/* ---------- per-action disclosure ---------------------------------------
+   Which vote governed, and the flags that change how the row reads. Level 1,
+   because a reader who never opens the drill-down is exactly the reader who
+   would otherwise see "voted no -> broke" with a cloture yes hidden behind it. */
+
+.governing {
+  margin: 0.55rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.disclosures {
+  margin: 0.6rem 0 0;
+  padding-left: 1.05rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.disclosures li + li {
+  margin-top: 0.3rem;
+}
+
 /* ---------- details toggle ---------------------------------------------- */
 
 .details-toggle {

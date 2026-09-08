@@ -95,6 +95,16 @@ function AnalystTrace({ result }: { result: QueryResult }) {
               <li key={e.action_uid}>
                 <code>{e.action_uid}</code> · effect {e.bill_effect} · {e.action_tier} ·{' '}
                 {e.vote_pattern} · outcome {e.outcome} · weight {e.weight}
+                {/* The raw disclosure fields. Level 1 gets plain-language
+                    equivalents on the card; the exact strings live here so an
+                    analyst can check the translation rather than trust it. */}
+                <br />
+                governing <code>{e.vote_governing || 'NA'}</code>
+                {e.vote_flags.length ? (
+                  <>
+                    {' '}· flags <code>{e.vote_flags.join(';')}</code>
+                  </>
+                ) : null}
               </li>
             ))}
           </ol>

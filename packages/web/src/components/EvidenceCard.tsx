@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import { STRENGTH_PHRASE, type DirectedAction } from '@receipts/shared';
+import {
+  STRENGTH_PHRASE,
+  VOTE_FLAG_COPY,
+  governingVoteSentence,
+  type DirectedAction,
+} from '@receipts/shared';
 
 // ===========================================================================
 // One matched action.
@@ -9,6 +14,11 @@ import { STRENGTH_PHRASE, type DirectedAction } from '@receipts/shared';
 //   2. Behaviour is described, motive never is. A senator who sponsored a bill
 //      and then didn't vote gets "did not cast a vote", not "avoided the vote"
 //      — illness, a family emergency and strategy are indistinguishable here.
+//   3. Naming both votes is only HALF of behavioural contract 2. The other half
+//      is saying which one GOVERNED. "Voted NAY -> BROKE" beside an unmentioned
+//      cloture YEA is the claim a senator's office knocks down (handoff v2 §4),
+//      and naming both without saying which decided leaves the reader to guess
+//      at the very point the verdict turns on.
 // ===========================================================================
 
 const VOTE_WORD: Record<string, string> = { YEA: 'voted yes', NAY: 'voted no' };
@@ -56,6 +66,10 @@ interface Props {
 export function EvidenceCard({ action, connector, senatorName }: Props) {
   const [open, setOpen] = useState(false);
   const relation = STRENGTH_PHRASE[action.strength];
+  const governing = governingVoteSentence(action.vote_governing);
+  const disclosures = (action.vote_flags ?? [])
+    .map((flag) => ({ flag, copy: VOTE_FLAG_COPY[flag] }))
+    .filter((d): d is { flag: string; copy: string } => Boolean(d.copy));
 
   return (
     <article className="evidence" data-direction={action.direction}>
@@ -73,6 +87,24 @@ export function EvidenceCard({ action, connector, senatorName }: Props) {
         <strong>{senatorName}</strong> {describeBehaviour(action)}.{' '}
         {describeEffect(action)}
       </p>
+
+      {/* Which vote decided, in plain language. The raw `vote_governing` string
+          is analyst vocabulary — one of its values contains "threshold", a
+          banned Level-1 term — so the reader gets a sentence and the trace gets
+          the string. */}
+      {governing ? <p className="governing">{governing}</p> : null}
+
+      {/* Disclosure flags. A separate channel from scoring flags: these change
+          how the row should be READ, so they sit at Level 1 rather than in the
+          drill-down. Flags with no reader copy are analyst vocabulary and stay
+          in the trace. */}
+      {disclosures.length ? (
+        <ul className="disclosures">
+          {disclosures.map((d) => (
+            <li key={d.flag}>{d.copy}</li>
+          ))}
+        </ul>
+      ) : null}
 
       <button
         type="button"
