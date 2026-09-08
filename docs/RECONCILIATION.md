@@ -1113,3 +1113,70 @@ defaulted so an untagged row cannot be written. Requested in cross-thread review
 query-tool rows have no gold row to join, so `gold_agreement` is always
 `NO_GOLD` for them — reading one as a pipeline row would misreport
 *inapplicable* as *absent*.
+
+---
+
+## 2026-09-07 — v7 port coverage: what is reconciled and what is not
+
+The column-set diffs earlier established *that* W7A/W7B/WF8/WF10A moved. This
+records what has actually been **ported**, checked against the live nodes rather
+than against the `docs/fix/` specs — those specs are a 09-05 snapshot and the
+standing rule is that the node wins.
+
+### Verified against the live node
+
+**Evaluator prompt v7 — byte-identical.** `evaluatorPromptV7.ts` was generated
+from `docs/fix/07_wf10a_evaluator_prompt_v7.md`, not from n8n, so it was worth
+checking whether the spec had drifted from what is deployed. It has not: 9,343
+characters, byte-for-byte equal to WF10A's `Promise Alignment Evaluator` system
+message as of 2026-09-07T23:11. The spec was faithful.
+
+### Ported
+
+| Handoff v2 §10 target | Status |
+|---|---|
+| `prompts/scopeClassifier.v1_1` | ✅ `scope/scopeClassifierPrompt.ts` |
+| `lib/scope/postCheck.ts` | ✅ `scope/postCheck.ts` |
+| `lib/verdict/deriveAlignment.ts` | ✅ `scoring/deriveAlignment.ts` (split-vote + `governing`) |
+| `prompts/evaluator.v7.txt` | ✅ `evaluation/evaluatorPromptV7.ts` — byte-verified |
+
+### NOT ported — four gaps, all live in n8n
+
+**1. `Pre-Evaluator Gates` — a 14,054-char node live in WF10A, absent here.**
+Our `evaluation/gates.ts` is the OLD pre-*retrieval* gate pair (promise_type,
+stance), and the other thread has confirmed it has zero call sites — dead code.
+The v7 gates (G1 scope/admin/role, G2 vote pairing, G3 leader switch, G4 broad
+vehicle) do not exist in the app. This is the gate set that closes 35 + 15 + ~10
+of the false-positive rows upstream, so its absence is not cosmetic.
+
+**2. `Compute Party Vote Alignment` / `LEADER_SWITCH` — live, not ported.**
+WF10A emits `LEADER_SWITCH` instead of `CROSS_PARTY` for the Rule XIII leader
+case. In our tree `LEADER_SWITCH` appears **only inside the evaluator prompt
+text** — there is no `partyAlignment.ts` and nothing computes the vocabulary. So
+the prompt can be told a row is a leader switch, but nothing ever tells it.
+
+**3. `DATED_VEHICLE` — zero references in the app.** W7B `Derive Partial
+Subtype` (2,614 chars) and WF8 `Derive Partial Subtype` (2,758) both emit it,
+and W7B's `Build Eval Request` carries the STANDING / RECURRING / DATED temporal
+call. None of that is in the app, so `partial_subtype` here can never take the
+value the pipeline now uses for an expired-vehicle match.
+
+**4. WF8 (bill→promise) — not ported, by agreement.** Confirmed out of scope for
+the query tool: it answers "does this senator's record bear on this statement",
+which is inherently promise→bill; bill→promise searches `_statements` and is a
+different product question. The residue is that `match_direction` is hardcoded
+`'promise_to_bill'` at the call site, so the stored trace asserts a direction
+that was never a variable. It should be written from a named constant with the
+one-directional design stated, so the data is honest about its own partiality.
+
+Also unported: `lib/judge/deterministicGates.ts` and `prompts/judge.v1.txt` —
+expected, since the judge is agreed but not yet built.
+
+### Why this matters for the schema already shipped
+
+Migration 003 added `gate_hits`, `senator_role`, `role_condition`,
+`cloture_result`, `bill_class` and `vote_flags` to `app_query_alignments`. Those
+columns are correct against WF10A's 74-column output — but **nothing in the app
+can populate them yet**, because the gates and party-alignment logic that produce
+them are the two unported pieces above. The columns are not wrong; they are ahead
+of the code, deliberately, and will stay null until items 1–2 land.
