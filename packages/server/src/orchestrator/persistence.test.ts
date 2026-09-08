@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DirectedAction, ScoredResult } from '@receipts/shared';
-import { buildAlignments, buildGatedAlignments } from './loop.js';
+import { buildAlignments, buildAuditEvents, buildGatedAlignments } from './loop.js';
 import type { QuerySession } from './dispatch.js';
 import type { FulfillmentResult } from '../evaluation/fulfillment.js';
 
@@ -247,5 +247,122 @@ describe('buildGatedAlignments', () => {
     const [row] = buildGatedAlignments(gatedSession());
     expect(row!.weight).toBe(0);
     expect(row!.direction).toBe('neutral');
+  });
+});
+
+// ===========================================================================
+// The decision trace.
+//
+// "This is the artefact you hand a journalist who asks how do you know"
+// (handoff v2 §5). A verdict without a record of how it was reached is an
+// assertion; with one it is a finding.
+// ===========================================================================
+
+describe('buildAuditEvents', () => {
+  it('records a gate, with the marker that says no finding was made', () => {
+    const [e] = buildAuditEvents(gatedSession(), 'q-1');
+    expect(e!.stage).toBe('GATE');
+    expect(e!.rule).toBe('G3_leader_switch');
+    expect(e!.disposition).toBe('WITHHELD');
+    expect(e!.marker).toBe('NOT_EVALUATED');
+    expect(e!.reason).toContain('party whip');
+  });
+
+  // The gate could only fire because the mirror supplied a whip vote. Recording
+  // which enrichment was available is what lets someone later tell "the gate
+  // passed it" from "the gate could not run".
+  it('records which enrichment the gate ran against', () => {
+    const s = { ...gatedSession(), enrichmentKind: 'mirror' } as QuerySession;
+    const [e] = buildAuditEvents(s, 'q-1');
+    expect((e!.detail as Record<string, unknown>).enrichment).toBe('mirror');
+  });
+
+  it('records contract 3 withholding from the nd_reason', () => {
+    const s = {
+      politicianId: 'S000148',
+      promiseText: 'x',
+      scored: { nd_reason: 'WITHHELD_LOW_CONFIDENCE' },
+    } as unknown as QuerySession;
+    const [e] = buildAuditEvents(s, 'q-1');
+    expect(e!.stage).toBe('WITHHOLDING');
+    expect(e!.rule).toBe('CONTRACT_3');
+    expect(e!.verdict_before).toBe('BROKE');
+    expect(e!.verdict_after).toBe('NOT_DETERMINABLE');
+  });
+
+  const judged = (over: Record<string, unknown>): QuerySession =>
+    ({
+      politicianId: 'S000148',
+      promiseText: 'x',
+      judge: {
+        verdict: {
+          grade: 'FAIL',
+          failed_test: 'T5',
+          failure_class: 'LEADER_SWITCH',
+          corrected_verdict: '',
+          corrected_bill_effect: '',
+          corrected_confidence: null,
+          senator_counterargument: 'It was procedural.',
+          gate_agreement: 'AGREE',
+          gold_agreement: 'NO_GOLD',
+          critique: 'Rule XIII switch.',
+          model: 'claude-sonnet-5',
+          prompt_version: 'judge-v1',
+        },
+        disposition: {
+          disposition: 'REVIEW_REQUIRED',
+          verdict: 'NOT_DETERMINABLE',
+          confidence: null,
+          reasoning: '',
+          model_verdict: 'BROKE',
+          withheld: true,
+          ...over,
+        },
+      },
+    }) as unknown as QuerySession;
+
+  it('records the judge, keeping the original verdict beside the new one', () => {
+    const [e] = buildAuditEvents(judged({}), 'q-1');
+    expect(e!.stage).toBe('JUDGE');
+    expect(e!.verdict_before).toBe('BROKE');
+    expect(e!.verdict_after).toBe('NOT_DETERMINABLE');
+    expect(e!.disposition).toBe('WITHHELD');
+    expect(e!.rule).toBe('T5');
+    expect(e!.marker).toBe('LEADER_SWITCH');
+  });
+
+  // Stored rather than assumed: a PASS is invalid without one, so the claim
+  // that a counterargument existed has to be checkable after the fact.
+  it('stores the senator counterargument', () => {
+    const [e] = buildAuditEvents(judged({}), 'q-1');
+    expect(e!.senator_counterargument).toBe('It was procedural.');
+  });
+
+  it.each([
+    ['JUDGE_ERROR', 'ERROR'],
+    ['REVIEW_REQUIRED_JUDGE_CORRECTED', 'CORRECTED'],
+    ['REVIEW_REQUIRED', 'WITHHELD'],
+  ])('maps disposition %s to %s', (d, expected) => {
+    const [e] = buildAuditEvents(judged({ disposition: d }), 'q-1');
+    expect(e!.disposition).toBe(expected);
+  });
+
+  it('does not mark a passing judge as withheld', () => {
+    const [e] = buildAuditEvents(judged({ disposition: 'PASS', withheld: false }), 'q-1');
+    expect(e!.disposition).toBe('PASS');
+  });
+
+  // Order is the point: a gate that fired before the judge ran must read that
+  // way, or the trace misdescribes the reasoning.
+  it('numbers events in the order they happened', () => {
+    const s = { ...gatedSession(), ...judged({}) } as QuerySession;
+    const events = buildAuditEvents(s, 'q-1');
+    expect(events.map((e) => e.seq)).toEqual([0, 1]);
+    expect(events.map((e) => e.stage)).toEqual(['GATE', 'JUDGE']);
+  });
+
+  it('emits nothing when no decision layer acted', () => {
+    const s = { politicianId: 'S000148', promiseText: 'x' } as unknown as QuerySession;
+    expect(buildAuditEvents(s, 'q-1')).toHaveLength(0);
   });
 });

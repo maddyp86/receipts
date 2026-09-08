@@ -3,7 +3,7 @@ import type { QueryResult, StepId, StreamEvent, ToolError } from '@receipts/shar
 import { config } from '../config.js';
 import { dispatchTool, newSession, type QuerySession } from './dispatch.js';
 import { queryStore } from '../services.js';
-import type { StoredAlignment, StoredMatch } from '../data/QueryStore.js';
+import type { AuditEvent, StoredAlignment, StoredMatch } from '../data/QueryStore.js';
 import { derivePartialSubtype } from '../evaluation/evidenceGate.js';
 import { classifyScope, haltForScope } from '../scope/classifyScope.js';
 import type { Corrections } from '@receipts/shared';
@@ -562,6 +562,100 @@ export function buildGatedAlignments(session: QuerySession): StoredAlignment[] {
   });
 }
 
+/**
+ * The decision trace for one query.
+ *
+ * One row per event that could have changed the verdict, in the order it
+ * happened. `seq` is supplied rather than generated because wall-clock ties on
+ * sub-millisecond steps and the sequence is the whole point.
+ *
+ * `alignment_id` stays null: the alignment rows' database ids are generated on
+ * insert and are not available here. The action_uid goes in `detail` instead,
+ * which is honest about what the link actually is.
+ */
+export function buildAuditEvents(session: QuerySession, queryId: string): AuditEvent[] {
+  const events: AuditEvent[] = [];
+  let seq = 0;
+
+  // ---- GATES. One per action closed before the evaluator ran.
+  for (const g of session.gated ?? []) {
+    const gate = session.gates?.[g.action_uid];
+    events.push({
+      query_id: queryId,
+      seq: seq++,
+      stage: 'GATE',
+      rule: gate?.hit?.gate ?? null,
+      disposition: 'WITHHELD',
+      verdict_after: g.verdict,
+      // The gated row carries NOT_EVALUATED rather than a bill_effect, and the
+      // trace says so too — otherwise the record shows a verdict with no
+      // finding behind it and no explanation for the gap.
+      marker: 'NOT_EVALUATED',
+      reason: g.reason,
+      detail: {
+        action_uid: g.action_uid,
+        bill_id: g.bill_id,
+        hits: gate?.hits.map((h) => `${h.gate}:${h.verdict}`) ?? [],
+        enrichment: session.enrichmentKind ?? 'null',
+      },
+    });
+  }
+
+  // ---- CONTRACT 3. Applied inside scoreMatches, which is pure and cannot
+  // emit; the nd_reason is how it announces itself.
+  if (session.scored?.nd_reason === 'WITHHELD_LOW_CONFIDENCE') {
+    events.push({
+      query_id: queryId,
+      seq: seq++,
+      stage: 'WITHHOLDING',
+      rule: 'CONTRACT_3',
+      disposition: 'WITHHELD',
+      verdict_before: 'BROKE',
+      verdict_after: 'NOT_DETERMINABLE',
+      reason:
+        'Accusation below the confidence floor with no counterargument on the record.',
+    });
+  }
+
+  // ---- THE JUDGE.
+  if (session.judge) {
+    const { verdict, disposition } = session.judge;
+    const outcome =
+      disposition.disposition === 'JUDGE_ERROR'
+        ? 'ERROR'
+        : disposition.disposition === 'REVIEW_REQUIRED_JUDGE_CORRECTED'
+          ? 'CORRECTED'
+          : disposition.withheld
+            ? 'WITHHELD'
+            : 'PASS';
+
+    events.push({
+      query_id: queryId,
+      seq: seq++,
+      stage: 'JUDGE',
+      rule: verdict.failed_test || null,
+      disposition: outcome,
+      verdict_before: String(disposition.model_verdict),
+      verdict_after: String(disposition.verdict),
+      confidence_after: disposition.confidence,
+      marker: verdict.failure_class || null,
+      reason: disposition.disposition,
+      // Stored rather than assumed: a PASS is invalid without one, so the claim
+      // that a counterargument existed has to be checkable after the fact.
+      senator_counterargument: verdict.senator_counterargument || null,
+      critique: verdict.critique || null,
+      model: verdict.model,
+      prompt_version: verdict.prompt_version,
+      detail: {
+        gate_agreement: verdict.gate_agreement || null,
+        corrected_bill_effect: verdict.corrected_bill_effect || null,
+      },
+    });
+  }
+
+  return events;
+}
+
 async function persist(session: QuerySession, sessionId: string | null): Promise<void> {
   // Nothing worth storing until the promise was at least interpreted. A row
   // with no classification is not a training example, it is noise.
@@ -581,7 +675,7 @@ async function persist(session: QuerySession, sessionId: string | null): Promise
   }
 
   try {
-    await queryStore.saveQuery({
+    const queryId = await queryStore.saveQuery({
       session_id: sessionId,
       politician_id: session.politicianId,
       promise_text: session.promiseText,
@@ -619,6 +713,21 @@ async function persist(session: QuerySession, sessionId: string | null): Promise
       matches: buildMatches(session),
       alignments: [...buildAlignments(session), ...buildGatedAlignments(session)],
     });
+
+    // THE TRACE. Best effort, and deliberately after the row exists so every
+    // event has something to hang off. A failure here is logged, never thrown:
+    // losing the trace must not turn an answered query into an error. The
+    // v_accusations_rendered view catches the case that actually matters — an
+    // accusation stored with no trace behind it.
+    try {
+      const events = buildAuditEvents(session, queryId);
+      if (events.length) await queryStore.appendAuditEvents(events);
+    } catch (err) {
+      console.error(
+        '[persist] audit trace NOT written (non-fatal):',
+        err instanceof Error ? err.message : err,
+      );
+    }
     // Only claim a write when one actually happened. NullQueryStore returns a
     // plausible uuid and stores nothing, so an unconditional "stored" here
     // would assert a row that does not exist — the exact silent-success shape
