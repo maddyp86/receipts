@@ -875,3 +875,97 @@ The rule this follows is the project's own: an empty or missing result must read
 as empty, never as a finding — and a degradation must be labelled, never silent.
 
 115 tests pass, typecheck clean, verified in the browser in demo mode.
+
+---
+
+## 2026-09-07 — v7 reconciliation: pipeline drift and the schema catch-up
+
+Four workflows moved between 2026-08-19 (the last reconciliation) and today.
+All of them. The earlier ports were built against a pipeline that no longer
+exists in that form.
+
+| Workflow | Then | Now | Change |
+|---|---|---|---|
+| W7A | 2026-08-18 | 2026-09-04 | — |
+| W7B `Promise Matches` | 54 cols | **57** | +`Anchor Vehicle`, `Promise Date`, `Temporal Reference` |
+| WF8 | never examined | 2026-09-06 | writes the **identical 57-col** schema + `Unmatched Bills` (41) |
+| WF10A `Promise Alignment - Matches` | 62 cols | **74** | +12 (§4 below) |
+| WF10A evaluator prompt | 32,507 chars | **9,343** | v7 supersedes v6 outright |
+
+### The reason all of this happened
+
+An audit found **78 of 79 BROKE verdicts were false positives**. v7 is the
+remediation. The v6 prompt was not deprecated but deleted, because it carried
+the rules the audit blamed: a 0.6 confidence floor, "NEVER return NEUTRAL
+because the connection requires inference", and an asymmetric cloture/passage
+precedence. Keeping it importable would let a stray import reinstate them.
+
+That reframes every verdict this tool has produced. The single `KEPT` it
+returned on 2026-09-07 predates the v7 rules and is unverified against them.
+
+### WF8 — the missing direction, confirmed
+
+The app only ever ran promise→bill (W7A/W7B). **WF8 is the bill→promise
+direction**, active, and writes to the *same* `Promise Matches` table with the
+*same* 57 columns — the two directions are distinguished by `Match Direction`,
+not by schema. Its non-matches go to `Unmatched Bills` (41 cols), the mirror of
+W7B's `Unmatched Promises`.
+
+So `app_query_matches` models one of two directions, and `match_direction` is
+hardcoded `'promise_to_bill'` at the call site. Not wrong, but partial, and the
+partiality is invisible in the data.
+
+### Schema catch-up — migration 003
+
+PR #2 ported the v7 logic into the app. `SupabaseQueryStore` was not part of
+that PR: its `insert` names an explicit column list that predates scope, gates
+and the disclosure fields, so **the application computes all of it and the
+database silently drops it**. An unlisted field is not an error.
+
+`docs/supabase-migration-003-v7-fields.sql` closes the database half:
+
+- **8 scope columns on `app_queries`.** The pipeline stores these per statement
+  on `Evaluable Statements`; the query tool has no statements table because the
+  user's typed text *is* the statement, classified live per request. `scope_model`
+  is stored per row rather than assumed — a reclassification under a later prompt
+  must be distinguishable from an original.
+- **15 columns on `app_query_alignments`** — the 12 from handoff §4, plus
+  `model_verdict` (behavioural contract 1: the model's `promise_alignment` is
+  *never* the verdict), plus the two markers below.
+
+### The marker problem — a live breaking bug, not a gap
+
+Migration 002 declared `alignment_confidence numeric`. Handoff v2 §3 establishes
+that this column can legitimately hold the string `NOT_EVALUATED` on a gated
+row, and `gates.ts:99` emits exactly that.
+
+Inserting it into a numeric column does not degrade — it **raises**, and because
+the write is transactional, the rollback takes the parent `app_queries` row with
+it. Every gated query would have stored nothing at all.
+
+Resolved the way the app resolved it (`shared/DirectedAction`): the number stays
+numeric and the marker gets its own column, so the two can never overwrite each
+other and "not evaluated" stays distinguishable from "evaluated at zero
+confidence". A CHECK constraint enforces that only one is ever present, because
+the rule is the point and a convention would erode.
+
+`effect_marker` follows the same shape: `bill_effect` stays null on a gated row
+rather than taking `NEUTRAL`, which would assert "the bill does not move this
+promise" — a finding nobody made.
+
+### Grade — not a constraint, deliberately
+
+WF11 refuses to score `PENDING` or `REVIEW_REQUIRED`. The same refusal must hold
+here or the tool prints an accusation no judge has cleared. It is *not* a CHECK
+constraint: grade is written before judging completes, so a constraint would
+reject the initial insert. Instead the contract is documented on the column and
+`app.v_alignments_awaiting_judgement` makes the uncleared set visible rather
+than implicit. `JUDGE_ERROR` is included in that view on purpose — an
+infrastructure failure is not a pass.
+
+### Known-bad impacts
+
+The six bills from handoff §8 are a table, not a constant: updatable without a
+deploy, and a suppression stays auditable. `resolved_at` is set on regeneration
+rather than deleting the row — that a reading was once unreliable is part of the
+audit trail.
