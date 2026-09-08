@@ -156,6 +156,31 @@ export const config = {
     topK: num(process.env.RETRIEVAL_TOP_K, 10),
   },
 
+  /**
+   * Congresses whose legislation has been collected and embedded.
+   *
+   * DISCLOSURE, not a filter. Retrieval already searches only what exists in
+   * the namespace; this exists so the tool can SAY what it searched.
+   *
+   * Without it, "we found no bills or votes on this" reads as "the senator has
+   * no record on this" — and for anything before the collected window that is
+   * false. Schumer passed the Inflation Reduction Act in the 117th; the corpus
+   * starts at the 118th, so the tool would report his defining drug-pricing
+   * legislation as an absence of action.
+   *
+   * That failure is the mirror of the one the whole false-positive effort
+   * guards against, and it is currently the less protected of the two: a false
+   * accusation gets a confidence floor, a counterargument requirement and a
+   * judge, while a false absence gets a clean sentence and no scrutiny.
+   */
+  coverage: {
+    congresses: str(process.env.COVERAGE_CONGRESSES)
+      .split(',')
+      .map((c) => Number.parseInt(c.trim(), 10))
+      .filter((c) => Number.isFinite(c))
+      .sort((a, b) => a - b),
+  },
+
   database: {
     /**
      * Postgres connection string for query/session persistence.

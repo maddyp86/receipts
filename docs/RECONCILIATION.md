@@ -1180,3 +1180,92 @@ columns are correct against WF10A's 74-column output — but **nothing in the ap
 can populate them yet**, because the gates and party-alignment logic that produce
 them are the two unported pieces above. The columns are not wrong; they are ahead
 of the code, deliberately, and will stay null until items 1–2 land.
+
+---
+
+## 2026-09-07 — coverage disclosure, and a correction to my own diagnosis
+
+### The retrieval "blocker" was not a bug
+
+Five turns were spent on a defect that did not exist. `hr5376` (Inflation
+Reduction Act) is **117th Congress**; collection starts at the **118th**. The
+tool returned `NOT_DETERMINABLE / NO_MATCHES` because Schumer has no
+drug-pricing action inside the analyzed window. It was correct.
+
+**The disconfirming evidence was already in hand and I read it as a success.**
+"I will protect Medicare beneficiaries from out-of-pocket costs" returned
+**KEPT with 1 admitted match** — same senator, same namespace, same embedder,
+same template, same run. A systematic offset cannot depress one query and not
+the other. That result arrived two turns before I described the 0.494 ceiling
+as "a systematic offset, not a semantic miss" and sent the other thread looking
+at the vector space. Both were wrong, and the earlier RECONCILIATION entry
+should be read with that correction attached.
+
+What the investigation did establish, and which stands: WF6's bill-side
+embedding is `text-embedding-3-small` @ `1024`, identical to the query side —
+that gap in the verification was real and is now closed.
+
+### The real finding: an undisclosed coverage boundary
+
+> "We didn't find any bills or votes in this senator's analyzed record that
+> relate to this promise."
+
+Every word true. A reader hears *"he has no record on drug pricing."* Schumer
+**passed** the IRA — Medicare negotiation, the insulin cap — as Majority Leader.
+
+This is the mirror of the false-positive class, and **the less protected of the
+two**. An accusation must clear a 0.7 floor, carry a counterargument, and
+survive a judge. An absence gets a clean sentence, no confidence, no scrutiny.
+Handoff v2 §7 already states the principle for the pipeline — "absence of a
+match is not absence of action (measured P2B candidate coverage ≈ 57%)" — and
+the query tool did not honour it.
+
+Nothing in the app knew the window. `congress` existed in Pinecone metadata and
+was used only to build congress.gov links.
+
+### What shipped
+
+- `config.coverage.congresses` from `COVERAGE_CONGRESSES` — **disclosure, not a
+  filter**. Retrieval already searches only what exists; this exists so the tool
+  can say what it searched.
+- `congress` threaded from Pinecone metadata onto `MatchedAction`, read
+  defensively: a vector embedded before the field existed has *no* congress,
+  which is unknown, not zero — a zero would drag the observed minimum to a
+  congress that never existed.
+- `CoverageWindow` on `QueryResult`, carrying the declared list, the **observed**
+  span, and an `unknown` flag.
+- `scoring/coverage.ts` — `describeCoverage()` and `coverageSentence()`.
+
+Two decisions worth recording:
+
+**Derived, not asserted.** `observed` comes from the retrieved candidates' own
+metadata, and the sentence prefers the declared window but falls back to the
+observed one. A hardcoded "we cover the 118th and 119th" would keep saying that
+after collection was extended — lying in the opposite direction, and silently,
+because nothing would fail. A test caught exactly this: with
+`COVERAGE_CONGRESSES` unset and real candidates in hand, the first version fell
+back to vague copy instead of using the window it had just derived.
+
+**The sentence describes the SEARCH, never the senator.** The tool can speak
+with authority about its own corpus and has no standing to speak about anything
+outside it. It also has to *actively deny* the inference rather than merely
+avoid making it — "not a finding that the senator has no record on the subject".
+A test pins that the only permitted mention of the senator is a negated one.
+
+### Still owed by the other thread
+
+`ND_REASON_COPY.NO_MATCHES` and the result rendering are their files. The
+`coverage` field is populated-ready; the copy change is one line. Until it
+renders, the boundary exists in the payload and not on screen.
+
+### Coverage decision (agreed with Matt)
+
+Collection started at the 118th because that was what the trust index needed;
+the data is accessible, it was simply not gathered. Agreed direction: trust
+index stays 118–119 (a current-term score is a coherent question with a natural
+boundary); the query tool wants wider. Next increment is the **117th** — it
+contains the IRA and covers the 2022 campaign cycle whose promises the current
+term is judged against. WF6 already takes `target_congress`, so embeddings are
+congress-agnostic; the cost is bill collection and impact statements, not a
+rebuild. Going further back should wait on `min(Promise Date)` from Evaluable
+Statements — a number, not a judgement call.
