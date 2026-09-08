@@ -1269,3 +1269,52 @@ term is judged against. WF6 already takes `target_congress`, so embeddings are
 congress-agnostic; the cost is bill collection and impact statements, not a
 rebuild. Going further back should wait on `min(Promise Date)` from Evaluable
 Statements — a number, not a judgement call.
+
+---
+
+## 2026-09-07 — WF11 judge gate, and a correction to migration 004
+
+WF11 moved again (2026-09-07T17:43) and gained a node that did not exist when
+migration 004 was written: **`Drop Unjudged Rows`**. Reading it showed 004's
+`v_alignments_awaiting_judgement` diverged from the pipeline in two ways.
+
+WF11's rule:
+
+```js
+const BLOCKED = new Set(['PENDING', 'REVIEW_REQUIRED']);
+// Blank Grade passes. Rows written before WF13 existed, and WF10a rows that
+// were never accusations, legitimately carry no grade.
+```
+
+**1. A null grade passes — 004 had it backwards.** The judge only ever runs on
+BROKE/INCONSISTENT, so every KEPT, every NOT_DETERMINABLE and every gated row is
+legitimately ungraded. Treating null as "awaiting judgement" put essentially the
+whole table in the review queue. A check that fires on everything is as useless
+as one that never fires, and this one would have been dismissed on first read.
+
+**2. `JUDGE_ERROR` stays blocked here — deliberate divergence, now documented.**
+WF11 does not list it because §5 has an errored judge leave the row at PENDING,
+which WF11 blocks anyway. The query tool has no WF11 and no requeue: it renders
+once. So an infrastructure failure must withhold rather than fall through. Same
+reasoning the other thread applied on the code side.
+
+Not adopted: WF11 **drops** blocked rows so a later run picks them up through
+the `Filter Processed Scores` anti-join, and notes that freezing would write a
+null-score row that blocks the real score forever. The query tool has no later
+run to requeue into, so it withholds in place.
+
+Migration 006 also adds `app.v_accusations_rendered` — BROKE/INCONSISTENT rows
+stored without a passing grade. It should be empty once the judge is wired;
+non-empty means the tool published an accusation no second opinion cleared,
+which is the precise failure the judge layer exists to prevent and therefore the
+thing worth alerting on. The pipeline has no equivalent because it has WF11
+standing between a verdict and the index; the query tool has nothing between a
+verdict and the reader.
+
+### Still-stale port, logged not fixed
+
+`Compute Decision Score` is now **25,077 chars**; the port was reconciled against
+20,803, then 24,146 at the policy-position split. It has moved again.
+`decisionScore.ts` is therefore stale — but it remains **dormant**, called only
+by its own test and not on the request path, so this is recorded rather than
+chased. It must be re-reconciled before anything wires it in.
