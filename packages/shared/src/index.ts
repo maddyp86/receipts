@@ -55,7 +55,20 @@ export type AlignmentOutcome =
   | 'CONSISTENT'
   | 'INCONSISTENT'
   | 'PROCEDURAL_SWITCH'
-  | 'ERROR';
+  | 'ERROR'
+  /**
+   * The statement's window had closed, or its precondition no longer held, when
+   * this action happened. Produced by the pre-evaluator gates, never by the
+   * alignment table.
+   *
+   * Distinct from NOT_DETERMINABLE on purpose: "we could not read this action"
+   * and "this action could not bear on this statement" are different findings,
+   * and only the second one is about the statement. Both render as
+   * NOT_DETERMINABLE, with their own reason.
+   */
+  | 'NOT_APPLICABLE_EXPIRED'
+  /** No legislative action can fulfil or break this kind of statement at all. */
+  | 'NOT_APPLICABLE';
 
 /**
  * The bill's direction of travel on the goal stated in the promise.
@@ -386,7 +399,22 @@ export type NotDeterminableReason =
    * counterargument on the record. NOT an exoneration — the copy for this must
    * say we could not defensibly call it, never that he kept it.
    */
-  | 'WITHHELD_LOW_CONFIDENCE';
+  | 'WITHHELD_LOW_CONFIDENCE'
+  /**
+   * The adversarial judge failed the reading, or could not run at all.
+   *
+   * Same posture as WITHHELD_LOW_CONFIDENCE and for the same reason: an
+   * accusation no second opinion has cleared is not published. Distinct from it
+   * because the cause differs — one is a confidence bar, this is a review that
+   * failed or never happened, and a reader deserves to know which.
+   */
+  | 'WITHHELD_PENDING_REVIEW'
+  /**
+   * A pre-evaluator gate closed every candidate before the evaluator ran: the
+   * statement's window had passed, its precondition no longer held, or the
+   * vehicle could not bear on it. Each gated action carries its own reason.
+   */
+  | 'GATED';
 
 /** Level-2 analyst trace. Never rendered at Level 1. */
 export interface FactorReceipt {
@@ -676,6 +704,13 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   // that he kept it, and this sentence must never be readable as one.
   WITHHELD_LOW_CONFIDENCE:
     "The record here points against this promise, but not clearly enough for us to say so publicly. The bills and votes are below — read them and judge for yourself.",
+  // Also deliberately not exculpatory. "A reviewer disagreed" is not "he kept
+  // it", and the sentence must not be readable as either an accusation or a
+  // clearing.
+  WITHHELD_PENDING_REVIEW:
+    "A second review didn't back this reading, so we're not publishing it. The bills and votes are below — read them and judge for yourself.",
+  GATED:
+    "The legislation we found can't settle this statement — the window it applied to had closed, or the bills were too broad to say anything about it specifically. Each item below says which.",
 };
 
 /** Words that must never appear in Level-1 voter-facing copy. */

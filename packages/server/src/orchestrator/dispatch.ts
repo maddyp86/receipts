@@ -24,6 +24,15 @@ import {
   type FulfillmentCandidate,
 } from '../evaluation/fulfillment.js';
 import { liveResponsesFetcher } from '../evaluation/responsesFetcher.js';
+import { preEvaluatorGates, type GateResult } from '../evaluation/preEvaluatorGates.js';
+import { enrichmentSource, type ActionEnrichment } from '../evaluation/enrichment.js';
+import { judgeGates } from '../judge/judgeGates.js';
+import { judgeErrorVerdict, judgeVerdict, type JudgeFetcher, type JudgeVerdict } from '../judge/judge.js';
+import {
+  applyDispositionToResult,
+  applyJudgeVerdict,
+  type DispositionResult,
+} from '../judge/dispositions.js';
 import { classifyPromise, type ClassifyFetcher } from '../evaluation/classify.js';
 import type { CorrectionDelta, Corrections } from '@receipts/shared';
 import { scoreMatches, type ScorableMatch } from '../scoring/score.js';
@@ -98,6 +107,29 @@ export interface QuerySession {
    * for one that passed the scope checks.
    */
   scopeUnavailable?: string;
+  /** Pre-evaluator gate outcome per action_uid, scorable or not. */
+  gates?: Record<string, GateResult>;
+  /**
+   * Actions a gate closed before the evaluator ran.
+   *
+   * Kept SEPARATE from scored evidence rather than dropped: fix/08 says a gated
+   * row is displayed with its reason. "Not evaluated: leader procedural vote"
+   * is useful to a reader, and it is the thing that makes the tool look honest
+   * rather than thin.
+   */
+  gated?: Array<{
+    action_uid: string;
+    bill_id: string;
+    title: string;
+    verdict: string;
+    reason: string;
+  }>;
+  /** Which enrichment source the gates ran against, for the degradation notice. */
+  enrichmentKind?: 'mirror' | 'null';
+  /** The adversarial judge's verdict and disposition, when it ran. */
+  judge?: { verdict: JudgeVerdict; disposition: DispositionResult };
+  /** Injected in tests; the live path builds its own. */
+  judgeFetcher?: JudgeFetcher;
 }
 
 export function newSession(
@@ -613,6 +645,70 @@ async function evaluateEffectsTool(
     }
   }
 
+  // ---- PRE-EVALUATOR GATES ----------------------------------------------
+  //
+  // fix/03, run BEFORE the evaluator so a gated row never costs a model call
+  // and never produces a verdict. Every rule FAILS OPEN when its inputs are
+  // missing, so a thin enrichment layer degrades the gates rather than
+  // dropping statements.
+  //
+  // Gated rows are kept and displayed with their reason, not hidden. They are
+  // excluded from scoring because their verdict is terminal and deterministic —
+  // routing them through the alignment table would ask "which way does this
+  // cut" about an action we have already established cannot cut either way.
+  const refs = await enrichmentSource.refs();
+  const enrichment = await enrichmentSource.forActions(matches.map((m) => m.action_uid));
+  session.enrichmentKind = enrichmentSource.kind;
+
+  const gates: Record<string, GateResult> = {};
+  const scorableMatches: MatchedAction[] = [];
+  const gatedRows: NonNullable<QuerySession['gated']> = [];
+
+  for (const m of matches) {
+    const e: ActionEnrichment = enrichment.get(m.action_uid) ?? {};
+    const result = preEvaluatorGates(
+      {
+        politician_id: session.politicianId,
+        bill_id: String(m.bill_id ?? ''),
+        promise_text: session.promiseText,
+        bill_title: String(m.title ?? ''),
+        // Pinecone carries the votes; enrichment carries the context around
+        // them. Where both exist the mirror wins — it has the dates.
+        cloture_vote: e.cloture_vote ?? m.cloture_vote,
+        passage_vote: e.passage_vote ?? m.passage_vote,
+        party_whip_vote: e.party_whip_vote,
+        cloture_vote_id: e.cloture_vote_id,
+        cloture_vote_date: e.cloture_vote_date,
+        passage_vote_date: e.passage_vote_date,
+        stakeholder_groups: m.affected_stakeholders ? [String(m.affected_stakeholders)] : [],
+      },
+      {
+        date: session.statementDate ? new Date(session.statementDate) : null,
+        scope: session.scope?.scope,
+        validUntil: session.scope?.valid_until ? new Date(session.scope.valid_until) : null,
+        validUntilRaw: session.scope?.valid_until,
+        anchor: session.scope?.anchor_entity,
+        roleCondition: session.scope?.role_condition,
+        speechAct: session.scope?.speech_act,
+      },
+      refs,
+    );
+    gates[m.action_uid] = result;
+    if (result.scorable) {
+      scorableMatches.push(m);
+    } else {
+      gatedRows.push({
+        action_uid: m.action_uid,
+        bill_id: String(m.bill_id ?? ''),
+        title: String(m.title ?? ''),
+        verdict: String(result.hit!.verdict),
+        reason: result.hit!.reason,
+      });
+    }
+  }
+  session.gates = gates;
+  session.gated = gatedRows;
+
   // ---- FULFILLMENT LEG --------------------------------------------------
   // bill_effect is decided by gpt-5.4-mini running WF10A's 32,507-char prompt,
   // NOT by the orchestrating model. The corpus was scored by that model on that
@@ -633,9 +729,9 @@ async function evaluateEffectsTool(
     Boolean(session.fulfillmentFetcher) || Boolean(config.embeddings.apiKey);
 
   const evaluated =
-    matches.length && canEvaluateFulfillment
+    scorableMatches.length && canEvaluateFulfillment
       ? await evaluateFulfillment(
-          matches.map((m) => toFulfillmentCandidate(session, m)),
+          scorableMatches.map((m) => toFulfillmentCandidate(session, m)),
           session.fulfillmentFetcher ?? liveResponsesFetcher('fulfillment'),
         )
       : [];
@@ -651,7 +747,7 @@ async function evaluateEffectsTool(
 
   const disagreements: string[] = [];
 
-  const scorable: ScorableMatch[] = matches.map((m) => {
+  const scorable: ScorableMatch[] = scorableMatches.map((m) => {
     const judged = byUid.get(m.action_uid);
     const evalResult = authoritative.get(m.action_uid);
 
@@ -698,6 +794,141 @@ async function evaluateEffectsTool(
   });
   session.scored = scored;
 
+  // ---- THE ADVERSARIAL JUDGE ---------------------------------------------
+  //
+  // handoff v2 §5, answered for the query path: the deterministic gates run on
+  // every query because they are free; the LLM judge runs ONLY when the derived
+  // verdict is an accusation. That is the minority of queries and exactly where
+  // the risk is — a free-typed statement gets no human review at all, so the
+  // one reading that could damage someone gets a second opinion.
+  //
+  // It runs AFTER scoring because it grades a verdict, which means one has to
+  // exist first. scoreMatches is pure by design, so the model call cannot live
+  // inside it.
+  //
+  // Asymmetric, like contract 3: this can only ever withhold an accusation.
+  const isAccusation = scored.verdict === 'BROKE';
+  const canJudge = Boolean(session.judgeFetcher) || Boolean(config.anthropic.apiKey);
+
+  if (isAccusation && canJudge) {
+    // The strongest breaking action is what the accusation rests on, so it is
+    // what gets reviewed — the same choice contract 3 makes, and for the same
+    // reason: weak corroboration must not decide the fate of a sound reading.
+    const breaking = scored.evidence
+      .filter((e) => e.direction === 'breaks')
+      .sort((a, b) => (b.alignment_confidence ?? 0) - (a.alignment_confidence ?? 0));
+    const lead = breaking[0];
+
+    if (lead) {
+      const gate = session.gates?.[lead.action_uid];
+      const f = session.fulfillment?.[lead.action_uid];
+      const enriched = (await enrichmentSource.forActions([lead.action_uid])).get(lead.action_uid) ?? {};
+
+      // The judge's own deterministic layer runs first and is passed in, so the
+      // model confirms or disputes those hits rather than re-deriving them.
+      const jg = judgeGates({
+        promise_alignment: String(lead.outcome),
+        bill_effect: String(lead.bill_effect),
+        alignment_confidence: lead.alignment_confidence,
+        politician_id: session.politicianId,
+        bill_id: String(lead.bill_id ?? ''),
+        promise_text: session.promiseText,
+        bill_title: String(lead.title ?? ''),
+        stakeholder_group: lead.affected_stakeholders ?? null,
+        cloture_vote: enriched.cloture_vote ?? lead.cloture_vote,
+        passage_vote: enriched.passage_vote ?? lead.passage_vote,
+        vote: lead.vote,
+        party_whip_vote: enriched.party_whip_vote ?? null,
+        is_sponsor: lead.is_sponsor,
+        is_cosponsor: lead.is_cosponsor,
+        cloture_vote_date: enriched.cloture_vote_date ?? null,
+        passage_vote_date: enriched.passage_vote_date ?? null,
+        action_date: enriched.action_date ?? null,
+        alignment_reasoning: f?.reasoning ?? null,
+        bill_effect_reasoning: lead.bill_effect_reasoning,
+        vote_flags: lead.vote_flags,
+        senator_role: gate?.context.senator_role ?? null,
+        cloture_result: gate?.context.cloture_result ?? null,
+        scope: session.scope?.scope ?? null,
+        valid_until: session.scope?.valid_until ?? null,
+        statement_date: session.statementDate ?? null,
+        promise_primary_issue: session.interpretation.primary_issue,
+        promise_sub_issue: session.interpretation.sub_issue,
+        bill_primary_issue: lead.primary_issue,
+        bill_sub_issue: lead.sub_issue,
+      });
+
+      const verdict = await judgeVerdict(
+        {
+          statement_text: session.promiseText,
+          statement_type: session.interpretation.statement_type,
+          scope: session.scope?.scope ?? null,
+          valid_until: session.scope?.valid_until ?? null,
+          anchor_entity: session.scope?.anchor_entity ?? null,
+          role_condition: session.scope?.role_condition ?? null,
+          promise_date: session.statementDate ?? null,
+          bill_id: String(lead.bill_id ?? ''),
+          bill_title: String(lead.title ?? ''),
+          bill_summary: lead.summary,
+          bill_class: gate?.context.bill_class ?? null,
+          intended_effects: lead.intended_effects,
+          mechanisms: lead.mechanisms,
+          stakeholders: lead.affected_stakeholders ?? null,
+          cloture_vote: enriched.cloture_vote ?? lead.cloture_vote,
+          cloture_vote_date: enriched.cloture_vote_date ?? null,
+          cloture_result: gate?.context.cloture_result ?? null,
+          passage_vote: enriched.passage_vote ?? lead.passage_vote,
+          passage_vote_date: enriched.passage_vote_date ?? null,
+          party_whip_vote: enriched.party_whip_vote ?? null,
+          senator_role: gate?.context.senator_role ?? null,
+          is_sponsor: String(lead.is_sponsor),
+          is_cosponsor: String(lead.is_cosponsor),
+          action_date: enriched.action_date ?? null,
+          vote_flags: lead.vote_flags,
+          vote_governing: lead.vote_governing,
+          bill_effect: String(lead.bill_effect),
+          bill_effect_reasoning: lead.bill_effect_reasoning,
+          verdict: String(lead.outcome),
+          alignment_reasoning: f?.reasoning ?? null,
+          confidence: lead.alignment_confidence,
+          gate_results: jg.fired,
+        },
+        session.judgeFetcher ?? undefined,
+      );
+
+      const disposition = applyJudgeVerdict(
+        {
+          verdict: lead.outcome,
+          confidence: lead.alignment_confidence,
+          reasoning: f?.reasoning ?? '',
+        },
+        verdict,
+      );
+      session.judge = { verdict, disposition };
+
+      const judged = applyDispositionToResult(scored, disposition);
+      if (judged.withheld) {
+        session.scored = judged.result;
+        console.info(`[judge] ${disposition.disposition} — accusation withheld: ${judged.reason}`);
+      }
+    }
+  } else if (isAccusation && !canJudge) {
+    // No credential means no second opinion. An unreviewed accusation is not
+    // published — the same posture as JUDGE_ERROR, for the same reason.
+    const verdict = judgeErrorVerdict('no judge credential configured');
+    const disposition = applyJudgeVerdict(
+      { verdict: 'BROKE', confidence: null, reasoning: '' },
+      verdict,
+    );
+    session.judge = { verdict, disposition };
+
+    const judged = applyDispositionToResult(scored, disposition);
+    if (judged.withheld) {
+      session.scored = judged.result;
+      console.warn('[judge] no credential — accusation withheld rather than published unreviewed.');
+    }
+  }
+
   // Returned to the model as a FROZEN result. It explains this; it cannot
   // change it, and the value the user sees comes from `session.scored`
   // regardless of anything the model says next.
@@ -733,6 +964,22 @@ async function evaluateEffectsTool(
     })),
     // Surfaced, not silently resolved. The evaluator's call is authoritative;
     // the model is told so explicitly so it does not narrate its own effect.
+    // Gated rows are REPORTED, not hidden. "10 retrieved, 2 gated, 8 evaluated"
+    // is a different claim from "8 retrieved", and the gate reasons are the
+    // thing that makes a thin answer legible rather than evasive.
+    gated: session.gated?.length ?? 0,
+    gated_reasons: session.gated?.map((g) => ({ bill_id: g.bill_id, reason: g.reason })) ?? [],
+    // Said plainly so the model never narrates a gate that could not run.
+    enrichment: session.enrichmentKind === 'mirror'
+      ? 'mirror (vote dates, whip votes and roles available)'
+      : 'unavailable — scope and leader gates failed open',
+    judge: session.judge
+      ? {
+          disposition: session.judge.disposition.disposition,
+          withheld: session.judge.disposition.withheld,
+          counterargument: session.judge.verdict.senator_counterargument || null,
+        }
+      : null,
     effect_source: canEvaluateFulfillment
       ? `fulfillment evaluator (${config.models.fulfill}, WF10A prompt)`
       : 'orchestrator (advisory only — no fulfillment evaluator configured)',

@@ -99,6 +99,39 @@ export const config = {
      * model change here cannot move a verdict — only how it reads.
      */
     explain: str(process.env.EXPLAIN_MODEL) || 'claude-sonnet-5',
+
+    /**
+     * The adversarial verdict judge. MUST NOT be the same family as `fulfill`.
+     *
+     * A second opinion from the model that produced the first one is not a
+     * second opinion — it inherits the same reading of the same evidence. The
+     * evaluator is GPT; the judge is Claude, deliberately (handoff v2 §5,
+     * invariant 4). Overridable, but swapping it to an OpenAI model defeats the
+     * layer rather than tuning it.
+     *
+     * NOTE: this model REJECTS `temperature`. See judge/judge.ts.
+     */
+    judge: str(process.env.JUDGE_MODEL) || 'claude-sonnet-5',
+  },
+
+  /**
+   * Judge policy for the query path (handoff v2 §5, "Does the query tool need
+   * the judge?").
+   *
+   * Deterministic gates run inline on every query — they are free. The LLM
+   * judge runs ONLY on a derived BROKE/INCONSISTENT: the minority of queries,
+   * and exactly where the risk is.
+   */
+  judge: {
+    /**
+     * One pass, no re-evaluation. A FAIL goes straight to the judge's
+     * correction or to NOT_DETERMINABLE.
+     *
+     * The retry INVARIANT is still implemented and tested (see
+     * judge/dispositions.ts) so contract 4 is live code rather than a comment
+     * about a path that does not exist, and enabling retry is a flag flip.
+     */
+    retryEnabled: process.env.JUDGE_RETRY === 'true',
   },
 
   anthropic: {

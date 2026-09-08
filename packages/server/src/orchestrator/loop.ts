@@ -3,7 +3,7 @@ import type { QueryResult, StepId, StreamEvent, ToolError } from '@receipts/shar
 import { config } from '../config.js';
 import { dispatchTool, newSession, type QuerySession } from './dispatch.js';
 import { queryStore } from '../services.js';
-import type { StoredAlignment, StoredMatch } from '../data/QueryStore.js';
+import type { AuditEvent, StoredAlignment, StoredMatch } from '../data/QueryStore.js';
 import { derivePartialSubtype } from '../evaluation/evidenceGate.js';
 import { classifyScope, haltForScope } from '../scope/classifyScope.js';
 import type { Corrections } from '@receipts/shared';
@@ -438,7 +438,7 @@ function buildMatches(session: QuerySession): StoredMatch[] {
 }
 
 /** The admitted matches that went through fulfillment — the KEPT/BROKE half. */
-function buildAlignments(session: QuerySession): StoredAlignment[] {
+export function buildAlignments(session: QuerySession): StoredAlignment[] {
   const evidence = session.scored?.evidence ?? [];
   const fulfillment = session.fulfillment ?? {};
   const modelEffects = session.orchestratorEffects ?? {};
@@ -446,14 +446,29 @@ function buildAlignments(session: QuerySession): StoredAlignment[] {
   return evidence.map((e) => {
     const f = fulfillment[e.action_uid];
     const modelEffect = modelEffects[e.action_uid] ?? null;
+    const gate = session.gates?.[e.action_uid];
     return {
       action_uid: e.action_uid,
       bill_id: String(e.bill_id ?? ''),
       bill_effect: e.bill_effect,
       bill_effect_reasoning: e.bill_effect_reasoning,
-      promise_alignment: S(f?.alignment),
-      alignment_confidence: N(f?.confidence),
+
+      // CONTRACT 1. `promise_alignment` is the DERIVED verdict — the same thing
+      // WF10A's column of that name holds. It was previously written from the
+      // model's own `alignment`, which inverted the pipeline's meaning: anyone
+      // reading this column expecting parity got the model's opinion instead of
+      // the table's result. The model's answer now goes where it belongs, in
+      // `model_verdict`, for agreement tracking only.
+      promise_alignment: S(e.outcome),
+      model_verdict: S(f?.alignment),
+
+      // CONTRACT 2. The SPLIT-VOTE-CAPPED confidence, not the evaluator's raw
+      // number. `scoreMatches` applies the 0.75 cap and puts the result on the
+      // evidence row; reading `f.confidence` here bypassed it, so a split row
+      // rendered capped in the UI and stored uncapped.
+      alignment_confidence: e.alignment_confidence ?? null,
       alignment_reasoning: S(f?.reasoning),
+
       model_bill_effect: modelEffect,
       // null, not false, when there is nothing to compare — "we did not check"
       // is a different claim from "they disagreed".
@@ -465,8 +480,180 @@ function buildAlignments(session: QuerySession): StoredAlignment[] {
       vote_pattern: S(e.vote_pattern),
       weight: N(e.weight),
       scoring_flags: e.scoring_flags ?? null,
+
+      // DISCLOSURE (handoff v2 §4). Stored beside the verdict because a row
+      // that reads "voted NAY → BROKE" while hiding a cloture YEA is the claim
+      // a senator's office knocks down.
+      vote_governing: e.vote_governing ?? null,
+      vote_flags: e.vote_flags?.length ? e.vote_flags : null,
+
+      // The markers stay ABSENT on a scored row. These rows reached the
+      // evaluator, so nothing about them was "not evaluated" — writing
+      // NOT_EVALUATED here would assert a gating that never happened. Gated
+      // rows carry them instead; see buildGatedAlignments below.
+
+      // Context the gates produced, whether or not one fired.
+      senator_role: gate?.context.senator_role ?? null,
+      cloture_result: gate?.context.cloture_result ?? null,
+      bill_class: gate?.context.bill_class ?? null,
+      scope: session.scope?.scope ?? null,
+      valid_until: session.scope?.valid_until ?? null,
+      anchor_entity: session.scope?.anchor_entity ?? null,
+      role_condition: session.scope?.role_condition ?? null,
+      promise_date: session.statementDate ?? null,
+      grade: session.judge?.disposition.disposition ?? null,
     };
   });
+}
+
+/**
+ * Alignment rows for actions a gate closed before the evaluator ran.
+ *
+ * These are the rows the NOT_EVALUATED markers exist for (handoff v2 §3). The
+ * distinction is load-bearing and this is the only place it becomes real:
+ *
+ *   bill_effect NULL + effect_marker NOT_EVALUATED   we made no finding
+ *   bill_effect NEUTRAL                              we found the bill does
+ *                                                    not move the goal
+ *
+ * The second is a determination nobody made. Writing NEUTRAL on a gated row —
+ * or 0 into alignment_confidence — would put a fabricated finding in the record
+ * that reads exactly like a real one.
+ */
+export function buildGatedAlignments(session: QuerySession): StoredAlignment[] {
+  const gated = session.gated ?? [];
+  return gated.map((g) => {
+    const gate = session.gates?.[g.action_uid];
+    return {
+      action_uid: g.action_uid,
+      bill_id: g.bill_id,
+      // Empty string, not 'NEUTRAL': the column is NOT NULL, and the marker
+      // beside it carries the meaning.
+      bill_effect: '',
+      bill_effect_reasoning: g.reason,
+      promise_alignment: g.verdict,
+      alignment_confidence: null,
+      alignment_reasoning: g.reason,
+      model_bill_effect: null,
+      model_agreed: null,
+      outcome: g.verdict,
+      direction: 'neutral',
+      evidence_type: 'associative',
+      action_tier: 'NONE',
+      vote_pattern: null,
+      weight: 0,
+      scoring_flags: null,
+      vote_governing: null,
+      vote_flags: gate?.context.vote_flags?.length ? gate.context.vote_flags : null,
+      model_verdict: null,
+      confidence_marker: 'NOT_EVALUATED' as const,
+      effect_marker: 'NOT_EVALUATED' as const,
+      grade: gate?.hit ? `GATED_${gate.hit.gate}` : 'GATED',
+      gate_hits: gate?.hits.map((h) => `${h.gate}:${h.verdict}`).join(';') ?? null,
+      senator_role: gate?.context.senator_role ?? null,
+      cloture_result: gate?.context.cloture_result ?? null,
+      bill_class: gate?.context.bill_class ?? null,
+      scope: session.scope?.scope ?? null,
+      valid_until: session.scope?.valid_until ?? null,
+      anchor_entity: session.scope?.anchor_entity ?? null,
+      role_condition: session.scope?.role_condition ?? null,
+      promise_date: session.statementDate ?? null,
+    };
+  });
+}
+
+/**
+ * The decision trace for one query.
+ *
+ * One row per event that could have changed the verdict, in the order it
+ * happened. `seq` is supplied rather than generated because wall-clock ties on
+ * sub-millisecond steps and the sequence is the whole point.
+ *
+ * `alignment_id` stays null: the alignment rows' database ids are generated on
+ * insert and are not available here. The action_uid goes in `detail` instead,
+ * which is honest about what the link actually is.
+ */
+export function buildAuditEvents(session: QuerySession, queryId: string): AuditEvent[] {
+  const events: AuditEvent[] = [];
+  let seq = 0;
+
+  // ---- GATES. One per action closed before the evaluator ran.
+  for (const g of session.gated ?? []) {
+    const gate = session.gates?.[g.action_uid];
+    events.push({
+      query_id: queryId,
+      seq: seq++,
+      stage: 'GATE',
+      rule: gate?.hit?.gate ?? null,
+      disposition: 'WITHHELD',
+      verdict_after: g.verdict,
+      // The gated row carries NOT_EVALUATED rather than a bill_effect, and the
+      // trace says so too — otherwise the record shows a verdict with no
+      // finding behind it and no explanation for the gap.
+      marker: 'NOT_EVALUATED',
+      reason: g.reason,
+      detail: {
+        action_uid: g.action_uid,
+        bill_id: g.bill_id,
+        hits: gate?.hits.map((h) => `${h.gate}:${h.verdict}`) ?? [],
+        enrichment: session.enrichmentKind ?? 'null',
+      },
+    });
+  }
+
+  // ---- CONTRACT 3. Applied inside scoreMatches, which is pure and cannot
+  // emit; the nd_reason is how it announces itself.
+  if (session.scored?.nd_reason === 'WITHHELD_LOW_CONFIDENCE') {
+    events.push({
+      query_id: queryId,
+      seq: seq++,
+      stage: 'WITHHOLDING',
+      rule: 'CONTRACT_3',
+      disposition: 'WITHHELD',
+      verdict_before: 'BROKE',
+      verdict_after: 'NOT_DETERMINABLE',
+      reason:
+        'Accusation below the confidence floor with no counterargument on the record.',
+    });
+  }
+
+  // ---- THE JUDGE.
+  if (session.judge) {
+    const { verdict, disposition } = session.judge;
+    const outcome =
+      disposition.disposition === 'JUDGE_ERROR'
+        ? 'ERROR'
+        : disposition.disposition === 'REVIEW_REQUIRED_JUDGE_CORRECTED'
+          ? 'CORRECTED'
+          : disposition.withheld
+            ? 'WITHHELD'
+            : 'PASS';
+
+    events.push({
+      query_id: queryId,
+      seq: seq++,
+      stage: 'JUDGE',
+      rule: verdict.failed_test || null,
+      disposition: outcome,
+      verdict_before: String(disposition.model_verdict),
+      verdict_after: String(disposition.verdict),
+      confidence_after: disposition.confidence,
+      marker: verdict.failure_class || null,
+      reason: disposition.disposition,
+      // Stored rather than assumed: a PASS is invalid without one, so the claim
+      // that a counterargument existed has to be checkable after the fact.
+      senator_counterargument: verdict.senator_counterargument || null,
+      critique: verdict.critique || null,
+      model: verdict.model,
+      prompt_version: verdict.prompt_version,
+      detail: {
+        gate_agreement: verdict.gate_agreement || null,
+        corrected_bill_effect: verdict.corrected_bill_effect || null,
+      },
+    });
+  }
+
+  return events;
 }
 
 async function persist(session: QuerySession, sessionId: string | null): Promise<void> {
@@ -488,7 +675,7 @@ async function persist(session: QuerySession, sessionId: string | null): Promise
   }
 
   try {
-    await queryStore.saveQuery({
+    const queryId = await queryStore.saveQuery({
       session_id: sessionId,
       politician_id: session.politicianId,
       promise_text: session.promiseText,
@@ -500,6 +687,11 @@ async function persist(session: QuerySession, sessionId: string | null): Promise
         fulfill: config.models.fulfill,
         explain: config.models.explain,
       },
+      // The user's text IS the statement here, classified live, so scope
+      // belongs on the query row rather than a statements table. Absent — not
+      // defaulted — when the classifier could not run: a guessed scope changes
+      // whether the statement is testable at all.
+      scope: session.scope ?? undefined,
       degraded: {
         demo_mode: config.demoMode,
         fixture_mode: config.fixtureMode,
@@ -519,8 +711,23 @@ async function persist(session: QuerySession, sessionId: string | null): Promise
         embedding_text: session.embeddingText ?? null,
       },
       matches: buildMatches(session),
-      alignments: buildAlignments(session),
+      alignments: [...buildAlignments(session), ...buildGatedAlignments(session)],
     });
+
+    // THE TRACE. Best effort, and deliberately after the row exists so every
+    // event has something to hang off. A failure here is logged, never thrown:
+    // losing the trace must not turn an answered query into an error. The
+    // v_accusations_rendered view catches the case that actually matters — an
+    // accusation stored with no trace behind it.
+    try {
+      const events = buildAuditEvents(session, queryId);
+      if (events.length) await queryStore.appendAuditEvents(events);
+    } catch (err) {
+      console.error(
+        '[persist] audit trace NOT written (non-fatal):',
+        err instanceof Error ? err.message : err,
+      );
+    }
     // Only claim a write when one actually happened. NullQueryStore returns a
     // plausible uuid and stores nothing, so an unconditional "stored" here
     // would assert a row that does not exist — the exact silent-success shape
