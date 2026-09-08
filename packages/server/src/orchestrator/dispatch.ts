@@ -633,7 +633,10 @@ async function evaluateEffectsTool(
   const matches = session.matches ?? [];
 
   const effects = Array.isArray(input.effects) ? input.effects : [];
-  const byUid = new Map<string, { bill_effect: string; bill_effect_reasoning: string }>();
+  const byUid = new Map<
+    string,
+    { bill_effect: string; bill_effect_reasoning: string; alignment_confidence: number | null }
+  >();
   for (const e of effects) {
     const row = e as Record<string, unknown>;
     const uid = String(row.action_uid ?? '');
@@ -641,6 +644,11 @@ async function evaluateEffectsTool(
       byUid.set(uid, {
         bill_effect: String(row.bill_effect ?? 'NEUTRAL').toUpperCase(),
         bill_effect_reasoning: String(row.bill_effect_reasoning ?? ''),
+        // Not in the evaluate_effects schema, so a real model never supplies
+        // it. The DEMO stub does, which is the only way a stubbed accusation
+        // can clear contract 3's floor rather than being withheld.
+        alignment_confidence:
+          typeof row.alignment_confidence === 'number' ? row.alignment_confidence : null,
       });
     }
   }
@@ -782,7 +790,10 @@ async function evaluateEffectsTool(
       // the cap is enforced in exactly one place regardless of caller.
       // Null rather than 0 when no evaluator ran: 0 is a confidence, absence
       // is not (handoff v2 §3).
-      alignment_confidence: evalResult ? evalResult.confidence : null,
+      // Evaluator first. When it never ran, fall back to whatever the caller
+      // asserted — in DEMO that is the stub's own confidence. Still null rather
+      // than 0 when nobody supplied one: 0 is a confidence, absence is not.
+      alignment_confidence: evalResult ? evalResult.confidence : (judged?.alignment_confidence ?? null),
     };
   });
 

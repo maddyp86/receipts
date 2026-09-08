@@ -106,7 +106,12 @@ export function stubInterpretation(promiseText: string): StubInterpretation {
 export function stubBillEffects(
   matches: MatchedAction[],
   interpretation: { primary_issue: string; sub_issue: string; stance: Stance },
-): Array<{ action_uid: string; bill_effect: string; bill_effect_reasoning: string }> {
+): Array<{
+  action_uid: string;
+  bill_effect: string;
+  bill_effect_reasoning: string;
+  alignment_confidence: number;
+}> {
   return matches.map((m) => {
     const title = m.title.toLowerCase();
     const isDisapproval =
@@ -123,6 +128,8 @@ export function stubBillEffects(
         bill_effect: 'NEUTRAL',
         bill_effect_reasoning:
           'Demo mode: this bill sits outside the promise’s issue area, so it does not move the goal either way.',
+        // NEUTRAL carries no direction, so contract 3 never looks at it.
+        alignment_confidence: 0.55,
       };
     }
 
@@ -132,6 +139,12 @@ export function stubBillEffects(
         bill_effect: 'HINDER',
         bill_effect_reasoning:
           'Demo mode: this resolution would nullify the underlying rule the promise depends on, so passing it sets the goal back.',
+        // Above contract 3's 0.7 floor, deliberately. Without a confidence the
+        // rule fails closed and every demo BROKE withholds — correct by the
+        // rule, but it would leave the demo unable to show the verdict it
+        // exists to demonstrate. A stub asserting its own confidence is honest;
+        // silently exempting demo mode from the rule would not be.
+        alignment_confidence: 0.82,
       };
     }
 
@@ -140,6 +153,7 @@ export function stubBillEffects(
       bill_effect: 'ADVANCE',
       bill_effect_reasoning:
         'Demo mode: the bill’s mechanisms move the promise’s goal forward in the same issue area.',
+      alignment_confidence: 0.82,
     };
   });
 }

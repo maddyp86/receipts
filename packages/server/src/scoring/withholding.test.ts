@@ -138,3 +138,47 @@ describe('the floor is the documented one', () => {
     ).toBe(true);
   });
 });
+
+// ===========================================================================
+// DEMO mode must still be able to show an accusation.
+//
+// Contract 3 fails closed on a missing confidence, which is right — but the
+// demo stub emitted none, so every stubbed BROKE silently became
+// NOT_DETERMINABLE and the demo could no longer demonstrate the verdict it
+// exists to demonstrate. The fix is the stub asserting its own confidence,
+// never exempting demo mode from the rule.
+// ===========================================================================
+
+describe('the demo stub clears the accusation floor', () => {
+  it('emits a directional confidence above 0.7', async () => {
+    const { stubBillEffects } = await import('../llm/stub.js');
+    const matches = [
+      {
+        action_uid: 'ACT-1',
+        title: 'A joint resolution providing for congressional disapproval of the rule',
+        bill_type: 'sjres',
+        primary_issue: 'Environment',
+        sub_issue: 'Pollution & Clean Air/Water',
+      },
+    ] as never;
+
+    const [effect] = stubBillEffects(matches, {
+      primary_issue: 'Environment',
+      sub_issue: 'Pollution & Clean Air/Water',
+      stance: 'In Favor',
+    } as never);
+
+    // Directional, so contract 3 will look at it.
+    expect(effect!.bill_effect).toBe('HINDER');
+    expect(effect!.alignment_confidence).toBeGreaterThanOrEqual(ACCUSATION_CONFIDENCE_FLOOR);
+  });
+
+  it('would be withheld if the stub emitted nothing — the bug this fixes', () => {
+    // Documents the failure mode so nobody "simplifies" the stub by dropping
+    // the field again.
+    const withoutConfidence = applyWithholding(
+      result('BROKE', [action({ alignment_confidence: null })]),
+    );
+    expect(withoutConfidence.withheld).toBe(true);
+  });
+});

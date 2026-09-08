@@ -1350,3 +1350,48 @@ loses its trace.
 sub-millisecond steps and the order is the whole point of an event log.
 
 203 tests pass, typecheck clean.
+
+---
+
+## 2026-09-07 — two decisions closed
+
+### A. Corpus verdict mirrors dropped (migration 007)
+
+Decision (Matt): not relevant to the query tool, which **emits its own verdicts
+in real time from the user's query** and never reads a stored one.
+
+005 revoked `receipts_app` on both tables. 007 drops them, because a revoke is
+one `GRANT` away from being undone by someone tidying permissions and the tables
+have no consumer to justify the risk. The enrichment mirror stays — donor,
+party, impact, roll call — which the query tool genuinely reads.
+
+⚠️ **The n8n sync must also stop writing them.** Dropping the tables does not
+change the sync set; if the sync still lists them it recreates them on its next
+run and quietly reopens what this closes.
+
+### B. DEMO stub now emits a confidence
+
+Decision (Matt): emit one, rather than exempt demo mode.
+
+Contract 3 fails closed on a missing confidence — correct — but the stub emitted
+none, so every stubbed BROKE silently became NOT_DETERMINABLE and the demo could
+no longer show the verdict it exists to demonstrate. A stub asserting its own
+confidence is honest; carving demo mode out of the rule would not be.
+
+Directional effects get **0.82** (above the 0.7 floor), NEUTRAL gets 0.55 —
+contract 3 never looks at a non-directional row.
+
+**The stub change alone was inert.** `dispatch` set `alignment_confidence` only
+from the fulfillment evaluator, which does not run in demo, so the stub's value
+was dropped before it reached scoring. Verified by running a demo query and
+seeing `conf=None`; after plumbing the caller-supplied value as a fallback,
+`conf=0.55`. Worth recording because the change *looked* complete and typechecked
+clean while doing nothing.
+
+`alignment_confidence` is deliberately **not** in the `evaluate_effects` tool
+schema, so a real model cannot supply it — the fallback exists for the stub, and
+the evaluator remains authoritative whenever it runs.
+
+Two tests pin this: the stub emits ≥ the floor for a directional effect, and the
+withheld-without-confidence case is retained so nobody "simplifies" the field
+away again.
