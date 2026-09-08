@@ -1318,3 +1318,35 @@ verdict and the reader.
 `decisionScore.ts` is therefore stale — but it remains **dormant**, called only
 by its own test and not on the request path, so this is recorded rather than
 chased. It must be re-reconciled before anything wires it in.
+
+---
+
+## 2026-09-07 — audit writer
+
+`QueryStore.appendAuditEvents()` plus `StoredQuery.audit_events`, both
+implemented in `SupabaseQueryStore`. The other thread emits gate and judge
+events by calling into this and never touches SQL.
+
+Three decisions:
+
+**Written inside the same transaction as the row they describe.** A verdict that
+committed without its trace is exactly the unexplained assertion the log exists
+to prevent, and a half-written trace is worse than none because it reads as the
+complete reasoning.
+
+**Append-only, enforced by privilege not by care.** The seam exposes no update
+and no delete, mirroring the grant in migration 004 where `receipts_app` holds
+`INSERT` and `SELECT` only. A correction is a new event with a later `seq`.
+
+**Contract 3 is derived, not waited on.** Nothing calls the audit writer yet, so
+the withholding rule that is live today would have had no trace until a call
+site got around to it. `saveQuery` now synthesises the event when the frozen
+result carries `nd_reason = 'WITHHELD_LOW_CONFIDENCE'` and the caller supplied
+no `WITHHOLDING` event — so wiring it explicitly later does not double-write. A
+test pins the constant the derivation keys on: rename it and the rule silently
+loses its trace.
+
+`seq` is caller-supplied rather than generated. Wall-clock ties on
+sub-millisecond steps and the order is the whole point of an event log.
+
+203 tests pass, typecheck clean.

@@ -213,6 +213,57 @@ export interface StoredQuery {
   matches?: StoredMatch[];
   /** Every admitted match that went through fulfillment. */
   alignments?: StoredAlignment[];
+  /**
+   * Decision events for this query. `query_id` is filled in by the store — the
+   * caller does not have it until the parent row is inserted.
+   *
+   * A contract-3 withholding is derived automatically from the frozen result if
+   * the caller supplies no WITHHOLDING event, so that rule is traced from day
+   * one rather than waiting on a call site.
+   */
+  audit_events?: Array<Omit<AuditEvent, 'query_id'>>;
+}
+
+/**
+ * One decision event that could change a verdict.
+ *
+ * Written by the gates, contract 3, and — once wired — the judge. One row per
+ * EVENT, not per query: a single query can gate, then withhold, then judge, and
+ * collapsing those loses the order the reasoning actually happened in.
+ */
+export interface AuditEvent {
+  query_id: string;
+  /** Null for query-level events. Contract 3 acts on the whole result. */
+  alignment_id?: string | null;
+  /**
+   * Order within the query. Supplied by the caller, not generated: wall-clock
+   * ties on sub-millisecond steps, and the sequence is the point.
+   */
+  seq: number;
+  stage: 'GATE' | 'WITHHOLDING' | 'JUDGE' | 'RETRY' | 'SUPPRESSED_IMPACT';
+  /** The rule in its own vocabulary: 'G1_SCOPE', 'CONTRACT_3', 'T4_BILL_DIRECTION'. */
+  rule?: string | null;
+  disposition: 'PASS' | 'FAIL' | 'WITHHELD' | 'CORRECTED' | 'ERROR' | 'SKIPPED';
+
+  verdict_before?: string | null;
+  verdict_after?: string | null;
+  confidence_before?: number | null;
+  confidence_after?: number | null;
+  /** NOT_EVALUATED and friends. Never a value from the verdict vocabulary. */
+  marker?: string | null;
+
+  reason?: string | null;
+  /**
+   * A judge PASS is invalid without one (handoff v2 §5). Stored rather than
+   * assumed, so the claim that a counterargument existed is checkable.
+   */
+  senator_counterargument?: string | null;
+  critique?: string | null;
+
+  model?: string | null;
+  prompt_version?: string | null;
+  /** Anything not modelled above. Keeps a future question from needing a migration. */
+  detail?: Record<string, unknown> | null;
 }
 
 export interface QueryStore {
@@ -223,6 +274,20 @@ export interface QueryStore {
 
   /** Persist a completed query. Failure must never fail the user's query. */
   saveQuery(query: Omit<StoredQuery, 'id'>): Promise<string>;
+
+  /**
+   * Append decision events for a query.
+   *
+   * APPEND ONLY — there is no update and no delete, mirroring the database
+   * grant. A correction is a new event, never an edit: a trace you can rewrite
+   * is not a trace.
+   *
+   * Best effort, like the rest of persistence: a failed audit write must never
+   * turn an answered query into an error. But it is logged loudly rather than
+   * swallowed, and `app.v_accusations_rendered` catches the case that actually
+   * matters — an accusation stored with no trace behind it.
+   */
+  appendAuditEvents(events: AuditEvent[]): Promise<void>;
 
   /**
    * Read one stored query back, by id, for a share link.
@@ -265,6 +330,12 @@ export class NullQueryStore implements QueryStore {
     // never gate the user's result on it.
     this.warnOnce();
     return crypto.randomUUID();
+  }
+
+  async appendAuditEvents(_events: AuditEvent[]): Promise<void> {
+    // Nothing is written. The banner already says persistence is off; warning
+    // per event would drown it.
+    this.warnOnce();
   }
 
   async getQuery(_id: string): Promise<StoredQuery | null> {
