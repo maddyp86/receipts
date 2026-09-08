@@ -1040,3 +1040,76 @@ path is still worth measuring against the 79-row gold set before committing to
 the Sonnet call: if v7 plus contract 3 already clears it, the judge is redundant
 here. The log schema accommodates the judge without requiring it — `stage`
 carries `JUDGE` and `RETRY` values that simply go unused until it is wired.
+
+---
+
+## 2026-09-07 — WF6 verified, firewall restored structurally
+
+### The bill side of the embedding — checked, and it clears the vector space
+
+The retrieval investigation had verified the QUERY side against W7A
+(`text-embedding-3-small` @ `1024`) but never the BILL side. That was a real gap:
+a mismatch there would make every similarity meaningless.
+
+WF6 `Bill Embeddings` (`2tfR7BINlNlE0KhF`, updated 2026-09-04) posts:
+
+```json
+{ "model": "text-embedding-3-small", "input": …, "dimensions": 1024 }
+```
+
+**Identical on both sides.** It upserts to `{politician_id}_bills`, the namespace
+we query, keyed on `Action UID` — so vectors are per-ACTION, not per-bill, and a
+bill with several recorded actions carries several vectors.
+
+That rules out the whole "vector space" class of hypothesis: no dimension
+reduction without renormalisation, no second embedding model, no mismatched run.
+The 0.494 ceiling is not the space; it is the text.
+
+**What the comparison does show is a structural asymmetry in document shape:**
+
+| | Bill vector (WF6) | Query vector (W7a port) |
+|---|---|---|
+| Sections | Title, Summary, Intended Effects, Mechanisms, Policy Area, Primary Issue, Sub-Issue, **Taxonomy Keywords**, Bill Keywords, Legislative Subjects, Affected Stakeholders | Promise, Stance, Promise Type, Primary Issue, Sub-Issue, Key Policy Terms, **Related Terms**, Reasoning |
+| Length | long, multi-topic | short, focused |
+
+Two things stand out. The same approved-taxonomy cell is labelled
+`Taxonomy Keywords:` on the bill side and `Related Terms:` on the promise side —
+already documented as deliberate, but it means the one field both documents share
+verbatim is introduced by different text. And WF6's own comment records that vote
+fields were deliberately kept OUT of `pageContent` because "putting vote text in
+the embedded string would shift bill vectors away from promise vectors and
+degrade retrieval" — the same sensitivity, acknowledged upstream.
+
+Still unexplained: the pipeline clears 0.575 against these same vectors. The
+remaining difference is the *provenance of the promise text* — corpus rows carry
+GPT-4.1's `Key Policy Terms` and `Reasoning`, ours carry Haiku's, regenerated per
+request. That is also the reproducibility bug already logged (four runs, four
+reasonings, four vectors). The discriminating experiment stands: re-embed a known
+`Promise Matches` pair with the tool's embedder and compare the score for the
+same pair — same bills ranked but uniformly low means text shape, different bills
+ranked means content.
+
+### Firewall — the other direction was only ever code
+
+Migration 002 enforced "the trust index cannot read user queries" by revoking
+`receipts_trust` on `app`. That half holds.
+
+The reverse guarantee — **the query tool must never read a pre-computed verdict
+and present it as its own reasoning** — was only ever a convention. `receipts_app`
+holds `SELECT` on all of `mirror`, and the sync now populates
+`mirror_promise_alignment_matches` and `mirror_decision_scores`. Corpus verdicts
+became one JOIN from the request path, with nothing but nobody-having-written-it
+in the way.
+
+Migration 005 revokes `receipts_app` on exactly those two tables. It keeps the
+mirror it legitimately needs — donor alignment, party positions, impact
+statements, roll call results — and a query reaching for a stored verdict now
+fails on privilege rather than succeeding quietly. Same standard both directions.
+
+### Audit provenance
+
+`app_verdict_audit_log.source` (`QUERY_TOOL` | `PIPELINE_WF13`), `NOT NULL`
+defaulted so an untagged row cannot be written. Requested in cross-thread review:
+query-tool rows have no gold row to join, so `gold_agreement` is always
+`NO_GOLD` for them — reading one as a pipeline row would misreport
+*inapplicable* as *absent*.
