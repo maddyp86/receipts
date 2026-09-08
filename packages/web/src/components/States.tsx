@@ -1,5 +1,11 @@
 import { useState } from 'react';
-import type { QueryHalt, Senator, ToolError } from '@receipts/shared';
+import {
+  coverageSentence,
+  type CoverageWindow,
+  type QueryHalt,
+  type Senator,
+  type ToolError,
+} from '@receipts/shared';
 
 // ===========================================================================
 // Honest states.
@@ -24,6 +30,36 @@ export function DemoBanner({ demo, fixture }: { demo: boolean; fixture: boolean 
         here is a real accountability finding.
       </span>
     </div>
+  );
+}
+
+/**
+ * What record was actually searched.
+ *
+ * Renders on EVERY result, not only the empty ones. The sentence exists because
+ * "We didn't find any bills or votes in this senator's analyzed record" is the
+ * tool's most dangerous output: every word of it is true, and a reader hears
+ * "he has no record on this". Schumer passed the Inflation Reduction Act in the
+ * 117th Congress; the corpus starts at the 118th, so without this line his
+ * defining drug-pricing law reads as an absence of action.
+ *
+ * It is the mirror of the false-accusation class and the less protected of the
+ * two — an accusation must clear a confidence floor, carry a counterargument
+ * and survive a judge, while an absence otherwise gets a clean sentence and no
+ * scrutiny at all.
+ *
+ * The copy comes from `coverageSentence` in shared rather than from this file,
+ * so the sentence the user reads is the same one the server persists.
+ */
+export function CoverageNote({ coverage }: { coverage?: CoverageWindow }) {
+  // Absent is not the same as unknown. An older result that predates the field
+  // says nothing here rather than asserting a window it never recorded.
+  if (!coverage) return null;
+
+  return (
+    <p className="coverage-note" data-unknown={coverage.unknown ? 'true' : undefined}>
+      {coverageSentence(coverage)}
+    </p>
   );
 }
 

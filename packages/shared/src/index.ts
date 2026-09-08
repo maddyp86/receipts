@@ -491,6 +491,55 @@ export interface CoverageWindow {
   unknown: boolean;
 }
 
+/**
+ * One sentence, safe to show, stating the boundary.
+ *
+ * Deliberately says what was SEARCHED, never what the senator did. The
+ * distinction is the whole point: the tool can speak with authority about its
+ * own corpus and has no standing to speak about anything outside it.
+ *
+ * Lives in `shared` rather than in the server because the client renders it and
+ * the server persists it, and two copies of this sentence would drift. The
+ * DERIVATION stays server-side in `scoring/coverage.ts` — it reads config, and
+ * `observed` must come from the retrieved candidates rather than from anything
+ * the browser could assert.
+ */
+export function coverageSentence(coverage: CoverageWindow): string {
+  if (coverage.unknown) {
+    return 'We could not establish which legislative record was searched, so treat an empty result as inconclusive rather than as an absence of action.';
+  }
+
+  // Prefer the DECLARED window; fall back to what was actually observed.
+  // An unset COVERAGE_CONGRESSES with real candidates in hand is not "we don't
+  // know" — the data says which congresses were searched, and saying so is
+  // better than a vague disclaimer.
+  const list = coverage.congresses.length
+    ? coverage.congresses
+    : coverage.observed
+      ? Array.from(
+          { length: coverage.observed.max - coverage.observed.min + 1 },
+          (_, i) => coverage.observed!.min + i,
+        )
+      : [];
+
+  if (!list.length) {
+    return 'This covers only the legislation we have analyzed, which may not be a senator’s full record.';
+  }
+
+  const span =
+    list.length === 1
+      ? `the ${ordinal(list[0]!)} Congress`
+      : `the ${list.slice(0, -1).map(ordinal).join(', ')} and ${ordinal(list[list.length - 1]!)} Congress`;
+
+  return `We searched ${span}. Anything before that is outside the record we have analyzed, so an empty result here is not a finding that the senator has no record on the subject.`;
+}
+
+const ordinal = (n: number): string => {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'}`;
+};
+
 export interface QueryResult {
   senator: Senator;
   interpretation: Interpretation;
@@ -712,6 +761,20 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   GATED:
     "The legislation we found can't settle this statement — the window it applied to had closed, or the bills were too broad to say anything about it specifically. Each item below says which.",
 };
+
+/**
+ * Copy for a NOT_DETERMINABLE that arrived with no reason recorded.
+ *
+ * Exists so the UI never has to fall back to `NO_MATCHES`, which is the
+ * strongest absence claim in the vocabulary — "we searched and this senator has
+ * nothing on the subject". Defaulting to it on a missing field would have the
+ * tool assert a finding it never made, which is the same failure the coverage
+ * sentence exists to prevent, arriving through a different door.
+ *
+ * Says only what is actually known: no defensible reading, reason unrecorded.
+ */
+export const ND_NO_REASON_COPY =
+  "We couldn't reach a defensible reading here, and the specific reason wasn't recorded. Anything we did find is below — read it and judge for yourself.";
 
 /** Words that must never appear in Level-1 voter-facing copy. */
 export const BANNED_LEVEL1_TERMS = [

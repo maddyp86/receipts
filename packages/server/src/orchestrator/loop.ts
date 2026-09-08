@@ -6,6 +6,7 @@ import { queryStore } from '../services.js';
 import type { AuditEvent, StoredAlignment, StoredMatch } from '../data/QueryStore.js';
 import { derivePartialSubtype } from '../evaluation/evidenceGate.js';
 import { classifyScope, haltForScope } from '../scope/classifyScope.js';
+import { describeCoverage } from '../scoring/coverage.js';
 import type { Corrections } from '@receipts/shared';
 import { systemPrompt, EXPLANATION_CONSTRAINTS } from './prompts.js';
 import { TOOL_DEFINITIONS } from './toolDefs.js';
@@ -94,8 +95,14 @@ async function runTool(
   return env;
 }
 
-/** Assemble the user-facing result from server-held state, never from prose. */
-function finish(session: QuerySession, emit: Emit): boolean {
+/**
+ * Assemble the user-facing result from server-held state, never from prose.
+ *
+ * Exported for tests, like `buildAlignments` below: this is the single place a
+ * `QueryResult` is constructed, so a field that silently stops being attached
+ * here is invisible everywhere else.
+ */
+export function finish(session: QuerySession, emit: Emit): boolean {
   if (!session.senator || !session.interpretation || !session.scored) return false;
 
   const result: QueryResult = {
@@ -109,6 +116,15 @@ function finish(session: QuerySession, emit: Emit): boolean {
     },
     demo_mode: config.demoMode,
     fixture_mode: config.fixtureMode,
+    // Derived from the candidates this query actually retrieved, and attached to
+    // EVERY result rather than only the empty ones. A verdict drawn from two
+    // 118th-Congress bills is bounded by the same window as a no-match, and the
+    // reader is owed the boundary either way.
+    //
+    // `session.matches` is the pre-gate candidate set, which is the right input:
+    // the question is what the SEARCH covered, and a row the gates later closed
+    // was still inside the window that was searched.
+    coverage: describeCoverage(session.matches ?? []),
   };
   // Stashed so persistence stores exactly what the user saw, rather than
   // rebuilding it later from parts that may have moved on.

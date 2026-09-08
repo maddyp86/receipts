@@ -1,6 +1,12 @@
 import type { CoverageWindow, MatchedAction } from '@receipts/shared';
 import { config } from '../config.js';
 
+// The SENTENCE lives in `shared` — the client renders it and the server persists
+// it, and two copies would drift. The DERIVATION stays here: it reads config,
+// and `observed` must come from the retrieved candidates rather than from
+// anything the browser could assert.
+export { coverageSentence } from '@receipts/shared';
+
 // ===========================================================================
 // What record was actually searched.
 //
@@ -42,46 +48,3 @@ export function describeCoverage(candidates: MatchedAction[]): CoverageWindow {
     unknown: declared.length === 0 && observed === null,
   };
 }
-
-/**
- * One sentence, safe to show, stating the boundary.
- *
- * Deliberately says what was SEARCHED, never what the senator did. The
- * distinction is the whole point: the tool can speak with authority about its
- * own corpus and has no standing to speak about anything outside it.
- */
-export function coverageSentence(coverage: CoverageWindow): string {
-  if (coverage.unknown) {
-    return 'We could not establish which legislative record was searched, so treat an empty result as inconclusive rather than as an absence of action.';
-  }
-
-  // Prefer the DECLARED window; fall back to what was actually observed.
-  // An unset COVERAGE_CONGRESSES with real candidates in hand is not "we don't
-  // know" — the data says which congresses were searched, and saying so is
-  // better than a vague disclaimer.
-  const list = coverage.congresses.length
-    ? coverage.congresses
-    : coverage.observed
-      ? Array.from(
-          { length: coverage.observed.max - coverage.observed.min + 1 },
-          (_, i) => coverage.observed!.min + i,
-        )
-      : [];
-
-  if (!list.length) {
-    return 'This covers only the legislation we have analyzed, which may not be a senator’s full record.';
-  }
-
-  const span =
-    list.length === 1
-      ? `the ${ordinal(list[0]!)} Congress`
-      : `the ${list.slice(0, -1).map(ordinal).join(', ')} and ${ordinal(list[list.length - 1]!)} Congress`;
-
-  return `We searched ${span}. Anything before that is outside the record we have analyzed, so an empty result here is not a finding that the senator has no record on the subject.`;
-}
-
-const ordinal = (n: number): string => {
-  const rem100 = n % 100;
-  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
-  return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'}`;
-};

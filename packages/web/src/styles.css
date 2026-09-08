@@ -414,6 +414,24 @@ textarea.promise::placeholder {
   margin: 0.9rem 0 0;
 }
 
+/* The coverage boundary. Sits inside the verdict card on EVERY result, muted
+   but never hidden behind a disclosure toggle — a reader who stops at the
+   headline is exactly the reader who needs to know what was searched. */
+.coverage-note {
+  margin: 0.9rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+/* An unrecoverable window makes a weaker claim, so it reads as a caveat rather
+   than as a statement of fact about the corpus. */
+.coverage-note[data-unknown='true'] {
+  font-style: italic;
+}
+
 /* ---------- details toggle ---------------------------------------------- */
 
 .details-toggle {

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import {
   BAND_PHRASE,
+  ND_NO_REASON_COPY,
   ND_REASON_COPY,
   VERDICT_PHRASE,
   type QueryResult,
 } from '@receipts/shared';
 import { EvidenceCard } from './EvidenceCard.js';
+import { CoverageNote } from './States.js';
 
 // ===========================================================================
 // The two-level receipt.
@@ -104,9 +106,16 @@ export function Verdict({ result }: { result: QueryResult }) {
   const [showTrace, setShowTrace] = useState(false);
   const { scored, explanation, senator } = result;
 
+  // A NOT_DETERMINABLE with no recorded reason must NOT borrow NO_MATCHES's
+  // copy. "We didn't find any bills or votes in this senator's record" is the
+  // strongest absence claim in the vocabulary, and defaulting to it would make
+  // the tool assert a searched-and-found-nothing finding on the strength of a
+  // missing field.
   const level1 =
     scored.verdict === 'NOT_DETERMINABLE'
-      ? ND_REASON_COPY[scored.nd_reason ?? 'NO_MATCHES']
+      ? scored.nd_reason
+        ? ND_REASON_COPY[scored.nd_reason]
+        : ND_NO_REASON_COPY
       : explanation.why;
 
   const dominant = scored.ranked[0];
@@ -130,6 +139,11 @@ export function Verdict({ result }: { result: QueryResult }) {
           {senator.name} · “{result.interpretation.restated}”
         </p>
         <p className="verdict-why">{level1}</p>
+
+        {/* The boundary travels with the verdict, not only with empty results:
+            a KEPT drawn from two 118th-Congress bills is scoped by the same
+            window as a no-match, and the reader is owed it either way. */}
+        <CoverageNote coverage={result.coverage} />
 
         {scored.mode === 'ranked' ? (
           <p className="mixed-note">
