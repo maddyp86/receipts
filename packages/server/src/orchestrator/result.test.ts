@@ -3,6 +3,8 @@ import type { MatchedAction, ScoredResult, Senator, StreamEvent } from '@receipt
 import { coverageSentence } from '@receipts/shared';
 import { finish } from './loop.js';
 import { newSession, type QuerySession } from './dispatch.js';
+import { judgeErrorVerdict } from '../judge/judge.js';
+import { applyJudgeVerdict } from '../judge/dispositions.js';
 
 // ===========================================================================
 // What actually reaches the browser.
@@ -143,5 +145,64 @@ describe('gated rows reach the browser', () => {
     // query always knows, so it says so.
     const { emitted } = run({ gated: [] });
     expect(resultOf(emitted).gated).toEqual([]);
+  });
+});
+
+describe('the adversarial review reaches the browser', () => {
+  // The exact shape the live path builds when there is no judge credential:
+  // an accusation nobody reviewed, withheld rather than published.
+  const noCredential = () => {
+    const verdict = judgeErrorVerdict('no judge credential configured');
+    return {
+      verdict,
+      disposition: applyJudgeVerdict({ verdict: 'BROKE', confidence: null, reasoning: '' }, verdict),
+    };
+  };
+
+  it('is attached, with the disposition and the withheld flag', () => {
+    const { emitted } = run({ judge: noCredential() });
+    const judge = resultOf(emitted).judge;
+    expect(judge).toBeDefined();
+    expect(judge!.disposition).toBe('JUDGE_ERROR');
+    expect(judge!.withheld).toBe(true);
+  });
+
+  it('marks a review that never ran as unavailable, not as a failed review', () => {
+    // "A reviewer disagreed" and "nobody looked" are different facts about how
+    // much scrutiny a reading received. Collapsing them overstates the care
+    // taken, on the one output that could damage someone.
+    const { emitted } = run({ judge: noCredential() });
+    expect(resultOf(emitted).judge!.unavailable).toBe(true);
+  });
+
+  it('does not mark a real FAIL as unavailable', () => {
+    const verdict = {
+      ...judgeErrorVerdict('x'),
+      grade: 'FAIL' as const,
+      failure_class: 'BROAD_VEHICLE',
+      failed_test: 'T3',
+      critique: 'The vehicle is too broad to carry this reading.',
+      corrected_verdict: '',
+    };
+    const { emitted } = run({
+      judge: {
+        verdict,
+        disposition: applyJudgeVerdict(
+          { verdict: 'BROKE', confidence: 0.8, reasoning: '' },
+          verdict,
+        ),
+      },
+    });
+    const judge = resultOf(emitted).judge!;
+    expect(judge.disposition).toBe('REVIEW_REQUIRED');
+    expect(judge.unavailable).toBe(false);
+    expect(judge.withheld).toBe(true);
+  });
+
+  it('is ABSENT when the verdict was never an accusation', () => {
+    // Absent means the judge never came into it. It must not be readable as
+    // "this passed review" — nothing was reviewed.
+    const { emitted } = run({});
+    expect(resultOf(emitted).judge).toBeUndefined();
   });
 });

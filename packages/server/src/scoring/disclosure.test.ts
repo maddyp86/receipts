@@ -3,8 +3,10 @@ import {
   BANNED_LEVEL1_TERMS,
   BANNED_MOTIVE_TERMS,
   GOVERNING_VOTE_COPY,
+  JUDGE_DISPOSITION_COPY,
   VOTE_FLAG_COPY,
   governingVoteSentence,
+  judgeDispositionSentence,
 } from '@receipts/shared';
 import { deriveAlignment } from './deriveAlignment.js';
 import { scoreMatches, type ScorableMatch } from './score.js';
@@ -148,5 +150,56 @@ describe('disclosure flags established upstream survive scoring', () => {
     expect(flagged.verdict).toBe(plain.verdict);
     expect(flagged.band).toBe(plain.band);
     expect(flagged.evidence[0]!.weight).toBe(plain.evidence[0]!.weight);
+  });
+});
+
+describe('the judge disposition copy', () => {
+  const dispositions = [
+    'PASS',
+    'PASS_ON_RETRY',
+    'REVIEW_REQUIRED',
+    'REVIEW_REQUIRED_JUDGE_CORRECTED',
+    'JUDGE_ERROR',
+  ];
+
+  it('covers every disposition the layer can produce', () => {
+    for (const d of dispositions) {
+      expect(judgeDispositionSentence(d), `no copy for ${d}`).toBeTruthy();
+    }
+    // GATED_* carries its failure class in the suffix and is matched by prefix.
+    expect(judgeDispositionSentence('GATED_BROAD_VEHICLE')).toBeTruthy();
+    expect(judgeDispositionSentence('SOMETHING_NEW')).toBeNull();
+    expect(judgeDispositionSentence(null)).toBeNull();
+  });
+
+  it('never exonerates', () => {
+    // Withholding an accusation is not a finding that the senator kept
+    // anything, and a review that could not run is not a review that cleared
+    // him. Same posture as WITHHELD_LOW_CONFIDENCE.
+    for (const copy of Object.values(JUDGE_DISPOSITION_COPY)) {
+      expect(copy.toLowerCase()).not.toMatch(/\bkept (it|the promise)\b|cleared him|no wrongdoing|in the clear/);
+    }
+  });
+
+  it('does not claim a review happened when none did', () => {
+    // The whole reason this copy exists: the generic WITHHELD_PENDING_REVIEW
+    // sentence says "a second review didn't back this reading", which is false
+    // on the JUDGE_ERROR path — no credential, or no usable model output.
+    const judgeError = JUDGE_DISPOSITION_COPY.JUDGE_ERROR!;
+    expect(judgeError).toMatch(/could not run/i);
+    expect(judgeError.toLowerCase()).not.toMatch(/review (did not|didn.t) (back|sustain)/);
+  });
+
+  it('says a review DID happen where one did', () => {
+    expect(JUDGE_DISPOSITION_COPY.REVIEW_REQUIRED!.toLowerCase()).toMatch(/did not sustain/);
+    expect(JUDGE_DISPOSITION_COPY.PASS!.toLowerCase()).toMatch(/did not overturn/);
+  });
+
+  it('carries no statistics vocabulary and attributes no motive', () => {
+    for (const copy of Object.values(JUDGE_DISPOSITION_COPY)) {
+      for (const term of [...BANNED_LEVEL1_TERMS, ...BANNED_MOTIVE_TERMS]) {
+        expect(copy.toLowerCase(), `"${term}" in judge copy`).not.toContain(term.toLowerCase());
+      }
+    }
   });
 });

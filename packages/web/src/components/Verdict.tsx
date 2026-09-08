@@ -4,6 +4,7 @@ import {
   ND_NO_REASON_COPY,
   ND_REASON_COPY,
   VERDICT_PHRASE,
+  judgeDispositionSentence,
   type QueryResult,
 } from '@receipts/shared';
 import { EvidenceCard } from './EvidenceCard.js';
@@ -111,6 +112,27 @@ function AnalystTrace({ result }: { result: QueryResult }) {
         </>
       ) : null}
 
+      {result.judge ? (
+        <>
+          <p style={{ marginBottom: '0.3rem', marginTop: '0.9rem' }}>
+            <strong>Adversarial review</strong>
+          </p>
+          <ul>
+            <li>
+              disposition <code>{result.judge.disposition}</code>
+              {result.judge.withheld ? ' · accusation withheld' : ' · published'}
+              {result.judge.unavailable ? ' · review did not run' : ''}
+            </li>
+            {result.judge.failed_test || result.judge.failure_class ? (
+              <li>
+                failed test <code>{result.judge.failed_test || '—'}</code> · class{' '}
+                <code>{result.judge.failure_class || '—'}</code>
+              </li>
+            ) : null}
+          </ul>
+        </>
+      ) : null}
+
       {/* Which RULE closed each gated row. The gate id is analyst vocabulary and
           stays at Level 2; the reader-facing card carries the gate's own
           plain-language reason instead. */}
@@ -142,11 +164,22 @@ export function Verdict({ result }: { result: QueryResult }) {
   // strongest absence claim in the vocabulary, and defaulting to it would make
   // the tool assert a searched-and-found-nothing finding on the strength of a
   // missing field.
+  // The disposition sentence is strictly more precise than the generic
+  // WITHHELD_PENDING_REVIEW copy, and on one path the generic copy is simply
+  // WRONG: it reads "a second review didn't back this reading" even when no
+  // review ran at all — no credential, or the model returned nothing usable.
+  // "A reviewer disagreed" and "nobody looked" are different facts about how
+  // much scrutiny this reading got, and claiming the first when the second
+  // happened overstates the care taken.
+  const judgeSentence = judgeDispositionSentence(result.judge?.disposition);
+
   const level1 =
     scored.verdict === 'NOT_DETERMINABLE'
-      ? scored.nd_reason
-        ? ND_REASON_COPY[scored.nd_reason]
-        : ND_NO_REASON_COPY
+      ? scored.nd_reason === 'WITHHELD_PENDING_REVIEW' && judgeSentence
+        ? judgeSentence
+        : scored.nd_reason
+          ? ND_REASON_COPY[scored.nd_reason]
+          : ND_NO_REASON_COPY
       : explanation.why;
 
   const dominant = scored.ranked[0];
@@ -175,6 +208,25 @@ export function Verdict({ result }: { result: QueryResult }) {
             a KEPT drawn from two 118th-Congress bills is scoped by the same
             window as a no-match, and the reader is owed it either way. */}
         <CoverageNote coverage={result.coverage} />
+
+        {/* A published accusation that went through review says so, and shows
+            the senator's counterargument beside it. Handoff v2 §5 makes a PASS
+            invalid without one — so requiring it and then not printing it would
+            waste the entire guarantee. Skipped when the reading was withheld:
+            the level-1 copy above is already the disposition's own sentence,
+            and a counterargument to an unpublished accusation would surface the
+            accusation we just declined to make. */}
+        {result.judge && !result.judge.withheld && judgeSentence ? (
+          <div className="judge-note">
+            <p>{judgeSentence}</p>
+            {result.judge.counterargument ? (
+              <p className="counterargument">
+                <strong>The senator’s strongest response.</strong>{' '}
+                {result.judge.counterargument}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         {scored.mode === 'ranked' ? (
           <p className="mixed-note">

@@ -486,6 +486,29 @@ textarea.promise::placeholder {
   margin-top: 0.3rem;
 }
 
+/* ---------- adversarial review -------------------------------------------
+   Shown on a PUBLISHED accusation: what the second opinion did, and the
+   senator's strongest response to it. Inside the verdict card, because it
+   qualifies the verdict rather than annotating one piece of evidence. */
+
+.judge-note {
+  margin: 0.9rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.judge-note p {
+  margin: 0;
+}
+
+.counterargument {
+  margin-top: 0.55rem !important;
+  color: var(--ink);
+}
+
 /* ---------- details toggle ---------------------------------------------- */
 
 .details-toggle {

@@ -573,6 +573,81 @@ export interface GatedAction {
   source_url?: string;
 }
 
+/**
+ * What the adversarial second opinion did with an accusation.
+ *
+ * The judge runs ONLY on a derived BROKE/INCONSISTENT — the minority of
+ * queries, and exactly where the risk is. Its disposition was persisted, handed
+ * to the model and logged to the console, and never shown to the person reading
+ * the verdict.
+ */
+export interface JudgeDisclosure {
+  /** PASS | PASS_ON_RETRY | REVIEW_REQUIRED | REVIEW_REQUIRED_JUDGE_CORRECTED | JUDGE_ERROR | GATED_*. */
+  disposition: string;
+  /** True when the accusation was not published. */
+  withheld: boolean;
+  /**
+   * True when no review happened at all — no credential, or the model returned
+   * nothing usable.
+   *
+   * Load-bearing, and NOT the same as a failed review. "A reviewer disagreed"
+   * and "nobody looked" are different facts about how much scrutiny a reading
+   * received, and a reader deserves to know which. Handoff v2 §5: an
+   * infrastructure failure is never a content verdict.
+   */
+  unavailable: boolean;
+  /**
+   * The senator's strongest counterargument, as the judge stated it.
+   *
+   * §5: a PASS is invalid without one — the parser downgrades a
+   * counterargument-free PASS to FAIL. So whenever an accusation IS published,
+   * this exists, and showing it beside the accusation is the entire point of
+   * requiring it.
+   */
+  counterargument: string | null;
+  /** Analyst vocabulary. Level 2 only. */
+  failed_test: string | null;
+  failure_class: string | null;
+}
+
+/**
+ * Plain-language copy per judge disposition.
+ *
+ * Same discipline as ND_REASON_COPY: the wording lives here so it cannot drift,
+ * and NONE of it is exculpatory. Withholding an accusation is not a finding
+ * that the senator kept anything, and a review that could not run is not a
+ * review that cleared him.
+ */
+export const JUDGE_DISPOSITION_COPY: Record<string, string> = {
+  PASS: 'This reading was put to a second, adversarial review, which did not overturn it.',
+  PASS_ON_RETRY:
+    'This reading did not survive a first adversarial review. It was re-examined and passed on the second look, and is held to a lower confidence as a result.',
+  REVIEW_REQUIRED:
+    'A second, adversarial review did not sustain this reading, and offered no correction we could stand behind. We are not publishing it. The bills and votes are below — read them and judge for yourself.',
+  REVIEW_REQUIRED_JUDGE_CORRECTED:
+    'A second, adversarial review did not sustain the original reading and supplied a correction. What you see is the corrected reading, flagged for human review.',
+  // NOT "a reviewer disagreed". Nobody looked, and saying otherwise would claim
+  // a scrutiny this reading never received.
+  JUDGE_ERROR:
+    'The second-opinion review could not run, so this reading has not been checked by anything but the evaluator. We do not publish an accusation no reviewer has seen. The bills and votes are below — read them and judge for yourself.',
+};
+
+/**
+ * The sentence for a disposition, or null when there is nothing to say.
+ *
+ * `GATED_*` dispositions are matched by prefix: the suffix is the failure class,
+ * which is analyst vocabulary and belongs in the trace rather than in front of
+ * a voter.
+ */
+export function judgeDispositionSentence(disposition: string | null | undefined): string | null {
+  if (!disposition) return null;
+  if (JUDGE_DISPOSITION_COPY[disposition]) return JUDGE_DISPOSITION_COPY[disposition]!;
+  if (disposition.startsWith('GATED_')) {
+    return 'A deterministic check caught this reading before it reached review, so we are not publishing it. The bills and votes are below — read them and judge for yourself.';
+  }
+  return null;
+}
+
 export interface QueryResult {
   senator: Senator;
   interpretation: Interpretation;
@@ -591,6 +666,13 @@ export interface QueryResult {
    * it — absent means "we don't know", never "none were gated".
    */
   gated?: GatedAction[];
+  /**
+   * What the adversarial review did, when one was attempted.
+   *
+   * Absent means the judge never came into it — the verdict was not an
+   * accusation. It does NOT mean the reading passed review.
+   */
+  judge?: JudgeDisclosure;
 }
 
 // ---------------------------------------------------------------------------

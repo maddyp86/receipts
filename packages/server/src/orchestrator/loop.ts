@@ -139,6 +139,21 @@ export function finish(session: QuerySession, emit: Emit): boolean {
       reason: g.reason,
       source_url: g.source_url,
     })),
+    // What the second opinion did. Absent when the verdict was not an
+    // accusation and the judge never came into it — which is NOT the same as
+    // "it passed review", and the copy must never let the two blur.
+    judge: session.judge
+      ? {
+          disposition: session.judge.disposition.disposition,
+          withheld: session.judge.disposition.withheld,
+          // JUDGE_ERROR covers both "no credential" and "the model returned
+          // nothing usable". Both mean nobody looked.
+          unavailable: session.judge.disposition.disposition === 'JUDGE_ERROR',
+          counterargument: session.judge.verdict.senator_counterargument || null,
+          failed_test: session.judge.verdict.failed_test || null,
+          failure_class: session.judge.verdict.failure_class || null,
+        }
+      : undefined,
   };
   // Stashed so persistence stores exactly what the user saw, rather than
   // rebuilding it later from parts that may have moved on.
