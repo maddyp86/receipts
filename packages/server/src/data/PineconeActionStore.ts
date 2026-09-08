@@ -220,6 +220,10 @@ export class PineconeActionStore implements ActionStore {
       action_uid: m.id,
       bill_id: need('bill_id', m.id),
       bill_number: str(md.bill_number) || undefined,
+      // Drives the OBSERVED coverage window. Read defensively: a vector
+      // embedded before the field existed simply has no congress, which is
+      // 'unknown', not zero.
+      congress: Number.parseInt(String(md.congress ?? ''), 10) || undefined,
       bill_type: str(md.bill_type) || undefined,
       title: need('title', 'Untitled action'),
       summary: need('summary'),

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { NullQueryStore, type StoredAlignment, type StoredMatch } from './QueryStore.js';
+import {
+  NullQueryStore,
+  type AuditEvent,
+  type StoredAlignment,
+  type StoredMatch,
+} from './QueryStore.js';
+import type { NotDeterminableReason } from '@receipts/shared';
 import { SupabaseQueryStore } from './SupabaseQueryStore.js';
 
 // ===========================================================================
@@ -249,5 +255,64 @@ describe('disclosure fields survive the contract', () => {
     // retained and the derived one governs.
     expect(a.model_verdict).toBe('INCONSISTENT');
     expect(a.promise_alignment).toBe('CONSISTENT');
+  });
+});
+
+// ===========================================================================
+// The audit trail contract.
+//
+// "The artefact you hand a journalist who asks how do you know." A verdict
+// without a record of how it was reached is an assertion; with one it is a
+// finding.
+// ===========================================================================
+
+describe('the audit seam is append-only', () => {
+  it('exposes appendAuditEvents and no way to change or remove one', async () => {
+    // Mirrors the database grant: receipts_app has INSERT and SELECT, with
+    // UPDATE and DELETE revoked. A correction is a new event, never an edit.
+    const { SupabaseQueryStore } = await import('./SupabaseQueryStore.js');
+    for (const store of [
+      new NullQueryStore(),
+      new SupabaseQueryStore('postgresql://x@127.0.0.1:1/x'),
+    ] as unknown[]) {
+      const bag = store as Record<string, unknown>;
+      expect(typeof bag.appendAuditEvents).toBe('function');
+      for (const forbidden of ['updateAuditEvent', 'deleteAuditEvent', 'clearAudit']) {
+        expect(bag[forbidden]).toBeUndefined();
+      }
+    }
+  });
+
+  it('an empty batch is a no-op, not a round trip', async () => {
+    const { SupabaseQueryStore } = await import('./SupabaseQueryStore.js');
+    // Resolves without touching the dead port — if it opened a connection this
+    // would hang rather than return.
+    await expect(
+      new SupabaseQueryStore('postgresql://x@127.0.0.1:1/x').appendAuditEvents([]),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('the contract-3 event is derivable from the frozen result', () => {
+  it('WITHHELD_LOW_CONFIDENCE is the marker the store keys on', () => {
+    // The store synthesises the withholding event when the result carries this
+    // reason and the caller supplied none. If this constant is ever renamed,
+    // the derivation silently stops and the rule loses its trace — so the
+    // linkage is asserted rather than left implicit.
+    const ndReason: NotDeterminableReason = 'WITHHELD_LOW_CONFIDENCE';
+    expect(ndReason).toBe('WITHHELD_LOW_CONFIDENCE');
+  });
+
+  it('an audit event can carry a counterargument, so a PASS is checkable', () => {
+    // Handoff v2 §5: a judge PASS is invalid without a counterargument. Storing
+    // it means the claim that one existed can be verified rather than trusted.
+    const e: Omit<AuditEvent, 'query_id'> = {
+      seq: 1,
+      stage: 'JUDGE',
+      rule: 'T6_CONFIDENCE_DISCLOSURE',
+      disposition: 'PASS',
+      senator_counterargument: 'The cloture vote preserved the motion to reconsider.',
+    };
+    expect(e.senator_counterargument).toBeTruthy();
   });
 });

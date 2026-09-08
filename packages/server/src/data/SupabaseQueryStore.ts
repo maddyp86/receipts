@@ -1,6 +1,12 @@
 import pg from 'pg';
 import { config } from '../config.js';
-import type { QueryStore, StoredAlignment, StoredMatch, StoredQuery } from './QueryStore.js';
+import type {
+  AuditEvent,
+  QueryStore,
+  StoredAlignment,
+  StoredMatch,
+  StoredQuery,
+} from './QueryStore.js';
 
 // ===========================================================================
 // The real QueryStore, over a plain Postgres connection.
@@ -237,11 +243,115 @@ export class SupabaseQueryStore implements QueryStore {
         );
       }
 
+      // ---- audit trail ----------------------------------------------------
+      // Written inside the SAME transaction as the row it describes. A verdict
+      // that committed without its trace would be exactly the unexplained
+      // assertion the log exists to prevent.
+      const events = [...(query.audit_events ?? [])];
+
+      // Contract 3 is the one rule live today, and nothing calls into the audit
+      // writer yet. Derive its event from the frozen result so the withholding
+      // is traced now rather than when a call site gets around to it. Skipped
+      // when the caller already supplied one, so wiring it explicitly later
+      // does not double-write.
+      const withheld =
+        query.result?.scored.nd_reason === 'WITHHELD_LOW_CONFIDENCE' &&
+        !events.some((e) => e.stage === 'WITHHOLDING');
+
+      if (withheld) {
+        events.push({
+          seq: events.length + 1,
+          stage: 'WITHHOLDING',
+          rule: 'CONTRACT_3',
+          disposition: 'WITHHELD',
+          verdict_before: 'BROKE',
+          verdict_after: 'NOT_DETERMINABLE',
+          reason:
+            'Accusation below the 0.7 confidence floor with no counterargument on ' +
+            'the record. The evidence is shown; the conclusion is withheld.',
+          detail: { derived_by: 'SupabaseQueryStore', floor: 0.7 },
+        });
+      }
+
+      for (const e of events) {
+        await client.query(
+          `insert into app.app_verdict_audit_log (
+             query_id, alignment_id, seq, stage, rule, disposition,
+             verdict_before, verdict_after, confidence_before, confidence_after,
+             marker, reason, senator_counterargument, critique,
+             model, prompt_version, detail
+           ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+          [
+            queryId, e.alignment_id ?? null, e.seq, e.stage, e.rule ?? null,
+            e.disposition, e.verdict_before ?? null, e.verdict_after ?? null,
+            e.confidence_before ?? null, e.confidence_after ?? null,
+            e.marker ?? null, e.reason ?? null, e.senator_counterargument ?? null,
+            e.critique ?? null, e.model ?? null, e.prompt_version ?? null,
+            e.detail ? JSON.stringify(e.detail) : null,
+          ],
+        );
+      }
+
       await client.query('commit');
       return queryId;
     } catch (err) {
       await client.query('rollback').catch(() => {
         /* the connection is already broken; the original error is what matters */
+      });
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Append decision events. One statement per event, one transaction for the
+   * batch — a half-written trace is worse than none, because it reads as the
+   * complete reasoning.
+   *
+   * INSERT only. The database revokes UPDATE and DELETE from receipts_app, so
+   * append-only is enforced by privilege rather than by this method being
+   * careful. If a correction is needed it is a new event with a later `seq`.
+   */
+  async appendAuditEvents(events: AuditEvent[]): Promise<void> {
+    if (!events.length) return;
+
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      for (const e of events) {
+        await client.query(
+          `insert into app.app_verdict_audit_log (
+             query_id, alignment_id, seq, stage, rule, disposition,
+             verdict_before, verdict_after, confidence_before, confidence_after,
+             marker, reason, senator_counterargument, critique,
+             model, prompt_version, detail
+           ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+          [
+            e.query_id,
+            e.alignment_id ?? null,
+            e.seq,
+            e.stage,
+            e.rule ?? null,
+            e.disposition,
+            e.verdict_before ?? null,
+            e.verdict_after ?? null,
+            e.confidence_before ?? null,
+            e.confidence_after ?? null,
+            e.marker ?? null,
+            e.reason ?? null,
+            e.senator_counterargument ?? null,
+            e.critique ?? null,
+            e.model ?? null,
+            e.prompt_version ?? null,
+            e.detail ? JSON.stringify(e.detail) : null,
+          ],
+        );
+      }
+      await client.query('commit');
+    } catch (err) {
+      await client.query('rollback').catch(() => {
+        /* connection already broken; the original error is what matters */
       });
       throw err;
     } finally {

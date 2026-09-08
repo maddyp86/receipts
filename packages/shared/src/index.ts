@@ -303,6 +303,8 @@ export interface MatchedAction {
   action_uid: string;
   bill_id: string;
   bill_number?: string;
+  /** From Pinecone metadata. Drives the OBSERVED coverage window on a result. */
+  congress?: number;
   bill_type?: string;
   title: string;
   summary: string;
@@ -464,6 +466,31 @@ export interface Explanation {
 // The complete query result
 // ---------------------------------------------------------------------------
 
+/**
+ * What record was actually searched.
+ *
+ * Rendered on EVERY result, not only empty ones. A verdict drawn from two
+ * 118th-Congress bills is scoped by the same boundary as a no-match, and the
+ * reader is owed the boundary either way.
+ */
+export interface CoverageWindow {
+  /** Declared collected window, e.g. [118, 119]. Empty when unconfigured. */
+  congresses: number[];
+  /**
+   * The span actually seen in this query's retrieved candidates.
+   *
+   * Derived from the data rather than asserted, so that extending collection
+   * cannot leave a hardcoded sentence quietly lying in the other direction.
+   * Null when nothing was retrieved — then only the declared window applies.
+   */
+  observed: { min: number; max: number } | null;
+  /**
+   * True when the tool cannot say what it searched. Renders as a weaker claim,
+   * never as a confident absence.
+   */
+  unknown: boolean;
+}
+
 export interface QueryResult {
   senator: Senator;
   interpretation: Interpretation;
@@ -473,6 +500,8 @@ export interface QueryResult {
   demo_mode: boolean;
   /** True when matches came from fixtures rather than Pinecone. */
   fixture_mode: boolean;
+  /** What record was searched. Must be rendered alongside any verdict. */
+  coverage?: CoverageWindow;
 }
 
 // ---------------------------------------------------------------------------
