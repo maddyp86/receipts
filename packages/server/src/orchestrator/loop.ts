@@ -446,6 +446,7 @@ export function buildAlignments(session: QuerySession): StoredAlignment[] {
   return evidence.map((e) => {
     const f = fulfillment[e.action_uid];
     const modelEffect = modelEffects[e.action_uid] ?? null;
+    const gate = session.gates?.[e.action_uid];
     return {
       action_uid: e.action_uid,
       bill_id: String(e.bill_id ?? ''),
@@ -486,10 +487,77 @@ export function buildAlignments(session: QuerySession): StoredAlignment[] {
       vote_governing: e.vote_governing ?? null,
       vote_flags: e.vote_flags?.length ? e.vote_flags : null,
 
-      // The gated-row markers stay ABSENT rather than null-as-a-value until the
-      // pre-evaluator gates are wired: these rows reached the evaluator, so
-      // nothing about them was "not evaluated". Writing NOT_EVALUATED here
-      // would assert a gating that never happened.
+      // The markers stay ABSENT on a scored row. These rows reached the
+      // evaluator, so nothing about them was "not evaluated" — writing
+      // NOT_EVALUATED here would assert a gating that never happened. Gated
+      // rows carry them instead; see buildGatedAlignments below.
+
+      // Context the gates produced, whether or not one fired.
+      senator_role: gate?.context.senator_role ?? null,
+      cloture_result: gate?.context.cloture_result ?? null,
+      bill_class: gate?.context.bill_class ?? null,
+      scope: session.scope?.scope ?? null,
+      valid_until: session.scope?.valid_until ?? null,
+      anchor_entity: session.scope?.anchor_entity ?? null,
+      role_condition: session.scope?.role_condition ?? null,
+      promise_date: session.statementDate ?? null,
+      grade: session.judge?.disposition.disposition ?? null,
+    };
+  });
+}
+
+/**
+ * Alignment rows for actions a gate closed before the evaluator ran.
+ *
+ * These are the rows the NOT_EVALUATED markers exist for (handoff v2 §3). The
+ * distinction is load-bearing and this is the only place it becomes real:
+ *
+ *   bill_effect NULL + effect_marker NOT_EVALUATED   we made no finding
+ *   bill_effect NEUTRAL                              we found the bill does
+ *                                                    not move the goal
+ *
+ * The second is a determination nobody made. Writing NEUTRAL on a gated row —
+ * or 0 into alignment_confidence — would put a fabricated finding in the record
+ * that reads exactly like a real one.
+ */
+export function buildGatedAlignments(session: QuerySession): StoredAlignment[] {
+  const gated = session.gated ?? [];
+  return gated.map((g) => {
+    const gate = session.gates?.[g.action_uid];
+    return {
+      action_uid: g.action_uid,
+      bill_id: g.bill_id,
+      // Empty string, not 'NEUTRAL': the column is NOT NULL, and the marker
+      // beside it carries the meaning.
+      bill_effect: '',
+      bill_effect_reasoning: g.reason,
+      promise_alignment: g.verdict,
+      alignment_confidence: null,
+      alignment_reasoning: g.reason,
+      model_bill_effect: null,
+      model_agreed: null,
+      outcome: g.verdict,
+      direction: 'neutral',
+      evidence_type: 'associative',
+      action_tier: 'NONE',
+      vote_pattern: null,
+      weight: 0,
+      scoring_flags: null,
+      vote_governing: null,
+      vote_flags: gate?.context.vote_flags?.length ? gate.context.vote_flags : null,
+      model_verdict: null,
+      confidence_marker: 'NOT_EVALUATED' as const,
+      effect_marker: 'NOT_EVALUATED' as const,
+      grade: gate?.hit ? `GATED_${gate.hit.gate}` : 'GATED',
+      gate_hits: gate?.hits.map((h) => `${h.gate}:${h.verdict}`).join(';') ?? null,
+      senator_role: gate?.context.senator_role ?? null,
+      cloture_result: gate?.context.cloture_result ?? null,
+      bill_class: gate?.context.bill_class ?? null,
+      scope: session.scope?.scope ?? null,
+      valid_until: session.scope?.valid_until ?? null,
+      anchor_entity: session.scope?.anchor_entity ?? null,
+      role_condition: session.scope?.role_condition ?? null,
+      promise_date: session.statementDate ?? null,
     };
   });
 }
@@ -549,7 +617,7 @@ async function persist(session: QuerySession, sessionId: string | null): Promise
         embedding_text: session.embeddingText ?? null,
       },
       matches: buildMatches(session),
-      alignments: buildAlignments(session),
+      alignments: [...buildAlignments(session), ...buildGatedAlignments(session)],
     });
     // Only claim a write when one actually happened. NullQueryStore returns a
     // plausible uuid and stores nothing, so an unconditional "stored" here

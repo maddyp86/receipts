@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DirectedAction, ScoredResult } from '@receipts/shared';
-import { buildAlignments } from './loop.js';
+import { buildAlignments, buildGatedAlignments } from './loop.js';
 import type { QuerySession } from './dispatch.js';
 import type { FulfillmentResult } from '../evaluation/fulfillment.js';
 
@@ -148,5 +148,104 @@ describe('buildAlignments — disclosure fields', () => {
     const [row] = buildAlignments(session(evidence(), fulfillment()));
     expect(row!.confidence_marker).toBeUndefined();
     expect(row!.effect_marker).toBeUndefined();
+  });
+});
+
+// ===========================================================================
+// Gated rows — where the NOT_EVALUATED markers finally have a real source.
+//
+// handoff v2 §3, and the reason the distinction exists at all:
+//   bill_effect NULL + effect_marker NOT_EVALUATED   we made no finding
+//   bill_effect NEUTRAL                              we found the bill does
+//                                                    not move the goal
+// The second is a determination nobody made.
+// ===========================================================================
+
+const gatedSession = (): QuerySession =>
+  ({
+    politicianId: 'S000148',
+    promiseText: 'A promise.',
+    uncached: false,
+    queued: false,
+    gated: [
+      {
+        action_uid: 'ACT-9',
+        bill_id: 'hr9-119',
+        title: 'An omnibus',
+        verdict: 'PROCEDURAL_SWITCH',
+        reason: 'majority leader voted NAY on cloture while the party whip voted YEA',
+      },
+    ],
+    gates: {
+      'ACT-9': {
+        scorable: false,
+        hit: {
+          gate: 'G3_leader_switch',
+          verdict: 'PROCEDURAL_SWITCH',
+          reason: 'majority leader voted NAY on cloture while the party whip voted YEA',
+        },
+        hits: [
+          {
+            gate: 'G3_leader_switch',
+            verdict: 'PROCEDURAL_SWITCH',
+            reason: 'majority leader voted NAY on cloture while the party whip voted YEA',
+          },
+        ],
+        context: {
+          promise_date: 'unknown',
+          scope: 'STANDING',
+          valid_until: '',
+          anchor_entity: '',
+          role_condition: 'NONE',
+          senator_role: 'MAJORITY_LEADER',
+          cloture_result: 'REJECTED',
+          bill_congress: '119',
+          action_date: '2025-06-01',
+          bill_class: 'BROAD_VEHICLE',
+          vote_flags: ['FLOOR_LEADER'],
+        },
+      },
+    },
+  }) as unknown as QuerySession;
+
+describe('buildGatedAlignments', () => {
+  it('marks the row NOT_EVALUATED rather than writing a finding', () => {
+    const [row] = buildGatedAlignments(gatedSession());
+    expect(row!.confidence_marker).toBe('NOT_EVALUATED');
+    expect(row!.effect_marker).toBe('NOT_EVALUATED');
+  });
+
+  // The specific error the marker exists to prevent. NEUTRAL asserts "this bill
+  // does not move the goal"; nobody determined that.
+  it('never writes NEUTRAL into bill_effect for a gated row', () => {
+    const [row] = buildGatedAlignments(gatedSession());
+    expect(row!.bill_effect).not.toBe('NEUTRAL');
+  });
+
+  // 0 is a confidence. Absence is not.
+  it('leaves alignment_confidence null rather than zero', () => {
+    const [row] = buildGatedAlignments(gatedSession());
+    expect(row!.alignment_confidence).toBeNull();
+  });
+
+  it('carries the gate verdict, its hits and the reason a reader can see', () => {
+    const [row] = buildGatedAlignments(gatedSession());
+    expect(row!.promise_alignment).toBe('PROCEDURAL_SWITCH');
+    expect(row!.gate_hits).toBe('G3_leader_switch:PROCEDURAL_SWITCH');
+    expect(row!.grade).toBe('GATED_G3_leader_switch');
+    expect(row!.alignment_reasoning).toContain('party whip');
+  });
+
+  it('carries the context the gate produced', () => {
+    const [row] = buildGatedAlignments(gatedSession());
+    expect(row!.senator_role).toBe('MAJORITY_LEADER');
+    expect(row!.cloture_result).toBe('REJECTED');
+    expect(row!.bill_class).toBe('BROAD_VEHICLE');
+  });
+
+  it('contributes no weight, so a gated row cannot move a verdict', () => {
+    const [row] = buildGatedAlignments(gatedSession());
+    expect(row!.weight).toBe(0);
+    expect(row!.direction).toBe('neutral');
   });
 });

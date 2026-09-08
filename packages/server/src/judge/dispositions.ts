@@ -1,4 +1,4 @@
-import type { AlignmentOutcome } from '@receipts/shared';
+import type { AlignmentOutcome, ScoredResult } from '@receipts/shared';
 import type { JudgeVerdict } from './judge.js';
 import type { JudgeGateHit } from './judgeGates.js';
 
@@ -232,4 +232,61 @@ export function checkRetryInvariant(
     };
   }
   return { accepted: true, note: '' };
+}
+
+// ---------------------------------------------------------------------------
+// APPLYING A DISPOSITION TO THE RENDERED RESULT.
+//
+// Same shape and same posture as scoring/withholding.ts (contract 3): a
+// post-scoring pass that can only WITHHOLD an accusation, never create or
+// strengthen one. It runs after scoreMatches because the judge grades a
+// verdict, which means one has to exist first — and scoreMatches is pure by
+// design, so a model call cannot live inside it.
+//
+// THE EVIDENCE STAYS. Withholding the verdict is not hiding the record: the
+// bills and votes remain on screen for the reader to weigh. What is withheld
+// is our conclusion about them.
+// ---------------------------------------------------------------------------
+
+export interface JudgedResultOutcome {
+  result: ScoredResult;
+  withheld: boolean;
+  reason: string;
+}
+
+/**
+ * Downgrade a result whose accusation the judge did not clear.
+ *
+ * Only ever touches BROKE. A KEPT the judge failed is left alone here: this
+ * layer exists to stop false accusations, and quietly downgrading a favourable
+ * reading would be a different product decision made by accident.
+ */
+export function applyDispositionToResult(
+  result: ScoredResult,
+  disposition: DispositionResult,
+): JudgedResultOutcome {
+  if (result.verdict !== 'BROKE' || !disposition.withheld) {
+    return { result, withheld: false, reason: '' };
+  }
+
+  const reason =
+    disposition.disposition === 'JUDGE_ERROR'
+      ? `This reading would say the senator broke the promise, but the second-opinion review could not run (${disposition.reasoning.slice(0, 160)}). An accusation no reviewer has checked is not published.`
+      : `This reading would say the senator broke the promise, but an adversarial review did not sustain it. An accusation that fails review is not published.`;
+
+  return {
+    withheld: true,
+    reason,
+    result: {
+      ...result,
+      verdict: 'NOT_DETERMINABLE',
+      band: null,
+      mode: 'not_determinable',
+      nd_reason: 'WITHHELD_PENDING_REVIEW',
+      receipt: {
+        ...result.receipt,
+        trace: [...(result.receipt.trace ?? []), `Judge ${disposition.disposition}: ${reason}`],
+      },
+    },
+  };
 }
