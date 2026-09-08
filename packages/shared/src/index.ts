@@ -378,7 +378,13 @@ export type NotDeterminableReason =
   | 'PROCEDURAL_SWITCH'
   | 'NON_LEGISLATIVE'
   | 'NOT_EVALUABLE'
-  | 'UNDIRECTABLE_METADATA';
+  | 'UNDIRECTABLE_METADATA'
+  /**
+   * Behavioural contract 3: an accusation below the confidence floor with no
+   * counterargument on the record. NOT an exoneration — the copy for this must
+   * say we could not defensibly call it, never that he kept it.
+   */
+  | 'WITHHELD_LOW_CONFIDENCE';
 
 /** Level-2 analyst trace. Never rendered at Level 1. */
 export interface FactorReceipt {
@@ -637,6 +643,10 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
     "We couldn't tell what specific commitment to check here. Try naming the policy, program, or outcome you have in mind.",
   UNDIRECTABLE_METADATA:
     "We found related legislation but couldn't establish which way it cuts on this promise, so we're not going to guess.",
+  // Deliberately NOT exculpatory. Withholding an accusation is not a finding
+  // that he kept it, and this sentence must never be readable as one.
+  WITHHELD_LOW_CONFIDENCE:
+    "The record here points against this promise, but not clearly enough for us to say so publicly. The bills and votes are below — read them and judge for yourself.",
 };
 
 /** Words that must never appear in Level-1 voter-facing copy. */

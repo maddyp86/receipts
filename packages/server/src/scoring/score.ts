@@ -28,6 +28,7 @@ import {
   type AlignmentInput,
 } from './deriveAlignment.js';
 import { PATTERN_MULTIPLIER, actionTier, votePattern } from './votePattern.js';
+import { applyWithholding } from './withholding.js';
 
 // ===========================================================================
 // The deterministic scoring service.
@@ -378,7 +379,9 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
       },
     ];
 
-    return {
+    // Contract 3 runs last, on the finished result: it can only withhold an
+    // accusation, never create or strengthen one.
+    return applyWithholding({
       verdict: ranked[0]!.verdict,
       band: cappedBand,
       mode: 'ranked',
@@ -386,7 +389,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
       ranked,
       receipt: { ...receipt, trace },
       evidence,
-    };
+    }).result;
   }
 
   // ---- Clean direction: dials set the band --------------------------------
@@ -395,7 +398,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
   trace.push(`G2 passed: direction is unanimous (${verdict}).`);
   trace.push(`Band ${band} — ${why}.`);
 
-  return {
+  return applyWithholding({
     verdict,
     band,
     mode: 'single',
@@ -403,7 +406,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
     ranked: [],
     receipt: { ...receipt, trace },
     evidence,
-  };
+  }).result;
 }
 
 export { PATTERN_MULTIPLIER };

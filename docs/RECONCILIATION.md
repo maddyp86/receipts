@@ -969,3 +969,74 @@ The six bills from handoff §8 are a table, not a constant: updatable without a
 deploy, and a suppression stays auditable. `resolved_at` is set on regeneration
 rather than deleting the row — that a reading was once unreliable is part of the
 audit trail.
+
+---
+
+## 2026-09-07 (later) — contract 3 and the verdict audit log
+
+### Contract 3 — accusations must clear a floor
+
+`scoring/withholding.ts`. A `BROKE`/`INCONSISTENT` whose best supporting action
+is below **0.7 confidence**, with no counterargument on the record, is
+downgraded to `NOT_DETERMINABLE` with reason `WITHHELD_LOW_CONFIDENCE`.
+
+This is the cheap, deterministic half of the false-positive defence: no model
+call, no added latency, and it runs on every query. The audit that found 78 of
+79 BROKE verdicts false is the reason it exists.
+
+Four decisions worth recording:
+
+- **Asymmetric on purpose.** It only ever touches accusations. A `KEPT` at 0.2
+  passes untouched. A weak favourable reading is not the output with real
+  downside, and nothing here can create or strengthen an accusation.
+- **Best breaking action, not the average.** One sound action at 0.85 supports
+  the reading even beside weak corroboration. Averaging would withhold
+  defensible accusations — the wrong failure direction.
+- **Null confidence fails closed.** No recorded confidence is *less* evidence
+  than 0.65, not more. The bar is "demonstrably at or above 0.7", not "not
+  demonstrably below it".
+- **`counterargumentPresent` defaults to false.** v7 asks the evaluator to put
+  the counterargument in `alignment_reasoning` as prose, and prose cannot be
+  verified by inspection. Guessing "there's probably one in there" is the
+  unverified inference this contract exists to stop. When the evaluator emits a
+  discrete `senator_counterargument`, pass it and sub-0.7 accusations become
+  renderable again — with the reply shown beside them, which was always the point.
+
+**The evidence stays on screen.** Withholding the verdict is not hiding the
+record: the bills and votes still render, and the trace says why no conclusion
+was drawn. The copy is deliberately non-exculpatory — "the record here points
+against this promise, but not clearly enough for us to say so publicly" — because
+withholding an accusation is not a finding that he kept it.
+
+⚠️ **Consequence for DEMO mode.** Stub effects carry no `alignment_confidence`,
+so every stubbed `BROKE` now withholds. That is correct behaviour by the rule,
+but it changes what the demo shows. One line in the stub (emit a confidence)
+restores it honestly — flagged for the v7 port thread rather than worked around
+here.
+
+### Verdict audit log — migration 004
+
+`app.app_verdict_audit_log`, one row per **decision event**, not per query: a
+single query can gate, then withhold, then judge, and collapsing those loses the
+order the reasoning actually happened in. `seq` makes the order explicit rather
+than inferred from `created_at`, which ties on sub-millisecond steps.
+
+**Append-only by privilege, not convention.** `receipts_app` is granted `INSERT`
+and `SELECT`; `UPDATE` and `DELETE` are revoked. A trace that can be edited is
+not a trace, and a correction is a new row.
+
+`senator_counterargument` is a stored column rather than a flag, so the claim
+that a counterargument existed is checkable rather than asserted — which is the
+same reason contract 3 refuses to infer one from prose.
+
+`app.v_verdict_trace` renders the chronological reasoning per query. A verdict
+with no rows there was never audited, which is itself a finding.
+
+### Judge — decided
+
+The query tool keeps the audit log regardless of the judge, because the trace is
+wanted for the deterministic steps too. Whether the LLM judge runs on the query
+path is still worth measuring against the 79-row gold set before committing to
+the Sonnet call: if v7 plus contract 3 already clears it, the judge is redundant
+here. The log schema accommodates the judge without requiring it — `stage`
+carries `JUDGE` and `RETRY` values that simply go unused until it is wired.
