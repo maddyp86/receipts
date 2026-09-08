@@ -96,6 +96,58 @@ export interface StoredAlignment {
   vote_pattern: string | null;
   weight: number | null;
   scoring_flags: string[] | null;
+
+  // ---- v7 (handoff v2 §4). All optional: the persistence contract runs ahead
+  // of the mapping that populates it, so an unmapped field is absent rather
+  // than a wrong default. ----------------------------------------------------
+
+  /**
+   * DISCLOSURE. Which vote decided the outcome, in words.
+   *
+   * A row reading "voted NAY → BROKE" while hiding a cloture YEA is exactly the
+   * claim a senator's office knocks down. Anything rendering `outcome` must
+   * render this beside it.
+   */
+  vote_governing?: string | null;
+  /** ';'-joined on the wire to match the pipeline: SPLIT_VOTE, FLOOR_LEADER. */
+  vote_flags?: string[] | null;
+
+  /**
+   * The evaluator model's own promise_alignment.
+   *
+   * Behavioural contract 1: this is NEVER the verdict. `deriveAlignment`
+   * decides; this exists for agreement tracking only.
+   */
+  model_verdict?: string | null;
+
+  /**
+   * NOT_EVALUATED on a gated row, else null — and NEVER a number.
+   *
+   * `alignment_confidence` stays numeric. A marker replaced by a value from the
+   * column's own vocabulary is a fabricated finding: `0` asserts "no
+   * confidence", which is a determination nobody made (handoff v2 §3). The
+   * database enforces that only one of the two is ever present.
+   */
+  confidence_marker?: 'NOT_EVALUATED' | null;
+  /** Same rule for effect: null bill_effect, never NEUTRAL, on a gated row. */
+  effect_marker?: 'NOT_EVALUATED' | null;
+
+  /**
+   * Judge disposition (handoff v2 §5). PENDING and REVIEW_REQUIRED must not
+   * reach scoring or display — an accusation no judge has cleared.
+   */
+  grade?: string | null;
+  gate_hits?: string | null;
+
+  senator_role?: string | null;
+  role_condition?: string | null;
+  cloture_result?: string | null;
+  promise_date?: string | null;
+  scope?: string | null;
+  valid_until?: string | null;
+  anchor_entity?: string | null;
+  /** BROAD_VEHICLE | REVERSAL | TARGETED. */
+  bill_class?: string | null;
 }
 
 /**
@@ -132,6 +184,31 @@ export interface StoredQuery {
   /** Operational context: which models ran, and whether any leg was degraded. */
   models_used?: Record<string, string>;
   degraded?: Record<string, unknown>;
+  /**
+   * Statement scope classification (handoff v2 §1–2).
+   *
+   * The pipeline stores this per statement on `Evaluable Statements`. The query
+   * tool has no statements table — the user's text IS the statement, classified
+   * live — so it belongs on the query row.
+   *
+   * Optional because a classification can legitimately be unavailable: the
+   * classifier failing is recorded as absent rather than defaulted, since a
+   * guessed scope changes whether the statement is testable at all.
+   */
+  scope?: {
+    speech_act: string;
+    scope: string;
+    /** ISO date, `UNKNOWN`, or empty. Empty is STANDING; UNKNOWN is unresolved. */
+    valid_until: string;
+    anchor_entity: string;
+    role_condition: string;
+    confidence: number;
+    reasoning: string;
+    /** Post-check overrides that fired, e.g. SCOPE_OVERRIDE_BOUNDED. */
+    flags?: string[];
+    /** e.g. 'claude-haiku-4-5 / scope-classifier-v1.1'. */
+    model: string;
+  };
   /** Every retrieved candidate, admitted or not. */
   matches?: StoredMatch[];
   /** Every admitted match that went through fulfillment. */

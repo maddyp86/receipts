@@ -169,3 +169,85 @@ describe('search reports pre-filter counts', () => {
     expect(r.data.topScore).toBeNull();
   });
 });
+
+// ===========================================================================
+// v7 persistence contract (handoff v2 §3–4).
+//
+// These pin the two rules the schema enforces, so a future mapping cannot
+// quietly violate them without a test going red.
+// ===========================================================================
+
+describe('the NOT_EVALUATED marker never becomes a value', () => {
+  it('keeps the marker and the number in separate fields', () => {
+    // A gated row: no evaluator ran, so there is no confidence to report. The
+    // marker says that. Writing 0 instead would assert "no confidence", which
+    // is a determination nobody made.
+    const gated: StoredAlignment = {
+      action_uid: 'ACT-1', bill_id: 'hr1-118', bill_effect: 'NEUTRAL',
+      bill_effect_reasoning: '', promise_alignment: null,
+      alignment_confidence: null, alignment_reasoning: null,
+      model_bill_effect: null, model_agreed: null, outcome: null,
+      direction: null, evidence_type: null, action_tier: null,
+      vote_pattern: null, weight: null, scoring_flags: null,
+      confidence_marker: 'NOT_EVALUATED', effect_marker: 'NOT_EVALUATED',
+    };
+    expect(gated.confidence_marker).toBe('NOT_EVALUATED');
+    expect(gated.alignment_confidence).toBeNull();
+    // Never both — the database CHECK enforces this too.
+    expect(gated.confidence_marker !== null && gated.alignment_confidence !== null).toBe(false);
+  });
+
+  it('an evaluated row carries a number and no marker', () => {
+    const evaluated: StoredAlignment = {
+      action_uid: 'ACT-2', bill_id: 'hr2-118', bill_effect: 'ADVANCE',
+      bill_effect_reasoning: 'r', promise_alignment: 'CONSISTENT',
+      alignment_confidence: 0.75, alignment_reasoning: 'r',
+      model_bill_effect: 'ADVANCE', model_agreed: true, outcome: 'CONSISTENT',
+      direction: 'keeps', evidence_type: 'vote', action_tier: 'VOTED',
+      vote_pattern: 'PASSAGE_ONLY', weight: 1, scoring_flags: [],
+      confidence_marker: null,
+    };
+    expect(evaluated.alignment_confidence).toBe(0.75);
+    expect(evaluated.confidence_marker ?? null).toBeNull();
+  });
+});
+
+describe('disclosure fields survive the contract', () => {
+  it('carries vote_governing and vote_flags on a split vote', () => {
+    // Behavioural contract 2. A row reading "voted NAY -> BROKE" while hiding a
+    // cloture YEA is the claim a senator's office knocks down.
+    const split: StoredAlignment = {
+      action_uid: 'ACT-3', bill_id: 'hr3-118', bill_effect: 'HINDER',
+      bill_effect_reasoning: 'r', promise_alignment: 'INCONSISTENT',
+      alignment_confidence: 0.75, alignment_reasoning: 'r',
+      model_bill_effect: null, model_agreed: null, outcome: 'INCONSISTENT',
+      direction: 'breaks', evidence_type: 'vote', action_tier: 'VOTED',
+      vote_pattern: 'ENABLED_THEN_OPPOSED', weight: 1, scoring_flags: [],
+      vote_governing: 'CLOTURE (60-vote threshold; split vote)',
+      vote_flags: ['SPLIT_VOTE'],
+    };
+    expect(split.vote_governing).toContain('CLOTURE');
+    expect(split.vote_flags).toContain('SPLIT_VOTE');
+    // Contract 2: split vote caps confidence at 0.75.
+    expect(split.alignment_confidence!).toBeLessThanOrEqual(0.75);
+  });
+
+  it('model_verdict is stored separately from the verdict', () => {
+    // Behavioural contract 1: the model's promise_alignment is never the
+    // verdict. Two fields, so agreement can be tracked without the model's
+    // answer ever being mistaken for the finding.
+    const a: StoredAlignment = {
+      action_uid: 'ACT-4', bill_id: 'hr4-118', bill_effect: 'ADVANCE',
+      bill_effect_reasoning: 'r', promise_alignment: 'CONSISTENT',
+      alignment_confidence: 0.8, alignment_reasoning: 'r',
+      model_bill_effect: 'ADVANCE', model_agreed: false, outcome: 'CONSISTENT',
+      direction: 'keeps', evidence_type: 'vote', action_tier: 'VOTED',
+      vote_pattern: 'PASSAGE_ONLY', weight: 1, scoring_flags: [],
+      model_verdict: 'INCONSISTENT',
+    };
+    // The model said INCONSISTENT; the derived verdict is CONSISTENT. Both are
+    // retained and the derived one governs.
+    expect(a.model_verdict).toBe('INCONSISTENT');
+    expect(a.promise_alignment).toBe('CONSISTENT');
+  });
+});

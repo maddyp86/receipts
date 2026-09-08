@@ -119,8 +119,11 @@ export class SupabaseQueryStore implements QueryStore {
         `insert into app.app_queries (
            session_id, politician_id, promise_text, classification,
            corrections_applied, statement_type, provenance, user_asserted_premise,
-           result, verdict, band, models_used, degraded
-         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+           result, verdict, band, models_used, degraded,
+           speech_act, scope, valid_until, anchor_entity, role_condition,
+           scope_confidence, scope_reasoning, scope_model
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+                   $14,$15,$16,$17,$18,$19,$20,$21)
          returning id`,
         [
           query.session_id,
@@ -140,6 +143,17 @@ export class SupabaseQueryStore implements QueryStore {
           query.result?.scored.band ?? null,
           query.models_used ? JSON.stringify(query.models_used) : null,
           query.degraded ? JSON.stringify(query.degraded) : null,
+          // Scope. Absent when classification was unavailable — recorded as
+          // absent rather than defaulted, because a guessed scope changes
+          // whether the statement is testable at all.
+          query.scope?.speech_act ?? null,
+          query.scope?.scope ?? null,
+          query.scope?.valid_until ?? null,
+          query.scope?.anchor_entity ?? null,
+          query.scope?.role_condition ?? null,
+          query.scope?.confidence ?? null,
+          query.scope?.reasoning ?? null,
+          query.scope?.model ?? null,
         ],
       );
       const queryId = rows[0]!.id;
@@ -183,8 +197,13 @@ export class SupabaseQueryStore implements QueryStore {
              bill_effect_reasoning, promise_alignment, alignment_confidence,
              alignment_reasoning, model_bill_effect, model_agreed, outcome,
              direction, evidence_type, action_tier, vote_pattern, weight,
-             scoring_flags
-           ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+             scoring_flags,
+             vote_governing, vote_flags, model_verdict, confidence_marker,
+             effect_marker, grade, gate_hits, senator_role, role_condition,
+             cloture_result, promise_date, scope, valid_until, anchor_entity,
+             bill_class
+           ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+                     $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)`,
           [
             queryId,
             matchIdByAction.get(a.action_uid) ?? null,
@@ -193,6 +212,27 @@ export class SupabaseQueryStore implements QueryStore {
             a.model_bill_effect, a.model_agreed, a.outcome, a.direction,
             a.evidence_type, a.action_tier, a.vote_pattern, a.weight,
             a.scoring_flags ? JSON.stringify(a.scoring_flags) : null,
+            a.vote_governing ?? null,
+            // ';'-joined rather than an array: the pipeline writes it that way
+            // and one wire format is better than two that must be kept in step.
+            a.vote_flags?.length ? a.vote_flags.join(';') : null,
+            a.model_verdict ?? null,
+            // The DB has a CHECK that only one of confidence_marker /
+            // alignment_confidence is present. Passing both would raise, which
+            // is the intended outcome — a marker beside a number means the
+            // caller collapsed a "not evaluated" into a value.
+            a.confidence_marker ?? null,
+            a.effect_marker ?? null,
+            a.grade ?? null,
+            a.gate_hits ?? null,
+            a.senator_role ?? null,
+            a.role_condition ?? null,
+            a.cloture_result ?? null,
+            a.promise_date ?? null,
+            a.scope ?? null,
+            a.valid_until ?? null,
+            a.anchor_entity ?? null,
+            a.bill_class ?? null,
           ],
         );
       }
