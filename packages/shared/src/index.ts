@@ -540,6 +540,39 @@ const ordinal = (n: number): string => {
   return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'}`;
 };
 
+/**
+ * A retrieved action that a pre-evaluator gate closed before the evaluator ran.
+ *
+ * DISPLAYED WITH ITS REASON, never dropped. fix/08 calls gated items "the thing
+ * that makes the tool look honest": "Not evaluated: leader procedural vote" is
+ * a useful answer, and silently discarding the row turns a deliberate refusal
+ * to read something into an absence of evidence.
+ *
+ * Kept out of `ScoredResult.evidence` on purpose. These rows never reached the
+ * evaluator, so they carry no direction, no weight and no confidence — sitting
+ * them beside scored evidence would imply they were weighed and found wanting,
+ * when in fact we declined to weigh them at all.
+ */
+export interface GatedAction {
+  action_uid: string;
+  bill_id: string;
+  bill_number?: string;
+  title: string;
+  /** Which gate fired, e.g. `G4_vehicle`. Analyst trace only, not Level 1. */
+  gate: string;
+  /**
+   * The terminal outcome the gate assigned.
+   *
+   * `NOT_APPLICABLE_EXPIRED` and `NOT_APPLICABLE` are the interesting ones:
+   * "this action could not bear on this statement" is a finding about the
+   * STATEMENT, and different from "we could not read this action".
+   */
+  outcome: AlignmentOutcome;
+  /** Plain-language, written for a reader, safe to render verbatim. */
+  reason: string;
+  source_url?: string;
+}
+
 export interface QueryResult {
   senator: Senator;
   interpretation: Interpretation;
@@ -551,6 +584,13 @@ export interface QueryResult {
   fixture_mode: boolean;
   /** What record was searched. Must be rendered alongside any verdict. */
   coverage?: CoverageWindow;
+  /**
+   * Actions closed by a gate before evaluation. Rendered with their reasons.
+   *
+   * Optional because results persisted before this field existed do not carry
+   * it — absent means "we don't know", never "none were gated".
+   */
+  gated?: GatedAction[];
 }
 
 // ---------------------------------------------------------------------------

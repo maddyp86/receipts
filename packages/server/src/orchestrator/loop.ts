@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { QueryResult, StepId, StreamEvent, ToolError } from '@receipts/shared';
+import type { GatedAction, QueryResult, StepId, StreamEvent, ToolError } from '@receipts/shared';
 import { config } from '../config.js';
 import { dispatchTool, newSession, type QuerySession } from './dispatch.js';
 import { queryStore } from '../services.js';
@@ -125,6 +125,20 @@ export function finish(session: QuerySession, emit: Emit): boolean {
     // the question is what the SEARCH covered, and a row the gates later closed
     // was still inside the window that was searched.
     coverage: describeCoverage(session.matches ?? []),
+    // Gated rows are REPORTED, not hidden. They were already being handed to
+    // the model and persisted with full detail, and dropped on the floor
+    // between there and the browser — so the one audience that cannot look
+    // them up was the only one not told.
+    gated: (session.gated ?? []).map((g) => ({
+      action_uid: g.action_uid,
+      bill_id: g.bill_id,
+      bill_number: g.bill_number,
+      title: g.title,
+      gate: g.gate,
+      outcome: g.verdict as GatedAction['outcome'],
+      reason: g.reason,
+      source_url: g.source_url,
+    })),
   };
   // Stashed so persistence stores exactly what the user saw, rather than
   // rebuilding it later from parts that may have moved on.

@@ -7,6 +7,7 @@ import {
   type QueryResult,
 } from '@receipts/shared';
 import { EvidenceCard } from './EvidenceCard.js';
+import { GatedActions } from './GatedActions.js';
 import { CoverageNote } from './States.js';
 
 // ===========================================================================
@@ -36,6 +37,7 @@ function headline(result: QueryResult): string {
 
 function AnalystTrace({ result }: { result: QueryResult }) {
   const { receipt, evidence, mode, band } = result.scored;
+  const gated = result.gated ?? [];
   const votes = receipt.evidence_mix.vote;
   const sponsorships = receipt.evidence_mix.sponsorship;
 
@@ -93,6 +95,25 @@ function AnalystTrace({ result }: { result: QueryResult }) {
               <li key={e.action_uid}>
                 <code>{e.action_uid}</code> · effect {e.bill_effect} · {e.action_tier} ·{' '}
                 {e.vote_pattern} · outcome {e.outcome} · weight {e.weight}
+              </li>
+            ))}
+          </ol>
+        </>
+      ) : null}
+
+      {/* Which RULE closed each gated row. The gate id is analyst vocabulary and
+          stays at Level 2; the reader-facing card carries the gate's own
+          plain-language reason instead. */}
+      {gated.length ? (
+        <>
+          <p style={{ marginBottom: '0.3rem', marginTop: '0.9rem' }}>
+            <strong>Gated before evaluation</strong>
+          </p>
+          <ol>
+            {gated.map((g) => (
+              <li key={g.action_uid}>
+                <code>{g.action_uid}</code> · <code>{g.gate}</code> · outcome {g.outcome} ·
+                not evaluated
               </li>
             ))}
           </ol>
@@ -218,6 +239,11 @@ export function Verdict({ result }: { result: QueryResult }) {
           ))}
         </>
       ) : null}
+
+      {/* Last, because it is what we set aside rather than what we weighed —
+          but never omitted. A gated row is a considered refusal to read a bill,
+          and hiding it turns that refusal into an absence of evidence. */}
+      <GatedActions gated={result.gated} />
     </>
   );
 }

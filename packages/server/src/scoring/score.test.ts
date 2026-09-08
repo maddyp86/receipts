@@ -325,6 +325,61 @@ describe('G1 — determinability', () => {
     expect(r.nd_reason).toBe('ALL_BELOW_FLOOR');
   });
 
+  it('distinguishes "nothing found" from "the gates closed everything found"', () => {
+    // The live bug this pins: `matches` arrives here ALREADY filtered to the
+    // scorable rows, so a fully-gated query and a genuinely empty one looked
+    // identical from inside the scorer — and the fully-gated one was reported
+    // as NO_MATCHES, "we didn't find any bills or votes in this senator's
+    // analyzed record". We found them. We deliberately declined to read them.
+    const r = scoreMatches({
+      promise_type: 'policy',
+      statement_type: 'Campaign Promise',
+      matches: [],
+      gated_count: 2,
+    });
+    expect(r.verdict).toBe('NOT_DETERMINABLE');
+    expect(r.nd_reason).toBe('GATED');
+  });
+
+  it('still says NO_MATCHES when nothing was retrieved AND nothing was gated', () => {
+    const r = scoreMatches({
+      promise_type: 'policy',
+      statement_type: 'Campaign Promise',
+      matches: [],
+      gated_count: 0,
+    });
+    expect(r.nd_reason).toBe('NO_MATCHES');
+  });
+
+  it('gating changes only the REASON, never the verdict', () => {
+    // The gate count is a presentation input. If it could move a verdict it
+    // would be scoring, and the scorer's inputs would no longer be just the
+    // matches.
+    const gatedRun = scoreMatches({
+      promise_type: 'policy',
+      statement_type: 'Campaign Promise',
+      matches: [],
+      gated_count: 3,
+    });
+    const plainRun = run([]);
+    expect(gatedRun.verdict).toBe(plainRun.verdict);
+    expect(gatedRun.band).toBe(plainRun.band);
+    expect(gatedRun.mode).toBe(plainRun.mode);
+  });
+
+  it('does not let a gate count invent a verdict out of real evidence', () => {
+    // A scorable match plus gated siblings must score on the match, not detour
+    // into GATED.
+    const r = scoreMatches({
+      promise_type: 'policy',
+      statement_type: 'Campaign Promise',
+      matches: [match({ bill_effect: 'ADVANCE', passage_vote: 'YEA' })],
+      gated_count: 4,
+    });
+    expect(r.verdict).toBe('KEPT');
+    expect(r.nd_reason).toBeNull();
+  });
+
   it('never reaches a band on a NOT_DETERMINABLE — it is not "low confidence"', () => {
     for (const r of [run([]), run([match({ score: 0.51, strength: 'WEAK' })])]) {
       expect(r.band).toBeNull();

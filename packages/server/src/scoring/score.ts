@@ -77,6 +77,17 @@ export interface ScoreInput {
    */
   is_evaluable?: boolean;
   matches: ScorableMatch[];
+  /**
+   * How many retrieved candidates a pre-evaluator gate closed before they could
+   * be scored. Defaults to 0 so existing callers are unaffected.
+   *
+   * Load-bearing for the REASON, never for the verdict. `matches` arrives here
+   * already filtered to the scorable rows, so gating every candidate and
+   * retrieving nothing at all look identical from inside the scorer — and they
+   * are opposite claims. "We didn't find any bills or votes in this senator's
+   * record" is false when we found them and deliberately declined to read them.
+   */
+  gated_count?: number;
 }
 
 const mean = (xs: number[]): number =>
@@ -209,9 +220,31 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
 
   // ---- G1: determinability ------------------------------------------------
   if (aboveFloor.length === 0) {
+    const gated = input.gated_count ?? 0;
+
+    // Three different findings, and only the first is an absence:
+    //
+    //   NO_MATCHES        retrieval found nothing on this subject
+    //   ALL_BELOW_FLOOR   it found things, none related closely enough
+    //   GATED             it found related things and a gate closed them, so we
+    //                     declined to read them
+    //
+    // GATED is checked first because a fully-gated result reaches here with an
+    // EMPTY match list — the gates ran upstream — and would otherwise report
+    // NO_MATCHES, the strongest absence claim in the vocabulary, about bills we
+    // did in fact retrieve. Each gated row carries its own reason for display.
     const reason: NotDeterminableReason =
-      retrieved.length === 0 ? 'NO_MATCHES' : 'ALL_BELOW_FLOOR';
-    trace.push(`G1 short-circuit: ${reason}. No band is reached — this is not "low confidence".`);
+      retrieved.length === 0 && gated > 0
+        ? 'GATED'
+        : retrieved.length === 0
+          ? 'NO_MATCHES'
+          : 'ALL_BELOW_FLOOR';
+
+    trace.push(
+      reason === 'GATED'
+        ? `G1 short-circuit: GATED. ${gated} retrieved action${gated === 1 ? '' : 's'} closed by a pre-evaluator gate before scoring; nothing was left to weigh. This is not an absence of record.`
+        : `G1 short-circuit: ${reason}. No band is reached — this is not "low confidence".`,
+    );
     return notDeterminable(
       reason,
       emptyReceipt({ match_count: retrieved.length, trace, scoring_flags: flags }),

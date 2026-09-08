@@ -432,6 +432,36 @@ textarea.promise::placeholder {
   font-style: italic;
 }
 
+/* ---------- gated actions ------------------------------------------------
+   Rows a gate closed before the evaluator ran. Styled as a deliberate set-aside
+   rather than as weak evidence: no verdict colour, no direction, a dashed rule
+   to say "considered and not read" instead of "read and found wanting". */
+
+.gated-lead {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  margin: -0.35rem 0 1rem;
+  max-width: 62ch;
+}
+
+.evidence.gated {
+  border-style: dashed;
+  background: var(--unclear-wash);
+}
+
+.gated-reason {
+  margin: 0.5rem 0 0.9rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* Paired with a text label, never colour alone (§9.5). */
+.relation.not-evaluated {
+  color: var(--unclear);
+  border-color: var(--rule-strong);
+}
+
 /* ---------- details toggle ---------------------------------------------- */
 
 .details-toggle {

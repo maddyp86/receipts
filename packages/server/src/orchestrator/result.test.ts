@@ -104,3 +104,44 @@ describe('the coverage window reaches the browser', () => {
     expect(resultOf(emitted).coverage!.observed).toBeNull();
   });
 });
+
+describe('gated rows reach the browser', () => {
+  const gatedRow = {
+    action_uid: 'ACT-1',
+    bill_id: 's4784-119',
+    bill_number: 'S.4784',
+    title: 'A broad vehicle',
+    gate: 'G4_vehicle',
+    verdict: 'NOT_DETERMINABLE',
+    reason: 'The bill is too broad to say anything specific about this statement.',
+    source_url: 'https://www.congress.gov/bill/119th-congress/senate-bill/4784',
+  };
+
+  it('is attached with the gate, the outcome and the reason intact', () => {
+    const { emitted } = run({ gated: [gatedRow] });
+    const gated = resultOf(emitted).gated;
+    expect(gated).toHaveLength(1);
+    expect(gated![0]).toMatchObject({
+      action_uid: 'ACT-1',
+      gate: 'G4_vehicle',
+      outcome: 'NOT_DETERMINABLE',
+      reason: gatedRow.reason,
+      bill_number: 'S.4784',
+      source_url: gatedRow.source_url,
+    });
+  });
+
+  it('carries the gate REASON verbatim, not a paraphrase', () => {
+    // The gates write reasons for a reader (fix/03). Summarising one here would
+    // put our gloss on a deterministic rule in front of the rule itself.
+    const { emitted } = run({ gated: [gatedRow] });
+    expect(resultOf(emitted).gated![0]!.reason).toBe(gatedRow.reason);
+  });
+
+  it('is an empty array, not undefined, when nothing was gated', () => {
+    // Absent would mean "we do not know whether anything was gated". A live
+    // query always knows, so it says so.
+    const { emitted } = run({ gated: [] });
+    expect(resultOf(emitted).gated).toEqual([]);
+  });
+});

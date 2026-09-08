@@ -120,9 +120,14 @@ export interface QuerySession {
   gated?: Array<{
     action_uid: string;
     bill_id: string;
+    bill_number?: string;
     title: string;
+    /** Which gate fired. Carried so the reader can be told WHICH rule closed it. */
+    gate: string;
     verdict: string;
     reason: string;
+    /** So a gated row still links back to the bill, like every other row does. */
+    source_url?: string;
   }>;
   /** Which enrichment source the gates ran against, for the degradation notice. */
   enrichmentKind?: 'mirror' | 'null';
@@ -708,9 +713,12 @@ async function evaluateEffectsTool(
       gatedRows.push({
         action_uid: m.action_uid,
         bill_id: String(m.bill_id ?? ''),
+        bill_number: m.bill_number,
         title: String(m.title ?? ''),
+        gate: String(result.hit!.gate),
         verdict: String(result.hit!.verdict),
         reason: result.hit!.reason,
+        source_url: m.source_url || undefined,
       });
     }
   }
@@ -802,6 +810,9 @@ async function evaluateEffectsTool(
     statement_type: session.interpretation.statement_type,
     is_evaluable: session.interpretation.is_evaluable,
     matches: scorable,
+    // Without this the scorer cannot tell "retrieval found nothing" from "the
+    // gates closed everything retrieval found" — `scorable` is empty either way.
+    gated_count: gatedRows.length,
   });
   session.scored = scored;
 
