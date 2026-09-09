@@ -1,4 +1,26 @@
-import 'dotenv/config';
+import { config as loadEnv } from 'dotenv';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+// ---------------------------------------------------------------------------
+// Load the untracked `.env` from the MONOREPO ROOT, not from the cwd.
+//
+// `import 'dotenv/config'` resolves `.env` against `process.cwd()`, and the dev
+// script runs this workspace with `npm run dev --workspace @receipts/server` —
+// so the cwd is `packages/server/` and a root `.env` is silently ignored. The
+// startup banner then reads `credentials: anthropic=ABSENT` beside a file the
+// operator has just filled in correctly, and DEMO mode looks like a bug in the
+// key rather than a lookup path.
+//
+// `.env.example` and DEPLOY.md both put the file at the repo root, so the root
+// is the documented location and this makes the code agree with the docs.
+//
+// Missing file is not an error: production (Render/Railway) injects real
+// environment variables and has no `.env` at all. dotenv no-ops when the path
+// does not exist, and anything already in `process.env` still wins.
+// ---------------------------------------------------------------------------
+const MONOREPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+loadEnv({ path: resolve(MONOREPO_ROOT, '.env') });
 
 // ===========================================================================
 // Configuration.

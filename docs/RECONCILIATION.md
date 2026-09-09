@@ -1534,3 +1534,121 @@ trail should not seed its own demo with invented votes. All four paths are
 covered by tests instead.
 
 357 tests pass, typecheck clean, web bundle builds.
+
+---
+
+## 2026-09-08 (later) — run with a live key: three paths closed, one new finding
+
+An `ANTHROPIC_API_KEY` was supplied locally. `llm=live (claude-sonnet-5)` with
+`data=FIXTURE`, so scope classification, the pre-evaluator gates and the judge
+all ran for real against the canned match set. Three of the four paths the
+earlier entry listed as unverified are now verified in a browser.
+
+### Verified
+
+**Both halts.** Never exercised before today.
+
+- `NON_TESTABLE_SPEECH_ACT` — "The Senate will vote on the appropriations bill
+  Thursday afternoon" classified OPERATIONAL and stopped before retrieval:
+  *"This isn't something a vote can settle."* No retry affordance, only "Ask
+  something else", with the classifier's own reasoning shown as the
+  justification. The classifier also read "I will bring the voting rights bill
+  to the floor … before the end of this month" as OPERATIONAL — floor
+  scheduling, which is correct and not the case I was aiming for.
+- `STATEMENT_DATE_REQUIRED` — "I will co-sponsor a bill to lower prescription
+  drug prices within the next 60 days" classified COMMITMENT / BOUNDED with
+  `valid_until = UNKNOWN`, and offered the date field.
+- **Date recovery works.** Supplying 2020-09-01 re-ran the whole query from
+  embedding and produced a verdict.
+
+**Gated rows, and the false absence they used to produce.** The same query with
+that date has `valid_until = 2020-10-31`, and every retrieved bill's action date
+(a Congress-start proxy: 2021-01-03 and 2023-01-03) falls outside it. All three
+candidates were closed by `G1_scope`, and the result renders:
+
+> The legislation we found can't settle this statement — the window it applied
+> to had closed … Each item below says which.
+
+followed by "Found, but not evaluated" and all three bills with the gate's
+verbatim reason, including the proxy-date disclosure. **Before this phase that
+page would have read "We didn't find any bills or votes in this senator's
+analyzed record"** — about three bills it had just retrieved. This is the
+clearest confirmation of the `GATED` reason fix.
+
+`confidence not recorded` also renders in the trace, which is exactly the case
+the `confidenceTraceLabel` guard exists for.
+
+### NEW FINDING — the judge cannot run without an OpenAI key
+
+Still unverified: judge `PASS` with a counterargument. Not for the reason
+recorded earlier ("needs a real judge call") — the key was live and the judge
+still never ran. The cause is an ORDERING fact nobody had written down:
+
+```
+scoreMatches()  ->  applyWithholding()  (contract 3, INSIDE the scorer)
+                ->  verdict becomes NOT_DETERMINABLE
+dispatch: isAccusation = scored.verdict === 'BROKE'   // now false
+                ->  the judge block is skipped entirely
+```
+
+`alignment_confidence` comes from the fulfillment evaluator, which requires
+`OPENAI_API_KEY`. Without it every row's confidence is `null`, contract 3 fails
+closed as designed, and the verdict is already NOT_DETERMINABLE by the time
+`isAccusation` is tested. Observed directly: the ATF-rule query derived
+INCONSISTENT on `sjres28-118`, and the trace reads
+
+> Contract 3: … no confidence was recorded for the actions behind it … Below
+> 0.7, an accusation is withheld rather than shown.
+
+with no adversarial-review block at all.
+
+**The general consequence, which is a design fact worth stating.** Contract 3
+runs inside the scorer and the judge runs after it, so **the judge only ever
+sees accusations that already cleared 0.7.** Handoff v2 §5 describes the judge
+as the second opinion on "every accusation"; in this implementation it is the
+second opinion on every accusation that survived the confidence floor. The two
+layers are not parallel — they are in series, cheapest first.
+
+That ordering is defensible and arguably right: contract 3 is free and
+deterministic, the judge costs a Sonnet call, and both can only ever withhold.
+Nothing here should change without a decision. Recorded because "the judge
+reviews every accusation" is what the spec says and is not what the code does,
+and because it is the reason an Anthropic-only configuration cannot exercise
+the judge at all.
+
+### Two copy bugs, found only by running it
+
+Both are the same class this phase has been about — text asserting something
+untrue — and neither was reachable in demo mode.
+
+- `Read as a operational statement`. The article was hardcoded before a value
+  that is sometimes vowel-initial. Now derived.
+- `Demo mode. No API keys are configured` was shown whenever EITHER mode was
+  on. With Anthropic present and Pinecone absent both halves were false: not
+  demo mode, and a key was configured. The banner now names the actual
+  degradation — "Sample data. The retrieval keys are not configured". A
+  degradation notice that misdescribes the degradation is the same defect as a
+  verdict that misdescribes the evidence.
+
+### Two infrastructure fixes this shook out
+
+- **`.env` was never read.** `config.ts` used `import 'dotenv/config'`, which
+  resolves against `process.cwd()` — and the dev script runs the server as a
+  workspace, so the cwd is `packages/server/`. A root `.env`, which is where
+  `.env.example` and DEPLOY.md both put it, was silently ignored: the banner
+  printed `credentials: anthropic=ABSENT` next to a correctly filled file. Now
+  resolved from `import.meta.url`.
+- **The suite was reaching the network.** Once the root `.env` loaded, the tests
+  inherited the real key, and "refuses to classify without a key rather than
+  guessing" stopped testing the refusal and made a live Anthropic call — 2.3s
+  and real money inside `npm test`, surfacing as a failure only because the call
+  succeeded. `vitest.config.ts` now pins the credential variables empty.
+
+### Still unverified
+
+| | Needs |
+|---|---|
+| Judge `PASS` + counterargument, `REVIEW_REQUIRED_JUDGE_CORRECTED` | `OPENAI_API_KEY` as well — see the ordering finding above |
+| A `SPLIT_VOTE` row | A real split-vote pair in the corpus; no fixture has cloture and passage disagreeing |
+
+357 tests pass, typecheck clean.

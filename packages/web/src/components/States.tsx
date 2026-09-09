@@ -15,6 +15,11 @@ import {
 // happened rather than shrugging.
 // ===========================================================================
 
+/** `a` / `an`, so the speech act reads as English rather than as a template. */
+function article(word: string): string {
+  return /^[AEIOU]/i.test(word) ? 'an' : 'a';
+}
+
 export function DemoBanner({ demo, fixture }: { demo: boolean; fixture: boolean }) {
   if (!demo && !fixture) return null;
 
@@ -22,12 +27,25 @@ export function DemoBanner({ demo, fixture }: { demo: boolean; fixture: boolean 
   if (fixture) parts.push('the bills shown are sample data, not this senator’s real record');
   if (demo) parts.push('the interpretation and explanation are canned, not written for you');
 
+  // The two modes are independent, and the banner used to assert "Demo mode. No
+  // API keys are configured" for either one. With an Anthropic key present and
+  // Pinecone absent, both halves of that were false: it is not demo mode, and a
+  // key IS configured. A degradation notice that misdescribes the degradation
+  // is the same defect as a verdict that misdescribes the evidence.
+  const label = demo && fixture ? 'Demo mode.' : fixture ? 'Sample data.' : 'Canned answers.';
+  const cause =
+    demo && fixture
+      ? 'No API keys are configured'
+      : fixture
+        ? 'The retrieval keys are not configured'
+        : 'No language-model key is configured';
+
   return (
     <div className="banner" role="status">
       <span aria-hidden="true">▲</span>
       <span>
-        <strong>Demo mode.</strong> No API keys are configured, so {parts.join(', and ')}. Nothing
-        here is a real accountability finding.
+        <strong>{label}</strong> {cause}, so {parts.join(', and ')}. Nothing here is a real
+        accountability finding.
       </span>
     </div>
   );
@@ -200,7 +218,8 @@ export function HaltState({
           disagrees that this was a scheduling remark can see what we decided
           and why, rather than being told the tool declined. */}
       <p className="trust-cue">
-        Read as a {halt.scope.speech_act.toLowerCase().replace('_', ' ')} statement
+        Read as {article(halt.scope.speech_act)}{' '}
+        {halt.scope.speech_act.toLowerCase().replace('_', ' ')} statement
         {halt.scope.anchor_entity ? ` about ${halt.scope.anchor_entity}` : ''}. {halt.scope.reasoning}
       </p>
     </section>
