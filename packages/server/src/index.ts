@@ -175,6 +175,10 @@ app.get('/api/query', queryDailyLimiter, queryBurstLimiter, async (req, res) => 
   try {
     await runQuery(politicianId, promiseText, emit, corrections, {
       userAgent: String(req.headers['user-agent'] ?? '').slice(0, 500) || undefined,
+      // Scopes the per-session replay cache. Opaque to the server: it is only
+      // ever hashed into a cache key, never stored, logged or interpreted.
+      // Bounded so a caller cannot push unbounded input into the hash.
+      sessionKey: String(req.query.session ?? '').trim().slice(0, 128) || undefined,
       // Optional. Supplying it lets a bounded statement ("we vote next week")
       // resolve its window instead of halting with STATEMENT_DATE_REQUIRED.
       statementDate: String(req.query.date ?? '').trim() || undefined,

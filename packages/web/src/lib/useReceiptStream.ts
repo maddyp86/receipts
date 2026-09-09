@@ -11,6 +11,7 @@ import type {
 } from '@receipts/shared';
 import type { Corrections } from '@receipts/shared';
 import { apiUrl } from './api.js';
+import { sessionId } from './session.js';
 
 // ===========================================================================
 // The query stream.
@@ -83,6 +84,11 @@ export function useReceiptStream() {
       setState({ ...EMPTY, phase: 'streaming' });
 
       const query = new URLSearchParams({ senator: politicianId, promise });
+      // Scopes the server's replay cache to this tab. Absent when storage is
+      // unavailable, which the server reads as "do not cache" — the answer is
+      // identical either way, only the cost differs.
+      const session = sessionId();
+      if (session) query.set('session', session);
       if (statementDate) query.set('date', statementDate);
       if (corrections && Object.keys(corrections).length) {
         query.set('corrections', JSON.stringify(corrections));

@@ -299,6 +299,34 @@ export const config = {
     readPer15Min: num(process.env.RATE_LIMIT_READ_PER_15MIN, 120),
   },
 
+  /**
+   * Per-SESSION result cache for `/api/query`.
+   *
+   * Scoped to one browser session and never shared, which is what keeps it
+   * clear of the rule `QueryStore` enforces in its shape: nothing on the way to
+   * a verdict may read what anyone ELSE has asked. A key cannot even be
+   * computed without a session id, so a cross-session hit is impossible by
+   * construction rather than by care.
+   *
+   * In memory only, never persisted. It dies with the process, which also means
+   * a model or prompt change cannot outlive it.
+   *
+   * The case it exists for is not abuse but ordinary repetition: EventSource
+   * reconnects on its own after a dropped stream and re-issues the identical
+   * URL, and a refresh or double-submit does the same. Each of those re-runs
+   * up to ~14 paid model calls today.
+   */
+  resultCache: {
+    /**
+     * Short on purpose. The corpus does not move in minutes, so a replay inside
+     * the window is the same answer the user just saw — but a long TTL would
+     * start serving yesterday's reading of a record that has since changed.
+     */
+    ttlSeconds: num(process.env.RESULT_CACHE_TTL_SECONDS, 900),
+    /** Bounded so a long-lived process cannot grow one query at a time. */
+    maxEntries: num(process.env.RESULT_CACHE_MAX_ENTRIES, 500),
+  },
+
   features: {
     /**
      * Lets the user assert "he promised this", upgrading the verdict vocabulary
