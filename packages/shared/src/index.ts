@@ -228,6 +228,16 @@ export interface ToolError {
     | 'UPSTREAM_UNAVAILABLE'
     | 'MISSING_METADATA'
     | 'BAD_INPUT'
+    /**
+     * Too many queries from one address in the window.
+     *
+     * `recoverable` is TRUE here and that is load-bearing rather than
+     * cosmetic: unlike most members of this union, waiting genuinely does fix
+     * it. The UI's retry affordance keys off that flag, and a user who has run
+     * a lot of checks should be told to wait — not shown the same dead end as
+     * an upstream outage.
+     */
+    | 'RATE_LIMITED'
     | 'INTERNAL';
   message: string;
   /** True when a retry could plausibly succeed. Drives the UI's retry affordance. */

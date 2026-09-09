@@ -265,6 +265,40 @@ export const config = {
     .map((o) => o.trim())
     .filter(Boolean),
 
+  /**
+   * Per-IP rate limiting on the public API.
+   *
+   * `/api/query` is unauthenticated and spends money at two vendors on every
+   * call — worst case ~14 paid model calls. A correction is a FULL re-run from
+   * embedding rather than a re-filter, so one user correcting a classification
+   * twice costs three queries; that shapes the burst limit more than abuse does.
+   *
+   * These are starting values to tune from telemetry, not derived constants,
+   * which is why they are env-overridable. Windows are fixed and named in the
+   * variable so a retune cannot silently change the meaning of the number.
+   *
+   * See docs/rate-limiting-spec.md for what this deliberately does NOT solve —
+   * distributed abuse, shared-IP collateral, and the multi-instance counter
+   * split that will not announce itself.
+   */
+  rateLimit: {
+    /**
+     * Hops between the user and this server. NOT `true`.
+     *
+     * Render terminates TLS at a proxy, so `req.ip` is the proxy's address
+     * unless Express is told the hop count. Get this wrong and the limiter
+     * inverts into a GLOBAL one: the first N requests from anyone lock out
+     * everyone. Verify against a real external address before trusting it.
+     */
+    trustProxyHops: num(process.env.TRUST_PROXY_HOPS, 1),
+    /** Burst: an engaged session is 3-5 promises, ~10-15 with corrections. */
+    queryPer15Min: num(process.env.RATE_LIMIT_QUERY_PER_15MIN, 15),
+    /** Sustained: stops a slow drip that never trips the burst window. */
+    queryPerDay: num(process.env.RATE_LIMIT_QUERY_PER_DAY, 60),
+    /** Free, memory-cached routes. Generous; only stops a hammering loop. */
+    readPer15Min: num(process.env.RATE_LIMIT_READ_PER_15MIN, 120),
+  },
+
   features: {
     /**
      * Lets the user assert "he promised this", upgrading the verdict vocabulary
