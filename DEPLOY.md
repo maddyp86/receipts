@@ -43,27 +43,32 @@ Static, ideal fit. Reads no secrets; the one build-time variable is a public URL
 
 | Var | Value |
 |---|---|
-| `VITE_API_BASE` | `https://<backend-host>` — the deployed backend origin |
+| `VITE_API_BASE` | **leave unset** — see the decision below |
 
 Empty means same-origin `/api/...`, which is correct in dev and correct in
-production **if** you use the rewrite option below.
+production under the committed `vercel.json` rewrite. Set it only if you switch
+to Option B.
 
-### Two ways to connect frontend → backend
+### How the frontend reaches the backend — DECIDED (2026-09-08): Option A
 
-**Option A — rewrite (preferred).** Leave `VITE_API_BASE` unset and add
-`vercel.json`:
+**Option A — rewrite. CHOSEN, and `vercel.json` is committed at the repo root.**
+`VITE_API_BASE` must stay **UNSET** on Vercel: `lib/api.ts` defaults to an empty
+base, which produces same-origin `/api/...`, and Vercel forwards those to Render
+server-side.
 
-```json
-{ "rewrites": [{ "source": "/api/:path*", "destination": "https://<backend-host>/api/:path*" }] }
-```
+The browser therefore never makes a cross-origin request, **so there is no CORS
+surface at all** and `CORS_ORIGIN` on the backend is never consulted for normal
+traffic. That is why this option is preferred, and why a placeholder value there
+is harmless under this shape.
 
-Same-origin, so **there is no CORS surface at all** and `CORS_ORIGIN` can stay
-tight. Preferred for that reason alone.
+Setting `VITE_API_BASE` would silently defeat this: the bundle would call Render
+directly, the requests would become cross-origin, and they would then be judged
+against `CORS_ORIGIN`.
 
-**Option B — direct cross-origin.** Set `VITE_API_BASE` to the backend origin
-and set `CORS_ORIGIN` on the backend to the Vercel domain. Remember preview
+**Option B — direct cross-origin. NOT in use.** Set `VITE_API_BASE` to the
+backend origin and set `CORS_ORIGIN` to the Vercel domain. Remember preview
 deployments get their own `*.vercel.app` subdomains — each one you want working
-must be in the allowlist.
+must be in the allowlist. Only relevant if Option A is abandoned.
 
 ---
 
