@@ -10,8 +10,21 @@ import { primaryIssues, subIssuesFor } from './embeddings/taxonomy.js';
 import type { Corrections } from '@receipts/shared';
 import { actionStore, embedder } from './services.js';
 import { TAXONOMY_IS_COMPLETE } from './embeddings/taxonomy.js';
+import { queryBurstLimiter, queryDailyLimiter, readOnlyLimiter } from './rateLimit.js';
 
 const app = express();
+
+// ── trust proxy: get this wrong and the limiter INVERTS ────────────────────
+// Render terminates TLS at a proxy, so `req.ip` is the proxy's address unless
+// Express is told how many hops to trust. Left unset, every request shares one
+// key and the rate limiter becomes a GLOBAL one — the first 15 requests from
+// anyone lock out everyone.
+//
+// A hop COUNT, never `true`: `true` trusts the whole X-Forwarded-For chain,
+// which a client can forge, letting an abuser mint a fresh bucket per request.
+// Verify the number against a real external address before trusting it; see
+// docs/rate-limiting-spec.md.
+app.set('trust proxy', config.rateLimit.trustProxyHops);
 // An allowlist when one is configured; otherwise open, which is only ever
 // correct locally. See the startup warning below.
 app.use(
@@ -28,6 +41,10 @@ app.use(
   ),
 );
 app.use(express.json());
+
+// Generous cap on the cheap routes. `/api/health` is exempt inside the
+// limiter — Render polls it, and a 429 there would restart the service.
+app.use('/api', readOnlyLimiter);
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -103,7 +120,7 @@ app.get('/api/taxonomy', (_req, res) => {
  * reconnect semantics come for free. Steps are flushed as they resolve — the
  * visible reasoning IS the traceability, so buffering it would defeat the point.
  */
-app.get('/api/query', async (req, res) => {
+app.get('/api/query', queryDailyLimiter, queryBurstLimiter, async (req, res) => {
   const politicianId = String(req.query.senator ?? '').trim();
   const promiseText = String(req.query.promise ?? '').trim();
 
@@ -177,6 +194,13 @@ app.listen(config.port, () => {
     config.corsOrigins.length
       ? `  cors: allowlist [${config.corsOrigins.join(', ')}]`
       : '  cors: OPEN (any origin) — set CORS_ORIGIN before exposing this publicly.',
+  );
+  // Its own line: `trust proxy hops` is the value that silently inverts the
+  // limiter into a global one when it is wrong, so it needs to be readable in
+  // the deploy log rather than trailing off the end of the cors warning.
+  console.info(
+    `  rate limit: query ${config.rateLimit.queryPer15Min}/15min, ${config.rateLimit.queryPerDay}/day · ` +
+      `read ${config.rateLimit.readPer15Min}/15min · health exempt · trust proxy hops ${config.rateLimit.trustProxyHops}`,
   );
   if (config.demoMode) {
     console.info('  DEMO MODE — interpretation and explanation are canned, and the UI says so.');
