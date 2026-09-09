@@ -154,6 +154,21 @@ the source specs are in [docs/specs/](docs/specs/).
 Where a spec and a live node disagree, the node wins — that has now happened
 five times, and every one of them would have shipped a wrong number.
 
+## Where this repo is AHEAD of the pipeline
+
+Two behaviours here are deliberately **not** transcriptions, and the divergence is the correct one.
+The n8n side should adopt them rather than this side reverting.
+
+1. **`JUDGE_ERROR` withholds instead of publishing.** `judge/dispositions.ts` treats a judge
+   infrastructure failure as "nobody reviewed this", so an accusation is withheld rather than left
+   standing. WF13's `Set Disposition` still leaves the verdict in place — on 2026-09-08 that would
+   have published `CONSISTENT @ 0.7` on a row the judge had explicitly failed as out-of-scope
+   (`ALIGN-P2BM-T000250-7Z0J7FUX-S186-118`). Handoff v2 §5 states the principle — an infrastructure
+   failure is never a content verdict — and it does not say the unreviewed content ships meanwhile.
+2. **The orchestrator-vs-evaluator `bill_effect` cross-check** (`orchestrator/dispatch.ts`) records
+   and surfaces a disagreement rather than resolving it silently in the evaluator's favour. The
+   pipeline has no equivalent, so drift on the axis that decides direction is invisible there.
+
 ## Known gaps
 
 1. **`embedding_version`** — WF7a scopes bill vectors to one batch `run_id`. A live query has no run
@@ -162,12 +177,20 @@ five times, and every one of them would have shipped a wrong number.
 2. **`cloture_vote` / `passage_vote` may be `'NA'`** in current bill vectors — the bill-embedding
    step wasn't writing them as of 2026-08-07. If so, vote-pattern detail degrades to `PASSAGE_ONLY`
    and the cloture/passage narrative goes quiet. Verify against real data.
-3. **The relevance gate is present but not wired.** `evaluation/relevance.ts`,
-   `evidenceGate.ts` and `gates.ts` are installed and typechecking, but the orchestrator loop does
-   not call them yet, so nothing currently excludes a `DIRECTIONAL` match. Until it does, the tool
-   can surface a pairing the pipeline would have rejected.
-4. **`HIGH_AVG_STRENGTH` (0.65)** is a presentation-layer default with no pipeline equivalent, not a
+3. **`HIGH_AVG_STRENGTH` (0.65)** is a presentation-layer default with no pipeline equivalent, not a
    calibrated value. It moves the High/Medium boundary.
-5. **Term separator** in the embedding text (`", "`) is an assumption about how the upstream sheet
+4. **Term separator** in the embedding text (`", "`) is an assumption about how the upstream sheet
    serialises keyword arrays. First thing to check if live matches come back thin.
-6. **Taxonomy snapshot is partial** — six rows, not the full 23/121.
+5. **Evaluator v7 inverts oppose-framed statements.** Measured, not suspected: an Opposed-stance
+   statement whose goal is the ABSENCE of something, matched to a bill that restricts that thing,
+   comes back `HINDER` where `ADVANCE` is correct — three cases at 0.88–0.90 confidence, all of
+   which would have cleared contract 3's accusation floor. Held as data in
+   `evaluation/stanceInversion.test.ts`. The verdict table has no stance term and structurally
+   cannot catch it, so the fix is in the prompt; it is deferred until the same edit can land in n8n,
+   because `bill_effect` is the axis where divergence between this tool and the corpus scorer does
+   the most damage.
+
+**Closed since this list was written** (kept visible so nobody re-reports them): the relevance and
+evidence gates ARE wired — `dispatch.ts` imports and calls `evaluateRelevance` and
+`applyEvidenceGate`; and `embeddings/taxonomy.json` is the complete 121-row export
+(`_provenance.status: "COMPLETE:2026-08-21"`), not the six-row snapshot.

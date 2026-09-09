@@ -1768,3 +1768,69 @@ restarted underneath it. The UI left every step ticked and rendered no verdict �
 no error state, no message. Dev-only in origin, but the client has no timeout or
 stream-closed handling, so a dropped connection in production would present as
 a silent hang. Not fixed here; logged.
+
+---
+
+## 2026-09-09 — stance-inversion fixtures, and two divergences recorded as correct
+
+From the external review brief (`receipts-query-tool-brief.md`, written against `dca65c8`). Its six
+findings were checked against the tree before acting; all six verify.
+
+### The v7 stance inversion — held as data, prompt fix DEFERRED
+
+WF13 execution 13776 (2026-09-08, Thune, 52 rows, dry run) measured evaluator v7 inverting
+oppose-framed statements. Statement `7Z0J7FUX` — goal is the ABSENCE of federal abortion funding —
+evaluated against three bills that RESTRICT that funding:
+
+| Bill | v7 said | Correct | v7 confidence |
+|---|---|---|---|
+| `s13-118` | HINDER → INCONSISTENT | ADVANCE → CONSISTENT | 0.88 |
+| `s186-118` | HINDER → INCONSISTENT | ADVANCE → CONSISTENT | 0.90 |
+| `s186-119` | HINDER → INCONSISTENT | ADVANCE → CONSISTENT | 0.90 |
+
+The retry pass corrected all three.
+
+**Why this is worse than an ordinary wrong answer:** every case sat above 0.7, so contract 3 — the
+guard that exists to stop false accusations — would have passed all three straight through to a
+reader. A confidently wrong direction defeats the confidence floor by construction.
+
+`evaluation/stanceInversion.test.ts` holds the cases as an exported fixture and pins the blast
+radius deterministically: `deriveAlignment` propagates whichever effect it is handed, symmetrically,
+in both vocabularies. Its only statement-side input is `statementType`, which selects the label pair
+and nothing else. **There is no stance term for the table to re-apply, so no downstream guard can
+ever catch this class** — it has to be right when it leaves STEP 1.
+
+**The prompt change is deliberately NOT made.** Two reasons, both structural:
+
+1. `evaluatorPromptV7.ts` is GENERATED from `docs/fix/07` by `tools/extract-fix-prompt.mjs`, with
+   the length asserted so a hand-edit fails generation. The brief's Task 1 says to edit the `.ts`
+   directly, which would violate its own "do not hand-edit generated files" constraint. The fix
+   edits the fix/07 source and regenerates.
+2. `bill_effect` is the axis where divergence between this tool and the corpus scorer does the most
+   damage — two prompts judging direction is exactly how the query tool and the trust report end up
+   printing different answers for the same senator on the same bill. The change lands when the
+   matching n8n edit can land beside it, not before.
+
+An `it.todo` carries the deferral in the suite, and a test pins that the prompt today has only
+SUPPORT-framed worked examples — the gap, stated as an assertion rather than a story.
+
+### Two divergences from the pipeline, recorded as CORRECT
+
+Added to README under "Where this repo is AHEAD of the pipeline". The n8n side should adopt these;
+this side should not revert.
+
+1. **`JUDGE_ERROR` withholds rather than publishes.** WF13's `Set Disposition` leaves the verdict
+   standing on a judge infrastructure failure. On 2026-09-08 that would have published
+   `CONSISTENT @ 0.7` on `ALIGN-P2BM-T000250-7Z0J7FUX-S186-118` — a row the judge explicitly failed
+   as out-of-scope. Handoff v2 §5 says an infrastructure failure is never a content verdict; it does
+   not say the unreviewed content ships in the meantime.
+2. **The orchestrator-vs-evaluator `bill_effect` cross-check** surfaces a disagreement instead of
+   resolving it silently. The pipeline has no equivalent, so drift on the direction axis is
+   invisible there.
+
+### README corrections
+
+"Known gaps" 3 (relevance gate not wired) and 6 (partial taxonomy) are both closed and were removed
+— the gates are called from `dispatch.ts`, and `taxonomy.json` is the full 121-row export at
+`_provenance.status: "COMPLETE:2026-08-21"`. Both are listed as closed rather than deleted silently,
+so they are not re-reported. Remaining gaps renumbered, and the stance inversion added as gap 5.
