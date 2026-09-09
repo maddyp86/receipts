@@ -1694,3 +1694,77 @@ does anything.
 opt-in filter scoping retrieval to one run — and it carries the loud-fail
 assertion in `PineconeActionStore` that refuses to render a stale pin's zero
 results as "no relevant bills". Blank remains the correct default.
+
+---
+
+## 2026-09-08 (live run) — full credentials, and why the judge stayed unreached
+
+`DATABASE_URL` blanked deliberately so nothing wrote to production; everything
+else live. Banner: `llm=live (claude-sonnet-5)  data=live (Pinecone)`,
+`credentials: anthropic=present openai=present pinecone=present`,
+`supabase=ABSENT`.
+
+### Verified against the real corpus
+
+- **Both coverage branches, live.** With `COVERAGE_CONGRESSES` unset the tool
+  said *"We could not establish which legislative record was searched, so treat
+  an empty result as inconclusive rather than as an absence of action"* — the
+  weaker `unknown` claim, correct for the config. With it set to `118,119` the
+  same surface read *"We searched the 118th and 119th Congress."*
+- **`ALL_BELOW_FLOOR` and `ALL_NEUTRAL`** both rendered on real data.
+- **The documented coverage boundary, reproduced in production data.** "Repeal
+  the Medicare drug price negotiation program" retrieved NOTHING for Schumer:
+  the IRA is 117th and the corpus starts at the 118th. The exact case the
+  coverage sentence was written for, seen live rather than argued from.
+
+### Config gap found
+
+`COVERAGE_CONGRESSES` was absent locally, so the tool made the weaker claim
+about its own scope. **Worth checking it is set on Render** — if it is not, the
+deployed tool has been telling users it cannot establish what it searched, when
+it can.
+
+### The judge PASS branch is still unverified — third distinct reason
+
+Not credentials this time. Anthropic, OpenAI and Pinecone were all live, so the
+ordering problem recorded earlier was resolved. The judge still never ran,
+because **four real queries produced zero accusations.**
+
+| Query | Outcome |
+|---|---|
+| Repeal Medicare drug price negotiation | `NO_MATCHES` — corpus starts at the 118th |
+| Opposes further Ukraine military aid | `ALL_BELOW_FLOOR` |
+| Supports rolling back EPA power-plant standards | `ALL_NEUTRAL` |
+| Supports overturning the EPA major-sources rule | stream aborted, not retried |
+
+The third is the instructive one. A CRA disapproval resolution Schumer voted
+against was retrieved, matched closely, and the evaluator still declined to
+read it as directional: *"related to EPA air rules, but reviewers judged it not
+specific enough to power-plant clean-air standards to count as a clear move for
+or against this promise."*
+
+**That is the false-positive work behaving exactly as designed.** The audit that
+started this effort found 78 of 79 BROKE verdicts were false positives; v7, the
+gates and the evidence gate exist to make an accusation hard to reach. They
+succeed. The cost is that the one branch which requires an accusation is
+correspondingly hard to exercise by hand.
+
+Reaching it deliberately needs a statement chosen against a KNOWN directional
+vote in the corpus rather than guessed at — a query over the alignment data,
+not trial and error through the UI. Recorded as the method for whoever picks
+this up, rather than burning further live calls hunting for one.
+
+### Still unverified
+
+| | Why |
+|---|---|
+| Judge `PASS` + counterargument, `REVIEW_REQUIRED_JUDGE_CORRECTED` | Needs a derived accusation; the pipeline is designed to make those rare |
+| A `SPLIT_VOTE` row | Needs a corpus bill where cloture and passage diverge; none surfaced in these queries |
+
+### Unrelated observation
+
+An SSE stream died mid-query with `net::ERR_ABORTED` when the dev server
+restarted underneath it. The UI left every step ticked and rendered no verdict —
+no error state, no message. Dev-only in origin, but the client has no timeout or
+stream-closed handling, so a dropped connection in production would present as
+a silent hang. Not fixed here; logged.
