@@ -104,7 +104,6 @@ otherwise leave the server unable to boot. The server binds
 | Var | Value |
 |---|---|
 | `PINECONE_HOST` | real index host, no trailing slash |
-| `PINECONE_INDEX` | real index name |
 | `PINECONE_NAMESPACE_TEMPLATE` | `{politician_id}_bills` |
 | `PINECONE_EMBEDDING_VERSION` | **leave blank** unless pinning a run |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` | `text-embedding-3-small` / `1024` — must match the pipeline |

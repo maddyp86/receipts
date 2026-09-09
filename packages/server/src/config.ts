@@ -195,11 +195,6 @@ export const config = {
   pinecone: {
     apiKey: pineconeKey,
     host: pineconeHost,
-    // No default. The index NAME is a real infrastructure identifier and this
-    // file is committed; it is also never read — the query URL is built from
-    // `host`, and namespaces from `namespaceTemplate`. Kept as a declared
-    // config value for operator clarity, blank until someone sets it.
-    index: str(process.env.PINECONE_INDEX),
     namespaceTemplate:
       str(process.env.PINECONE_NAMESPACE_TEMPLATE) || '{politician_id}_bills',
     // Batch runs scope bill vectors by embedding_version == run_id. A live

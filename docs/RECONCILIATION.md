@@ -1652,3 +1652,45 @@ untrue — and neither was reachable in demo mode.
 | A `SPLIT_VOTE` row | A real split-vote pair in the corpus; no fixture has cloture and passage disagreeing |
 
 357 tests pass, typecheck clean.
+
+---
+
+## 2026-09-08 (later still) — `PINECONE_INDEX` removed
+
+A declared config value with no consumer. `config.ts` read it into
+`config.pinecone.index`; nothing anywhere referenced that field. The Pinecone
+query is addressed by `host` plus `namespace`, and a Pinecone REST host is
+already index-specific, so the index name is redundant once the host is set.
+
+**This reverses a deliberate decision, not a bug.** The comment on the field
+said so outright — "it is also never read … Kept as a declared config value for
+operator clarity, blank until someone sets it." The reversal is Matt's call, and
+the reason is the one `.env.example`'s own header gives: *"A documented knob
+that does nothing is worse than an undocumented one — someone sets it and
+believes it took effect."* Operator clarity was the argument for keeping it, and
+it turned out to produce the opposite — the variable read as required when
+configuring a live deployment, and prompted the question that found it.
+
+Removed from `config.ts`, `.env.example` and DEPLOY.md's backend env table.
+
+### Why the sync test did not catch it
+
+`config.env.test.ts` exists for exactly this class and its header names the
+precedent (`SIMILARITY_STRONG` / `SIMILARITY_WEAK` "sat there for weeks doing
+nothing"). It could not catch this one, because it compares `.env.example`
+against `process.env.X` reads in `config.ts` — and `PINECONE_INDEX` *was* read
+there. What it cannot see is whether the resulting config FIELD has any
+consumer.
+
+The gap: the test proves a documented var reaches config, never that config
+reaches code. Closing it properly means asserting each `config.*` field is
+referenced somewhere, which is brittle enough that it is recorded here rather
+than attempted. Worth remembering that a green sync test is not evidence a knob
+does anything.
+
+### Not touched
+
+`PINECONE_EMBEDDING_VERSION` stays. It is genuinely load-bearing when set — an
+opt-in filter scoping retrieval to one run — and it carries the loud-fail
+assertion in `PineconeActionStore` that refuses to render a stale pin's zero
+results as "no relevant bills". Blank remains the correct default.
