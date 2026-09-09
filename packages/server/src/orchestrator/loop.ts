@@ -7,6 +7,7 @@ import type { AuditEvent, StoredAlignment, StoredMatch } from '../data/QueryStor
 import { derivePartialSubtype } from '../evaluation/evidenceGate.js';
 import { classifyScope, haltForScope } from '../scope/classifyScope.js';
 import { describeCoverage } from '../scoring/coverage.js';
+import { cacheKey, isCacheable, resultCache } from '../data/ResultCache.js';
 import type { Corrections } from '@receipts/shared';
 import { systemPrompt, EXPLANATION_CONSTRAINTS } from './prompts.js';
 import { TOOL_DEFINITIONS } from './toolDefs.js';
@@ -853,9 +854,44 @@ export async function runQuery(
   promiseText: string,
   emit: Emit,
   corrections?: Corrections,
-  meta: { userAgent?: string; statementDate?: string } = {},
+  meta: { userAgent?: string; statementDate?: string; sessionKey?: string } = {},
 ): Promise<void> {
+  // ---- PER-SESSION REPLAY CACHE ------------------------------------------
+  //
+  // Scoped to `meta.sessionKey`, which the browser generates per tab. Without
+  // one there is no key and no caching — see ResultCache for why that fallback
+  // is the safe direction rather than a limitation.
+  //
+  // The case this exists for is EventSource reconnecting by itself after a
+  // dropped stream and re-issuing the identical URL, which today silently
+  // re-runs up to ~14 paid model calls.
+  const key = cacheKey({
+    sessionId: meta.sessionKey,
+    politicianId,
+    promiseText,
+    corrections,
+    statementDate: meta.statementDate,
+  });
+
+  const replay = resultCache.get(key);
+  if (replay) {
+    // Replayed through the SAME emit, in the SAME order, so the client cannot
+    // tell a hit from a fresh run — the steps, the interpretation and the
+    // result all arrive exactly as they did the first time. A cache that
+    // rendered differently would be a second UI to keep honest.
+    console.info(`[cache] replaying ${replay.length} events for this session`);
+    for (const event of replay) emit(event);
+    return;
+  }
+
   const session = newSession(politicianId, promiseText, corrections, meta.statementDate);
+
+  // Every event this run produces, so a cacheable run can be replayed later.
+  const recorded: StreamEvent[] = [];
+  const record: Emit = (event) => {
+    recorded.push(event);
+    emit(event);
+  };
 
   // Opened up front so a query that later fails still has a session to hang
   // off. Best effort, like the write itself.
@@ -868,12 +904,12 @@ export async function runQuery(
 
   try {
     // Before anything else — and before any model call that costs money.
-    if (await classifyStatementScope(session, emit)) return;
+    if (await classifyStatementScope(session, record)) return;
 
     if (config.demoMode) {
-      await runDemo(session, emit);
+      await runDemo(session, record);
     } else {
-      await runLive(session, emit);
+      await runLive(session, record);
     }
   } catch (err) {
     console.error('[loop]', err);
@@ -883,9 +919,14 @@ export async function runQuery(
       recoverable: true,
       details: { cause: err instanceof Error ? err.message : String(err) },
     };
-    emit({ type: 'error', error });
+    record({ type: 'error', error });
   } finally {
-    emit({ type: 'done' });
+    record({ type: 'done' });
+    // Stored only when the run reached a real conclusion. An errored run is
+    // never cached: a transient upstream failure that got stuck here would
+    // become a sticky one, still telling the user it is broken after it had
+    // recovered. See isCacheable.
+    if (isCacheable(recorded)) resultCache.set(key, recorded);
     // After `done`, so persistence never delays the answer.
     await persist(session, sessionId);
   }
