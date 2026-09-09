@@ -4,6 +4,7 @@ import {
   ND_NO_REASON_COPY,
   ND_REASON_COPY,
   VERDICT_PHRASE,
+  confidenceTraceLabel,
   judgeDispositionSentence,
   type QueryResult,
 } from '@receipts/shared';
@@ -105,7 +106,12 @@ function AnalystTrace({ result }: { result: QueryResult }) {
                   <>
                     {' '}· flags <code>{e.vote_flags.join(';')}</code>
                   </>
-                ) : null}
+                ) : null}{' '}
+                {/* Absence is written in words, never as 0 — handoff v2 §3, and
+                    the split-vote cap (contract 2) is already applied to the
+                    number shown, so this is what the accusation floor was
+                    actually measured against. */}
+                · confidence <code>{confidenceTraceLabel(e.alignment_confidence)}</code>
               </li>
             ))}
           </ol>

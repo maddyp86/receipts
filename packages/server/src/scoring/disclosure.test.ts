@@ -5,6 +5,7 @@ import {
   GOVERNING_VOTE_COPY,
   JUDGE_DISPOSITION_COPY,
   VOTE_FLAG_COPY,
+  confidenceTraceLabel,
   governingVoteSentence,
   judgeDispositionSentence,
 } from '@receipts/shared';
@@ -201,5 +202,33 @@ describe('the judge disposition copy', () => {
         expect(copy.toLowerCase(), `"${term}" in judge copy`).not.toContain(term.toLowerCase());
       }
     }
+  });
+});
+
+describe('the analyst trace writes absence in words, never as a number', () => {
+  it('never prints 0 for a confidence nobody recorded', () => {
+    // Handoff v2 §3: absence must not be replaced by a value from the column's
+    // own vocabulary. A "0" here reads as "we looked and found no confidence at
+    // all" — a finding nobody made.
+    expect(confidenceTraceLabel(null)).not.toBe('0');
+    expect(confidenceTraceLabel(undefined)).not.toBe('0');
+    expect(confidenceTraceLabel(null)).toBe('not recorded');
+  });
+
+  it('prints a REAL zero as zero', () => {
+    // The mirror of the rule. 0 is a value, and hiding it behind "not recorded"
+    // would lose a finding in the other direction.
+    expect(confidenceTraceLabel(0)).toBe('0');
+  });
+
+  it('passes a normal confidence through unchanged', () => {
+    expect(confidenceTraceLabel(0.65)).toBe('0.65');
+    // The split-vote cap is applied upstream, so what reaches the trace is what
+    // contract 3's floor was actually measured against.
+    expect(confidenceTraceLabel(0.75)).toBe('0.75');
+  });
+
+  it('does not treat NaN as a measurement', () => {
+    expect(confidenceTraceLabel(Number.NaN)).toBe('not recorded');
   });
 });

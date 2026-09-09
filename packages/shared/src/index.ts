@@ -959,6 +959,24 @@ export const VOTE_FLAG_COPY: Record<string, string> = {
     'We do not have an exact date for this action, so the start of that Congress was used when checking timing.',
 };
 
+/**
+ * How a per-action confidence is written in the ANALYST TRACE.
+ *
+ * Level 2 only — Level 1 carries no statistics. The whole reason this is a
+ * function rather than a template hole is handoff v2 §3: absence must never be
+ * replaced by a value from the column's own vocabulary, and `0` is a value. A
+ * `{c ?? 0}` or a `{c || '-'}` here would print "0" for a row no evaluator ever
+ * scored, which reads as "we looked and found no confidence at all" — a finding
+ * nobody made — and `||` would do the same to a genuine 0.
+ *
+ * A real 0 renders as 0. Absence renders as words.
+ */
+export function confidenceTraceLabel(confidence: number | null | undefined): string {
+  return typeof confidence === 'number' && Number.isFinite(confidence)
+    ? String(confidence)
+    : 'not recorded';
+}
+
 /** Words that must never appear in Level-1 voter-facing copy. */
 export const BANNED_LEVEL1_TERMS = [
   'similarity',
