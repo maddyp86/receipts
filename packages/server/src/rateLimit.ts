@@ -75,6 +75,26 @@ export function respondRateLimited(req: Request, res: Response): void {
   res.status(429).json({ error: RATE_LIMITED_ERROR });
 }
 
+/**
+ * Is this the health probe?
+ *
+ * Matched on `originalUrl`, NOT `req.path`, and that distinction is the whole
+ * point. Inside `app.use('/api', ...)` Express rewrites `req.path` relative to
+ * the mount point, so `/api/health` arrives as `/health` and a comparison
+ * against the full path is never true. The exemption silently never fired.
+ *
+ * That is the spec's stated nightmare, reached by a typo-class mistake rather
+ * than a design one: Render polls health continuously, a 429 there marks the
+ * service unhealthy, and the limiter takes production down BY WORKING.
+ *
+ * Query string stripped, and an exact match rather than a prefix — `/api/healthz`
+ * is a different route and must not inherit the exemption.
+ */
+export function isHealthProbe(req: Pick<Request, 'originalUrl'>): boolean {
+  const path = String(req.originalUrl ?? '').split('?')[0]!.replace(/\/+$/, '');
+  return path === '/api/health';
+}
+
 /** Shared across every limiter, so they cannot drift apart in the details. */
 const COMMON = {
   // v8 API. v6/v7 examples say `standardHeaders: true` and `max:` — both are
@@ -118,6 +138,6 @@ export const readOnlyLimiter: RateLimitRequestHandler = rateLimit({
   ...COMMON,
   windowMs: MINUTES_15,
   limit: config.rateLimit.readPer15Min,
-  skip: (req) => req.path === '/api/health',
+  skip: isHealthProbe,
   handler: respondRateLimited,
 });

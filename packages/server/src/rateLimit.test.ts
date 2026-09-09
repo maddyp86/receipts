@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Request, Response } from 'express';
 import { config } from './config.js';
-import { respondRateLimited } from './rateLimit.js';
+import { isHealthProbe, respondRateLimited } from './rateLimit.js';
 
 // ===========================================================================
 // The rate limiter's two failure modes are both SILENT, which is why these
@@ -155,6 +155,43 @@ describe('a rate-limited script gets correct HTTP', () => {
     const fromStream = eventsFrom(browser.captured.chunks).find((e) => e.type === 'error')!.error;
     const fromJson = (script.captured.json as { error: unknown }).error;
     expect(fromStream).toEqual(fromJson);
+  });
+});
+
+describe('the health exemption, which shipped broken and reached production', () => {
+  // The original predicate compared `req.path === '/api/health'`. Inside
+  // `app.use('/api', ...)` Express rewrites req.path relative to the mount
+  // point, so the probe arrives as '/health' and the comparison was NEVER true.
+  // The exemption never fired; the deployed service was counting its own health
+  // checks against the read-only limit. Caught by reading RateLimit headers off
+  // production, not by any test — because no test exercised `skip` at all.
+
+  /** The shape Express actually hands a middleware mounted at '/api'. */
+  const mounted = (originalUrl: string) =>
+    ({ path: originalUrl.replace(/^\/api/, ''), baseUrl: '/api', originalUrl }) as never;
+
+  it('exempts the probe even though req.path says "/health"', () => {
+    const req = mounted('/api/health');
+    expect((req as { path: string }).path).toBe('/health'); // the trap, pinned
+    expect(isHealthProbe(req)).toBe(true);
+  });
+
+  it('exempts it with a query string attached', () => {
+    expect(isHealthProbe(mounted('/api/health?probe=render'))).toBe(true);
+    expect(isHealthProbe(mounted('/api/health/'))).toBe(true);
+  });
+
+  it('does NOT exempt anything else, including a prefix lookalike', () => {
+    // An exact match, not a prefix: /api/healthz is a different route and must
+    // not inherit an exemption that exists to protect one specific probe.
+    expect(isHealthProbe(mounted('/api/healthz'))).toBe(false);
+    expect(isHealthProbe(mounted('/api/health/deep'))).toBe(false);
+    expect(isHealthProbe(mounted('/api/query'))).toBe(false);
+    expect(isHealthProbe(mounted('/api/senators'))).toBe(false);
+  });
+
+  it('is unbothered by a missing originalUrl', () => {
+    expect(isHealthProbe({ originalUrl: undefined } as never)).toBe(false);
   });
 });
 
