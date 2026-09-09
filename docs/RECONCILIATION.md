@@ -1395,3 +1395,142 @@ the evaluator remains authoritative whenever it runs.
 Two tests pin this: the stub emits ≥ the floor for a directional effect, and the
 withheld-without-confidence case is retained so nobody "simplifies" the field
 away again.
+
+---
+
+## 2026-09-08 — the evaluation layer becomes visible
+
+Five commits (`f8bda91`, `39a23e6`, `0b59f1d`, `3e97d6b`, `772067c`) rendering
+what the evaluation layer already computed. Scoped as items 1 and 2 of
+`START_HERE_next_thread.md`, both filed `[web]`.
+
+**They were not web tasks.** Every one turned out to be the same shape: a field
+computed correctly, persisted correctly, handed to the model correctly, and then
+dropped between the server and the browser — with a fallback in the UI that said
+something *false* in its place. The rendering was the small half.
+
+### The pattern, and why nothing caught it
+
+An optional field that is never assigned is indistinguishable from one that is.
+`QueryResult.coverage` had a type, a derivation (`scoring/coverage.ts`), and
+passing tests for that derivation — and was `undefined` on every response ever
+served, because nothing in `finish()` assigned it. No test failed, because the
+tests covered what the sentence *says*, never whether a user sees it.
+
+The new `orchestrator/result.test.ts` exists for that gap specifically: it
+asserts ATTACHMENT, not derivation.
+
+### Four false statements the UI was making
+
+Each is the same class as the coverage boundary — the tool asserting a finding
+nobody made — arriving through a different door.
+
+| Where | It said | Truth |
+|---|---|---|
+| `nd_reason` null | "We didn't find any bills or votes in this senator's analyzed record" | We have no recorded reason. The UI defaulted to `NO_MATCHES`, the strongest absence claim in the vocabulary |
+| Every candidate gated | same `NO_MATCHES` sentence | We found related bills and deliberately declined to read them |
+| Accusation withheld, no judge credential | "A second review didn't back this reading" | No review ran at all |
+| Per-action confidence null, had it been rendered naively | `0` | No evaluator scored the row |
+
+**`ND_REASON_COPY.GATED` already existed**, written in the previous phase for
+exactly the second row of that table, and nothing ever set `nd_reason` to it.
+`scoreMatches` receives `matches` already filtered to the scorable rows, so a
+fully-gated query and a genuinely empty one are identical from inside the
+scorer. `gated_count` now reaches it and G1 distinguishes three findings where
+it distinguished two. It changes only the REASON — tests pin that verdict, band
+and mode are byte-identical either way, and that a gate count cannot detour a
+real scorable match into `GATED`.
+
+`WITHHELD_PENDING_REVIEW`'s copy collapses a distinction its own type comment
+insists on: *"one is a confidence bar, this is a review that failed or never
+happened, and a reader deserves to know which."* `JUDGE_DISPOSITION_COPY` gives
+each disposition its own sentence, and `JudgeDisclosure.unavailable` is a stored
+field rather than a UI inference so the distinction survives into anything that
+reads a persisted result.
+
+### Port gap — `vote_flags` was half-implemented
+
+Handoff v2 §4 lists `vote_flags` as `';'-joined: SPLIT_VOTE, FLOOR_LEADER`. The
+scorer could only ever produce the first: it derives `SPLIT_VOTE` from the votes
+in front of it and holds no reference data for anything else. `FLOOR_LEADER` and
+`ACTION_DATE_PROXY` are computed by `preEvaluatorGates` — which knows the
+senator's role at that Congress and whether the action date is a stand-in — and
+were dropped on the way to the row.
+
+`ScorableMatch.vote_flags` carries them through; the scorer unions them with its
+own, deduped, because the gates compute `SPLIT_VOTE` too on a stricter rule that
+excludes `NOT_VOTING`. Disclosure only — a test pins that a flag cannot move a
+verdict, a band or a weight. Restores §4 rather than departing from it.
+
+### Contract 2 was half-rendered
+
+*"Split vote → confidence ≤ 0.75, both votes named, `governing_vote` stated."*
+The card named both votes and never said which governed — the half the verdict
+turns on, and precisely the shape §4 calls "exactly the claim a senator's office
+knocks down".
+
+**The plain-language layer is not decoration.** The raw split-vote value is
+literally `CLOTURE (60-vote threshold; split vote)`, and `threshold` is in
+`BANNED_LEVEL1_TERMS`. Printing `vote_governing` verbatim to a voter breaks the
+Level-1 no-statistics rule that the whole receipt is built on. So:
+`GOVERNING_VOTE_COPY` translates for Level 1, the raw string stays in the trace,
+and a test pins that every governing value a real vote combination can reach has
+copy — a wording change in `deriveAlignment` now fails loudly instead of
+silently rendering nothing on the rows that most need disclosure.
+
+`FLOOR_LEADER`'s copy states what the ROLE involves, never what the senator was
+trying to achieve. The non-goals rule out intent attribution and a leader's
+procedural vote is where that temptation bites hardest.
+
+### Logged, not fixed
+
+**Nested judge reasoning in the Level-2 trace.** `applyDispositionToResult`
+builds its reason by slicing `disposition.reasoning`, which for `JUDGE_ERROR`
+already contains that same prefix — so the trace reads
+`"could not run (| WITHHELD: … could not run ("`. Cosmetic, analyst-facing only,
+and inside ported judge code: `dispositions.ts:264`.
+
+**`gatedDisposition` is unreachable on the query path.** `dispatch` passes
+`judgeGates(...).fired` to the judge as INPUT rather than short-circuiting on a
+deterministic hit, so `GATED_*` dispositions never occur here. That appears to
+be deliberate — "the model confirms or disputes those hits rather than
+re-deriving them" — but it means the `GATED_*` branch of `applyJudgeVerdict` and
+its copy are live code with no live caller. Not touched; noted so nobody
+"discovers" it as dead and removes it.
+
+### Fixture correction
+
+`FIXTURE_ACTIONS` carried no `congress`, though live Pinecone rows do
+(`PineconeActionStore` reads it from vector metadata) and the file's own header
+promises rows "shaped like real rows … so code paths exercised here are the ones
+that run live". Demo mode was therefore reporting an UNKNOWN coverage window — a
+weaker sentence than the live path produces. Derived from `bill_id` rather than
+typed per row, so it cannot drift from the identifier it describes.
+
+### What is verified, and what is not
+
+Verified in a browser: the coverage sentence on both a `NOT_DETERMINABLE` and a
+`KEPT`; the governing-vote sentence; `FLOOR_LEADER` and `ACTION_DATE_PROXY`
+disclosures; the withheld-accusation sentence on the `JUDGE_ERROR` path; and the
+Level-2 trace including the per-action confidence.
+
+**Not verified in a browser, and not fake-able from here:**
+
+| | Why |
+|---|---|
+| Gated rows rendering | No fixture triggers a gate. Probed all 8: every gate fails open because demo skips scope classification and fixture enrichment is null |
+| Halt UI | Demo skips scope classification entirely (`loop.ts:806`) |
+| Judge `PASS` + counterargument, `REVIEW_REQUIRED_JUDGE_CORRECTED` | Need a real judge call |
+| A `SPLIT_VOTE` row | No fixture has cloture and passage disagreeing |
+
+The first three need `ANTHROPIC_API_KEY`. The fourth does not — it needs a real
+split-vote pair from the corpus.
+
+**Deliberately not fabricated.** Adding a gated fixture or a split vote would
+mean inventing a vote record for a real senator. That is a different act from
+deriving `congress` from a bill id, which was already true of the row. The demo
+banner mitigates but does not erase it, and a tool whose product is its audit
+trail should not seed its own demo with invented votes. All four paths are
+covered by tests instead.
+
+357 tests pass, typecheck clean, web bundle builds.

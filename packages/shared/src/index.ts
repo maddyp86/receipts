@@ -491,6 +491,163 @@ export interface CoverageWindow {
   unknown: boolean;
 }
 
+/**
+ * One sentence, safe to show, stating the boundary.
+ *
+ * Deliberately says what was SEARCHED, never what the senator did. The
+ * distinction is the whole point: the tool can speak with authority about its
+ * own corpus and has no standing to speak about anything outside it.
+ *
+ * Lives in `shared` rather than in the server because the client renders it and
+ * the server persists it, and two copies of this sentence would drift. The
+ * DERIVATION stays server-side in `scoring/coverage.ts` — it reads config, and
+ * `observed` must come from the retrieved candidates rather than from anything
+ * the browser could assert.
+ */
+export function coverageSentence(coverage: CoverageWindow): string {
+  if (coverage.unknown) {
+    return 'We could not establish which legislative record was searched, so treat an empty result as inconclusive rather than as an absence of action.';
+  }
+
+  // Prefer the DECLARED window; fall back to what was actually observed.
+  // An unset COVERAGE_CONGRESSES with real candidates in hand is not "we don't
+  // know" — the data says which congresses were searched, and saying so is
+  // better than a vague disclaimer.
+  const list = coverage.congresses.length
+    ? coverage.congresses
+    : coverage.observed
+      ? Array.from(
+          { length: coverage.observed.max - coverage.observed.min + 1 },
+          (_, i) => coverage.observed!.min + i,
+        )
+      : [];
+
+  if (!list.length) {
+    return 'This covers only the legislation we have analyzed, which may not be a senator’s full record.';
+  }
+
+  const span =
+    list.length === 1
+      ? `the ${ordinal(list[0]!)} Congress`
+      : `the ${list.slice(0, -1).map(ordinal).join(', ')} and ${ordinal(list[list.length - 1]!)} Congress`;
+
+  return `We searched ${span}. Anything before that is outside the record we have analyzed, so an empty result here is not a finding that the senator has no record on the subject.`;
+}
+
+const ordinal = (n: number): string => {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'}`;
+};
+
+/**
+ * A retrieved action that a pre-evaluator gate closed before the evaluator ran.
+ *
+ * DISPLAYED WITH ITS REASON, never dropped. fix/08 calls gated items "the thing
+ * that makes the tool look honest": "Not evaluated: leader procedural vote" is
+ * a useful answer, and silently discarding the row turns a deliberate refusal
+ * to read something into an absence of evidence.
+ *
+ * Kept out of `ScoredResult.evidence` on purpose. These rows never reached the
+ * evaluator, so they carry no direction, no weight and no confidence — sitting
+ * them beside scored evidence would imply they were weighed and found wanting,
+ * when in fact we declined to weigh them at all.
+ */
+export interface GatedAction {
+  action_uid: string;
+  bill_id: string;
+  bill_number?: string;
+  title: string;
+  /** Which gate fired, e.g. `G4_vehicle`. Analyst trace only, not Level 1. */
+  gate: string;
+  /**
+   * The terminal outcome the gate assigned.
+   *
+   * `NOT_APPLICABLE_EXPIRED` and `NOT_APPLICABLE` are the interesting ones:
+   * "this action could not bear on this statement" is a finding about the
+   * STATEMENT, and different from "we could not read this action".
+   */
+  outcome: AlignmentOutcome;
+  /** Plain-language, written for a reader, safe to render verbatim. */
+  reason: string;
+  source_url?: string;
+}
+
+/**
+ * What the adversarial second opinion did with an accusation.
+ *
+ * The judge runs ONLY on a derived BROKE/INCONSISTENT — the minority of
+ * queries, and exactly where the risk is. Its disposition was persisted, handed
+ * to the model and logged to the console, and never shown to the person reading
+ * the verdict.
+ */
+export interface JudgeDisclosure {
+  /** PASS | PASS_ON_RETRY | REVIEW_REQUIRED | REVIEW_REQUIRED_JUDGE_CORRECTED | JUDGE_ERROR | GATED_*. */
+  disposition: string;
+  /** True when the accusation was not published. */
+  withheld: boolean;
+  /**
+   * True when no review happened at all — no credential, or the model returned
+   * nothing usable.
+   *
+   * Load-bearing, and NOT the same as a failed review. "A reviewer disagreed"
+   * and "nobody looked" are different facts about how much scrutiny a reading
+   * received, and a reader deserves to know which. Handoff v2 §5: an
+   * infrastructure failure is never a content verdict.
+   */
+  unavailable: boolean;
+  /**
+   * The senator's strongest counterargument, as the judge stated it.
+   *
+   * §5: a PASS is invalid without one — the parser downgrades a
+   * counterargument-free PASS to FAIL. So whenever an accusation IS published,
+   * this exists, and showing it beside the accusation is the entire point of
+   * requiring it.
+   */
+  counterargument: string | null;
+  /** Analyst vocabulary. Level 2 only. */
+  failed_test: string | null;
+  failure_class: string | null;
+}
+
+/**
+ * Plain-language copy per judge disposition.
+ *
+ * Same discipline as ND_REASON_COPY: the wording lives here so it cannot drift,
+ * and NONE of it is exculpatory. Withholding an accusation is not a finding
+ * that the senator kept anything, and a review that could not run is not a
+ * review that cleared him.
+ */
+export const JUDGE_DISPOSITION_COPY: Record<string, string> = {
+  PASS: 'This reading was put to a second, adversarial review, which did not overturn it.',
+  PASS_ON_RETRY:
+    'This reading did not survive a first adversarial review. It was re-examined and passed on the second look, and is held to a lower confidence as a result.',
+  REVIEW_REQUIRED:
+    'A second, adversarial review did not sustain this reading, and offered no correction we could stand behind. We are not publishing it. The bills and votes are below — read them and judge for yourself.',
+  REVIEW_REQUIRED_JUDGE_CORRECTED:
+    'A second, adversarial review did not sustain the original reading and supplied a correction. What you see is the corrected reading, flagged for human review.',
+  // NOT "a reviewer disagreed". Nobody looked, and saying otherwise would claim
+  // a scrutiny this reading never received.
+  JUDGE_ERROR:
+    'The second-opinion review could not run, so this reading has not been checked by anything but the evaluator. We do not publish an accusation no reviewer has seen. The bills and votes are below — read them and judge for yourself.',
+};
+
+/**
+ * The sentence for a disposition, or null when there is nothing to say.
+ *
+ * `GATED_*` dispositions are matched by prefix: the suffix is the failure class,
+ * which is analyst vocabulary and belongs in the trace rather than in front of
+ * a voter.
+ */
+export function judgeDispositionSentence(disposition: string | null | undefined): string | null {
+  if (!disposition) return null;
+  if (JUDGE_DISPOSITION_COPY[disposition]) return JUDGE_DISPOSITION_COPY[disposition]!;
+  if (disposition.startsWith('GATED_')) {
+    return 'A deterministic check caught this reading before it reached review, so we are not publishing it. The bills and votes are below — read them and judge for yourself.';
+  }
+  return null;
+}
+
 export interface QueryResult {
   senator: Senator;
   interpretation: Interpretation;
@@ -502,6 +659,20 @@ export interface QueryResult {
   fixture_mode: boolean;
   /** What record was searched. Must be rendered alongside any verdict. */
   coverage?: CoverageWindow;
+  /**
+   * Actions closed by a gate before evaluation. Rendered with their reasons.
+   *
+   * Optional because results persisted before this field existed do not carry
+   * it — absent means "we don't know", never "none were gated".
+   */
+  gated?: GatedAction[];
+  /**
+   * What the adversarial review did, when one was attempted.
+   *
+   * Absent means the judge never came into it — the verdict was not an
+   * accusation. It does NOT mean the reading passed review.
+   */
+  judge?: JudgeDisclosure;
 }
 
 // ---------------------------------------------------------------------------
@@ -712,6 +883,99 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   GATED:
     "The legislation we found can't settle this statement — the window it applied to had closed, or the bills were too broad to say anything about it specifically. Each item below says which.",
 };
+
+/**
+ * Copy for a NOT_DETERMINABLE that arrived with no reason recorded.
+ *
+ * Exists so the UI never has to fall back to `NO_MATCHES`, which is the
+ * strongest absence claim in the vocabulary — "we searched and this senator has
+ * nothing on the subject". Defaulting to it on a missing field would have the
+ * tool assert a finding it never made, which is the same failure the coverage
+ * sentence exists to prevent, arriving through a different door.
+ *
+ * Says only what is actually known: no defensible reading, reason unrecorded.
+ */
+export const ND_NO_REASON_COPY =
+  "We couldn't reach a defensible reading here, and the specific reason wasn't recorded. Anything we did find is below — read it and judge for yourself.";
+
+/**
+ * Plain-language rendering of `vote_governing`, for Level 1.
+ *
+ * The raw strings are analyst vocabulary and one of them —
+ * `CLOTURE (60-vote threshold; split vote)` — contains "threshold", which is in
+ * BANNED_LEVEL1_TERMS. Printing it verbatim to a voter would break the Level-1
+ * rule that the receipt carries no statistics, so the raw value stays in the
+ * analyst trace and these sentences stand in front of it.
+ *
+ * Unknown keys return null and render nothing. A `vote_governing` value this
+ * map has not been taught is jargon, and showing jargon is worse than showing
+ * one less line — the votes themselves are already named on the card.
+ */
+export const GOVERNING_VOTE_COPY: Record<string, string> = {
+  // The disclosure that matters most. Handoff v2 §4: a row reading "voted NAY
+  // -> BROKE" while hiding a cloture YEA is exactly the claim a senator's
+  // office knocks down.
+  'CLOTURE (60-vote threshold; split vote)':
+    'Two votes here, and they point different ways. The vote on whether to let the bill proceed is the one that governs, because that is the stage where a bill lives or dies.',
+  'CLOTURE+PASSAGE (agree)':
+    'They voted the same way twice — once on whether to let the bill proceed, once on the bill itself.',
+  'CLOTURE (only vote recorded)':
+    'The one recorded vote was on whether to let the bill proceed, not on the bill itself.',
+  'PASSAGE (no cloture vote)':
+    'The recorded vote was on the bill itself; there was no separate vote on whether to let it proceed.',
+  'VOTE (untyped)':
+    'The record shows a single vote on this bill without saying which stage it belonged to.',
+  SPONSORSHIP: 'There was no vote to read here — putting their name to the bill is the action.',
+  SPONSOR_NAY:
+    'They put their name to this bill and then voted against it. We do not read that as either keeping or breaking the statement.',
+};
+
+/**
+ * The Level-1 sentence for a governing vote, or null when there is nothing to
+ * say (`NA`, `NO_ACTION`, or a value this map has not been taught).
+ */
+export function governingVoteSentence(voteGoverning: string | null | undefined): string | null {
+  if (!voteGoverning) return null;
+  return GOVERNING_VOTE_COPY[voteGoverning] ?? null;
+}
+
+/**
+ * Reader-facing copy for the disclosure flags travelling on a row.
+ *
+ * These are a separate channel from `scoring_flags`: they are shown beside the
+ * verdict rather than used to weight it. Each says something that changes how
+ * the row should be read, which is why they are Level 1 rather than trace.
+ *
+ * Unknown flags render nothing here and appear raw in the analyst trace.
+ */
+export const VOTE_FLAG_COPY: Record<string, string> = {
+  SPLIT_VOTE: 'Split vote — the two votes on this bill went different ways.',
+  // Institutional fact, not a motive. The platform's non-goals rule out intent
+  // attribution, so this says what the role involves and leaves the reading to
+  // the reader.
+  FLOOR_LEADER:
+    'They held a floor leadership role at the time — a role that involves casting procedural votes on the chamber\'s behalf.',
+  ACTION_DATE_PROXY:
+    'We do not have an exact date for this action, so the start of that Congress was used when checking timing.',
+};
+
+/**
+ * How a per-action confidence is written in the ANALYST TRACE.
+ *
+ * Level 2 only — Level 1 carries no statistics. The whole reason this is a
+ * function rather than a template hole is handoff v2 §3: absence must never be
+ * replaced by a value from the column's own vocabulary, and `0` is a value. A
+ * `{c ?? 0}` or a `{c || '-'}` here would print "0" for a row no evaluator ever
+ * scored, which reads as "we looked and found no confidence at all" — a finding
+ * nobody made — and `||` would do the same to a genuine 0.
+ *
+ * A real 0 renders as 0. Absence renders as words.
+ */
+export function confidenceTraceLabel(confidence: number | null | undefined): string {
+  return typeof confidence === 'number' && Number.isFinite(confidence)
+    ? String(confidence)
+    : 'not recorded';
+}
 
 /** Words that must never appear in Level-1 voter-facing copy. */
 export const BANNED_LEVEL1_TERMS = [

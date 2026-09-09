@@ -414,6 +414,101 @@ textarea.promise::placeholder {
   margin: 0.9rem 0 0;
 }
 
+/* The coverage boundary. Sits inside the verdict card on EVERY result, muted
+   but never hidden behind a disclosure toggle — a reader who stops at the
+   headline is exactly the reader who needs to know what was searched. */
+.coverage-note {
+  margin: 0.9rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+/* An unrecoverable window makes a weaker claim, so it reads as a caveat rather
+   than as a statement of fact about the corpus. */
+.coverage-note[data-unknown='true'] {
+  font-style: italic;
+}
+
+/* ---------- gated actions ------------------------------------------------
+   Rows a gate closed before the evaluator ran. Styled as a deliberate set-aside
+   rather than as weak evidence: no verdict colour, no direction, a dashed rule
+   to say "considered and not read" instead of "read and found wanting". */
+
+.gated-lead {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  margin: -0.35rem 0 1rem;
+  max-width: 62ch;
+}
+
+.evidence.gated {
+  border-style: dashed;
+  background: var(--unclear-wash);
+}
+
+.gated-reason {
+  margin: 0.5rem 0 0.9rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* Paired with a text label, never colour alone (§9.5). */
+.relation.not-evaluated {
+  color: var(--unclear);
+  border-color: var(--rule-strong);
+}
+
+/* ---------- per-action disclosure ---------------------------------------
+   Which vote governed, and the flags that change how the row reads. Level 1,
+   because a reader who never opens the drill-down is exactly the reader who
+   would otherwise see "voted no -> broke" with a cloture yes hidden behind it. */
+
+.governing {
+  margin: 0.55rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.disclosures {
+  margin: 0.6rem 0 0;
+  padding-left: 1.05rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.disclosures li + li {
+  margin-top: 0.3rem;
+}
+
+/* ---------- adversarial review -------------------------------------------
+   Shown on a PUBLISHED accusation: what the second opinion did, and the
+   senator's strongest response to it. Inside the verdict card, because it
+   qualifies the verdict rather than annotating one piece of evidence. */
+
+.judge-note {
+  margin: 0.9rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.judge-note p {
+  margin: 0;
+}
+
+.counterargument {
+  margin-top: 0.55rem !important;
+  color: var(--ink);
+}
+
 /* ---------- details toggle ---------------------------------------------- */
 
 .details-toggle {

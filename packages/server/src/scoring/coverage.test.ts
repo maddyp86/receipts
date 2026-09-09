@@ -72,3 +72,28 @@ describe('the sentence talks about the SEARCH, never the senator', () => {
     }
   });
 });
+
+describe('the sentence has exactly one definition', () => {
+  it('is the shared one, so the client and the server cannot drift', async () => {
+    // The client renders this sentence and the server persists it. Two copies
+    // would diverge silently — the screen saying one window, the audit row
+    // another — so `scoring/coverage.ts` re-exports rather than reimplements.
+    const shared = await import('@receipts/shared');
+    expect(coverageSentence).toBe(shared.coverageSentence);
+  });
+});
+
+describe('a NOT_DETERMINABLE with no reason does not borrow NO_MATCHES', () => {
+  it('claims no absence and offers no exoneration', async () => {
+    const { ND_NO_REASON_COPY, ND_REASON_COPY } = await import('@receipts/shared');
+
+    // The specific failure this guards: falling back to NO_MATCHES makes the
+    // tool assert "we searched and found nothing in this senator's record" on
+    // the strength of a field that was simply never set.
+    expect(ND_NO_REASON_COPY).not.toBe(ND_REASON_COPY.NO_MATCHES);
+    expect(ND_NO_REASON_COPY).not.toMatch(/didn't find any|no bills or votes/i);
+
+    // Nor may it read as a clearing. Same posture as the withholding copy.
+    expect(ND_NO_REASON_COPY).not.toMatch(/\bkept\b|cleared|no wrongdoing/i);
+  });
+});

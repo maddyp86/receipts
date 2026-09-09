@@ -34,7 +34,7 @@ const base = {
   strength: 'STRONG' as const,
 };
 
-export const FIXTURE_ACTIONS: FixtureAction[] = [
+const FIXTURE_ROWS: FixtureAction[] = [
   // ── Schumer · prescription drug pricing — clean KEPT ──────────────────────
   {
     ...base,
@@ -328,3 +328,23 @@ export const FIXTURE_ACTIONS: FixtureAction[] = [
     ],
   },
 ];
+
+/**
+ * Live Pinecone rows carry `congress` (PineconeActionStore reads it from vector
+ * metadata) and the coverage disclosure is derived from it. Without it here,
+ * demo mode reports an UNKNOWN window and shows a weaker sentence than the live
+ * path would — exactly the fixture-vs-live divergence this file's header
+ * promises not to have.
+ *
+ * Derived from `bill_id` with the same rule the gates use, rather than typed
+ * per row, so it cannot drift from the identifier it describes.
+ */
+const congressOfBillId = (billId: string): number | undefined => {
+  const digits = /-(\d{3})$/.exec(billId)?.[1];
+  return digits ? Number(digits) : undefined;
+};
+
+export const FIXTURE_ACTIONS: FixtureAction[] = FIXTURE_ROWS.map((row) => ({
+  ...row,
+  congress: congressOfBillId(row.bill_id),
+}));
