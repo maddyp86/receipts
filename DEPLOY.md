@@ -31,13 +31,27 @@ host's secret store is populated.
 
 Static, ideal fit. Reads no secrets; the one build-time variable is a public URL.
 
-| Setting | Value |
-|---|---|
-| Framework preset | Vite |
-| Root directory | repo root (monorepo workspaces) |
-| Build command | `npm run build` |
-| Output directory | `packages/web/dist` |
-| Install command | `npm ci` |
+**These now live in `vercel.json`, not the dashboard.** Auto-detect cannot get
+this repo right: the root `package.json` has no Vite dependency (it is in
+`packages/web`), so Vercel reads the framework as "Other" and defaults the
+output directory to `public/`, which does not exist. The build would succeed and
+serve nothing.
+
+Committing them also means the settings move with the branch and cannot drift
+away from the repo in a dashboard nobody is reading.
+
+| Setting | Value | Where |
+|---|---|---|
+| Framework preset | Vite | `vercel.json` |
+| Root directory | repo root (monorepo workspaces) | dashboard — leave blank |
+| Build command | `npm run build` | `vercel.json` |
+| Output directory | `packages/web/dist` | `vercel.json` |
+| Install command | `npm ci` | `vercel.json` |
+
+**Prerequisite, and the first thing that will stop you:** Vercel needs a GitHub
+Login Connection on the account before it can link this repository. Without it,
+project creation fails with *"You need to add a Login Connection to your GitHub
+account first."* Add it under Vercel account settings, then link the repo.
 
 ### Env (build-time, PUBLIC — never a secret)
 
