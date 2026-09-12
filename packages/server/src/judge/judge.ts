@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config.js';
 import { JUDGE_SYSTEM_PROMPT, JUDGE_SYSTEM_PROMPT_VERSION } from './judgePrompt.js';
 import type { JudgeGateHit } from './judgeGates.js';
+import { anthropicContent, anthropicUsage, traceBegin } from '../trace/Trace.js';
 
 // ===========================================================================
 // THE ADVERSARIAL JUDGE.
@@ -277,16 +278,44 @@ export function liveJudgeFetcher(): JudgeFetcher {
     if (!config.anthropic.apiKey) throw new JudgeUnavailableError();
 
     const client = new Anthropic({ apiKey: config.anthropic.apiKey });
-    // NOTE the absence of `temperature`. claude-sonnet-5 400s on it; this is
-    // not an omission to be tidied up.
-    const message = await client.messages.create({
-      model: config.models.judge,
-      max_tokens: JUDGE_MAX_TOKENS,
-      system: JUDGE_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: buildJudgeUserMessage(input) }],
-    });
+    const userMessage = buildJudgeUserMessage(input);
+    const end = traceBegin();
+    let message: Anthropic.Message;
+    try {
+      // NOTE the absence of `temperature`. claude-sonnet-5 400s on it; this is
+      // not an omission to be tidied up.
+      message = await client.messages.create({
+        model: config.models.judge,
+        max_tokens: JUDGE_MAX_TOKENS,
+        system: JUDGE_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userMessage }],
+      });
+    } catch (err) {
+      end({
+        stage: 'JUDGE_MODEL', kind: 'model', status: 'error', label: 'judge call failed',
+        subject: input.bill_id,
+        model: config.models.judge, prompt_version: JUDGE_SYSTEM_PROMPT_VERSION, prompt_text: JUDGE_SYSTEM_PROMPT,
+        input: { user_message: userMessage },
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
 
-    return parseJudgeResponse(message as Parameters<typeof parseJudgeResponse>[0]);
+    const verdict = parseJudgeResponse(message as Parameters<typeof parseJudgeResponse>[0]);
+    // Raw blocks AND the parse, side by side: the parser turns a thinking-only
+    // or empty response into JUDGE_NO_OUTPUT, and a reader needs to see which.
+    end({
+      stage: 'JUDGE_MODEL', kind: 'model',
+      status: verdict.grade === 'ERROR' ? 'error' : 'ok',
+      label: `${verdict.grade}${verdict.failed_test ? ` ${verdict.failed_test}` : ''}${verdict.failure_class ? ` ${verdict.failure_class}` : ''} (stop_reason=${message.stop_reason ?? 'none'})`,
+      subject: input.bill_id,
+      model: config.models.judge, prompt_version: JUDGE_SYSTEM_PROMPT_VERSION, prompt_text: JUDGE_SYSTEM_PROMPT,
+      usage: anthropicUsage(message.usage),
+      input: { user_message: userMessage },
+      output: { stop_reason: message.stop_reason, content: anthropicContent(message.content), parsed: verdict },
+      error: verdict.grade === 'ERROR' ? verdict.critique : null,
+    });
+    return verdict;
   };
 }
 

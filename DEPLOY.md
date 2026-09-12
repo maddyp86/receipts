@@ -130,6 +130,7 @@ otherwise leave the server unable to boot. The server binds
 | `ANTHROPIC_MAX_TOKENS` | `64000` |
 | `RETRIEVAL_TOP_K` | `10` |
 | `CORS_ORIGIN` | the Vercel frontend origin(s), comma-separated |
+| `TRACE_DIR` | optional. Per-run trace files; default `.data/traces` on the container disk, pruned to `TRACE_MAX_FILES` (200). Traces also go to Supabase once migration 009 is applied. `off` disables the files. See `docs/trace-log.md` |
 | `ENABLE_CAMPAIGN_PROMISE_OVERRIDE` | `false` until copy review |
 
 ⚠️ **`CORS_ORIGIN` blank means any origin.** Every request spends money at three

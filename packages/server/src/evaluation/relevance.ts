@@ -378,9 +378,40 @@ export function parseRelevanceResponse(text: string | null | undefined): Relevan
 
 export type ResponsesFetcher = (body: ResponsesRequestBody) => Promise<ResponsesEnvelope>;
 
+/**
+ * What one evaluation looked like on the wire, for the query trace.
+ *
+ * Fired once per candidate, AFTER the result is parsed, whether the call
+ * succeeded or threw. `envelope` is the raw response when there was one;
+ * `error` is the transport or normalisation failure when there was not. The
+ * parsed `result` is what the gate will see, so a reader can put the raw text
+ * and the parse side by side.
+ */
+export interface EvaluationObservation<C, R> {
+  candidate: C;
+  request: ResponsesRequestBody;
+  envelope: ResponsesEnvelope | null;
+  rawText: string | null;
+  error: string | null;
+  durationMs: number;
+  result: R;
+}
+
 export interface EvaluateRelevanceOptions {
   /** Cap on concurrent calls. 10 candidates at topK 10 → one wave. */
   concurrency?: number;
+  /** Trace hook. Must not throw; a throwing observer is swallowed and logged. */
+  observe?: (o: EvaluationObservation<RelevanceCandidate, RelevanceResult>) => void;
+}
+
+/** Call an observer without letting it disturb the evaluation. */
+export function notify<T>(observe: ((o: T) => void) | undefined, o: T): void {
+  if (!observe) return;
+  try {
+    observe(o);
+  } catch (err) {
+    console.error('[trace] observer threw (non-fatal):', err instanceof Error ? err.message : err);
+  }
 }
 
 /**
@@ -407,12 +438,25 @@ export async function evaluateRelevance(
       // Non-null: the loop bound guarantees this index exists. Asserted rather
       // than guarded so a genuine hole still trips the post-loop assertion.
       const candidate = candidates[i]!;
+      const request = buildRelevanceRequest(candidate);
+      const t0 = Date.now();
+      let envelope: ResponsesEnvelope | null = null;
+      let rawText: string | null = null;
       try {
-        const envelope = await fetcher(buildRelevanceRequest(candidate));
+        envelope = await fetcher(request);
         const { text } = normalizeRelevanceResponse(envelope);
+        rawText = text;
         out[i] = { ...candidate, relevance: parseRelevanceResponse(text) };
+        notify(opts.observe, {
+          candidate, request, envelope, rawText, error: null,
+          durationMs: Date.now() - t0, result: out[i]!.relevance,
+        });
       } catch (e) {
         out[i] = { ...candidate, relevance: errorResult((e as Error).message) };
+        notify(opts.observe, {
+          candidate, request, envelope, rawText, error: (e as Error).message,
+          durationMs: Date.now() - t0, result: out[i]!.relevance,
+        });
       }
     }
   };

@@ -1834,3 +1834,95 @@ this side should not revert.
 — the gates are called from `dispatch.ts`, and `taxonomy.json` is the full 121-row export at
 `_provenance.status: "COMPLETE:2026-08-21"`. Both are listed as closed rather than deleted silently,
 so they are not re-reported. Remaining gaps renumbered, and the stance inversion added as gap 5.
+
+## 2026-09-11 — the query trace: every gate now leaves a record
+
+**Problem.** The UI shows the end of the pipeline. `app_queries` holds the
+frozen result, `app_query_matches` / `app_query_alignments` hold the PARSED
+outcome of the relevance and fulfillment legs, and `app_verdict_audit_log`
+holds every decision that changed a verdict. None of them holds what went into
+a model call and what came out, in sequence — so a wrong-looking verdict could
+not be walked back to the gate that bent it. Three things were invisible
+outright: the orchestrator's own turns (narration + tool calls), explanation
+drafts the wording checks bounced, and any run that halted, stopped on an
+uncached senator or errored before interpretation (those never write an
+`app_queries` row at all — `persist` skips them by design).
+
+**What shipped.** `packages/server/src/trace/` — a per-run recorder exposed
+through `AsyncLocalStorage`, two best-effort sinks (JSONL files under
+`TRACE_DIR`, and `app.app_query_trace_runs` + `app.app_query_trace_steps` via
+migration 009), `GET /api/trace/:run_id`, a `trace` stream event carrying the
+run id (first on every stream; shown under the reasoning panel), and
+`npm run trace -- <run_id>` to render a markdown log sheet. Gate map and
+reading guide: `docs/trace-log.md`.
+
+**Decisions worth recording.**
+
+- **Keyed by run id, not query id.** The runs that never produce an
+  `app_queries` row are the ones most worth tracing. `query_id` is a nullable
+  pointer filled in after persistence; the `PERSIST` step says why when it is
+  null. No existing table was altered — a column on `app_queries` would have
+  broken persistence for every deploy until the migration ran.
+- **The file sink is the primary local sink.** A local `DATABASE_URL` writes
+  to production (2026-09-08 rule), so verification runs have it blank — and
+  those runs needed a trace most. `.data/traces` is already gitignored.
+- **System prompts are hashed, not stored.** Version tag + sha256 per model
+  step; the text is in the repo at that version. 32 KB × N per run bought
+  nothing.
+- **The two OpenAI ports got an explicit `observe` option** rather than an
+  ambient call inside them: they run candidates in parallel and correlate
+  positionally, so the hook is the only place one candidate's request, raw
+  response and parse coexist. The ports' behaviour is unchanged with no
+  observer; an observer that throws is contained.
+- **A replay is its own run.** The browser receives the ORIGINAL run's id (that
+  run produced the answer); a separate one-step `CACHE_REPLAY` run records
+  that the request happened and called no model.
+- **Skipped legs are steps, not gaps.** No OpenAI key → `EVIDENCE_GATE`
+  `skipped` with "passed through UNCHECKED" in the label; no judge credential →
+  `JUDGE` `error` with "withheld unreviewed"; not an accusation → `JUDGE`
+  `skipped` with "this is NOT a pass". Same rule as the UI copy: a leg that did
+  not run must never read as a leg that passed.
+
+**Verified.** `orchestrator/traceRun.test.ts` runs the real loop in DEMO +
+FIXTURE mode and asserts the gate sequence REQUEST → CLASSIFY → INTERPRET →
+RESOLVE_SENATOR → EMBED → RETRIEVE → EVIDENCE_GATE → SEARCH → ENRICHMENT →
+SCORE → JUDGE → EVALUATE_EFFECTS → EXPLAIN_CHECK → EXPLAIN → RESULT → PERSIST →
+DONE, plus the uncached and replay paths.
+
+Then two runs in a browser against the real keys, `DATABASE_URL` blanked:
+
+- Run `154ddde8-6e32-48f6-82ea-526cbb3f8476`, live mode, "promised to
+  protect clean air standards from rollback" / S000148: 51 steps. `SCOPE_MODEL`
+  (haiku, raw JSON + post-check), `CLASSIFY_MODEL` (haiku, forced tool),
+  `ORCHESTRATOR_TURN` × 6 (sonnet — thinking + tool_use blocks per turn, stop
+  reasons, usage), `RELEVANCE` × 9 and `FULFILLMENT` × 8 (gpt-5.4-mini — full
+  user message, raw text, parse, tokens, ms), `EVIDENCE_GATE` 8 of 9,
+  `PRE_EVALUATOR_GATE` × 8, `SCORE` KEPT · Low, `EXPLAIN_CHECK` accepted,
+  `RESULT`, `PERSIST` skipped with reason, `DONE`. Read back through
+  `/api/trace/:id`, the JSONL file, and `npm run trace`. Largest single step
+  24 KB (SEARCH, which echoes the admitted matches); file 180 KB.
+- `JUDGE_MODEL` remains **unverified**: the verdict was not an accusation, so
+  the judge was not consulted — the same reason it has stayed unreached since
+  2026-09-08. The `JUDGE` step records that as `skipped` with "this is NOT a
+  pass".
+- The Supabase sink is unverified until migration 009 is run; the server
+  reports the missing tables once and keeps writing files.
+
+**Logged, not fixed — found by the trace on its first run.** Run
+`2ac5a69e-54ce-4847-8678-237812098ebc` was started with `DEMO_MODE=true
+FIXTURE_MODE=true` forced and the real keys still in the environment. The
+banner read "No API keys are configured … nothing here is a real
+accountability finding", and the trace showed **six live model calls**:
+`CLASSIFY_MODEL` on haiku (which overrode the stub's "Budget & Economy /
+Inflation" to "Health Care / Prescription Drugs"), `RELEVANCE` × 3 and
+`FULFILLMENT` × 2 on gpt-5.4-mini. DEMO mode stubs only the orchestrator loop;
+`interpretPromise`, `searchActions` and `evaluateEffectsTool` key their legs
+on credential PRESENCE, not on the mode. In the ordinary no-key setup the two
+coincide and the banner is true. With the modes forced and keys present, the
+banner asserts something false and money is spent. Not reached by any deploy
+today (Render infers both modes from keys); flagged because it is the copy
+defect class that matters most here.
+
+**Only Matthew can do:** run `docs/supabase-migration-009-query-trace-log.sql`
+as `postgres`.
+

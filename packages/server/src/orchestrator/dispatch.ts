@@ -36,7 +36,29 @@ import {
 import { classifyPromise, type ClassifyFetcher } from '../evaluation/classify.js';
 import type { CorrectionDelta, Corrections } from '@receipts/shared';
 import { scoreMatches, type ScorableMatch } from '../scoring/score.js';
-import { config } from '../config.js';
+import { config, namespaceFor } from '../config.js';
+import { traceStep, type TraceUsage } from '../trace/Trace.js';
+import type { ResponsesEnvelope } from '../evaluation/relevance.js';
+import {
+  RELEVANCE_PROMPT_CACHE_KEY,
+  RELEVANCE_SYSTEM_PROMPT,
+} from '../evaluation/relevancePrompt.js';
+import {
+  EVALUATOR_SYSTEM_PROMPT,
+  EVALUATOR_SYSTEM_PROMPT_VERSION,
+} from '../evaluation/evaluatorPromptV7.js';
+
+/** /v1/responses usage → the trace's shape. */
+function responsesUsage(envelope: ResponsesEnvelope | null): TraceUsage | null {
+  const u = envelope?.usage;
+  if (!u) return null;
+  return {
+    input_tokens: u.input_tokens,
+    output_tokens: u.output_tokens,
+    cached_tokens: u.input_tokens_details?.cached_tokens,
+    reasoning_tokens: u.output_tokens_details?.reasoning_tokens,
+  };
+}
 
 // ===========================================================================
 // Tool handlers.
@@ -172,14 +194,24 @@ async function interpretPromise(
   const classifyFetcher = session.classifyFetcher;
   let input = modelInput;
   const disagreements: string[] = [];
+  let classifierInput: Record<string, unknown> | null = null;
+  let classifierModel: string | null = null;
 
   if (classifyFetcher || config.anthropic.apiKey) {
     try {
       const classified = await classifyPromise(session.promiseText, classifyFetcher);
+      classifierInput = classified.input;
+      classifierModel = classified.model;
 
       // Reported, not repaired. Snapping an off-taxonomy pair to the nearest
       // valid one would hide the drift the 12-row check exists to measure.
       if (!classified.inTaxonomy) {
+        traceStep({
+          stage: 'CLASSIFY', kind: 'deterministic', status: 'rejected',
+          label: `classifier pair outside the taxonomy: ${String(classified.input.primary_issue)} / ${String(classified.input.sub_issue)} — refused, not snapped`,
+          input: { orchestrator_input: modelInput, classifier_input: classified.input },
+          error: 'out-of-taxonomy pair',
+        });
         return fail({
           code: 'INTERNAL',
           message:
@@ -204,6 +236,12 @@ async function interpretPromise(
       // A classifier failure must NOT silently fall back to the orchestrator's
       // guess — that would quietly run the query on an unrouted model and make
       // any parity measurement meaningless.
+      traceStep({
+        stage: 'CLASSIFY', kind: 'deterministic', status: 'error',
+        label: 'classifier failed — query refused rather than run on the orchestrator\'s guess',
+        input: { orchestrator_input: modelInput },
+        error: err instanceof Error ? err.message : String(err),
+      });
       return fail({
         code: 'UPSTREAM_UNAVAILABLE',
         message: `Classification failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -316,6 +354,35 @@ async function interpretPromise(
     key_policy_terms: interpretation.key_policy_terms,
     taxonomy_keywords: keywords,
     reasoning: interpretation.reasoning,
+  });
+
+  // GATE: classification → the text that gets embedded. Three inputs can
+  // disagree here (orchestrator, dedicated classifier, user corrections) and
+  // the resolution order is fixed: classifier over orchestrator, user over
+  // both. The trace shows all three and the text they produced, because a
+  // wrong candidate set almost always starts here and is invisible later.
+  traceStep({
+    stage: 'CLASSIFY', kind: 'deterministic',
+    label:
+      `${primary_issue || '(none)'} / ${sub_issue || '(none)'} · ${interpretation.stance} · ${interpretation.promise_type}` +
+      (isEvaluable ? '' : ' · NOT EVALUABLE') +
+      (disagreements.length ? ` · ${disagreements.length} disagreement(s)` : '') +
+      (deltas.length ? ` · ${deltas.length} correction(s)` : '') +
+      (found ? '' : ' · no taxonomy keywords'),
+    input: {
+      orchestrator_input: modelInput,
+      classifier_input: classifierInput,
+      classifier_model: classifierModel,
+      corrections: corrections ?? null,
+    },
+    output: {
+      disagreements,
+      corrections_applied: deltas,
+      interpretation,
+      taxonomy_match: validCombination,
+      taxonomy_keywords_found: found,
+      embedding_text: session.embeddingText,
+    },
   });
 
   return ok({
@@ -503,15 +570,53 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
     });
   }
 
+  const retrieveT0 = Date.now();
   const result = await actionStore.search({
     politicianId: session.senator.politician_id,
     vector: session.vector,
     queryText: session.embeddingText ?? session.promiseText,
     topK: config.retrieval.topK,
   });
-  if (!result.ok) return result;
+  const retrieveInput = {
+    store: actionStore.kind,
+    politician_id: session.senator.politician_id,
+    namespace: actionStore.kind === 'pinecone' ? namespaceFor(session.senator.politician_id) : null,
+    top_k: config.retrieval.topK,
+    embedding_version: config.pinecone.embeddingVersion || null,
+    vector_dimensions: session.vector.length,
+    query_text: session.embeddingText ?? session.promiseText,
+  };
+  if (!result.ok) {
+    traceStep({
+      stage: 'RETRIEVE', kind: 'io', status: 'error', duration_ms: Date.now() - retrieveT0,
+      label: `${result.error.code}: ${result.error.message}`,
+      input: retrieveInput, output: { error: result.error }, error: result.error.message,
+    });
+    return result;
+  }
 
   const candidatesIn = result.data.matches;
+  // GATE: the similarity floor. What came back, what cleared WEAK, and the
+  // near misses that did not — with scores, because "thin namespace" and
+  // "wrong vector" look identical from the survivor count alone.
+  traceStep({
+    stage: 'RETRIEVE', kind: 'io', duration_ms: Date.now() - retrieveT0,
+    label: `${result.data.returned} returned · ${candidatesIn.length} above WEAK floor · ${result.data.belowFloor} below · top ${result.data.topScore ?? 'none'}`,
+    input: retrieveInput,
+    output: {
+      returned: result.data.returned,
+      above_floor: candidatesIn.length,
+      below_floor: result.data.belowFloor,
+      top_score: result.data.topScore,
+      candidates: candidatesIn.map((m) => ({
+        action_uid: m.action_uid, bill_id: m.bill_id, bill_number: m.bill_number, title: m.title,
+        score: m.score, strength: m.strength, vote: m.vote, cloture_vote: m.cloture_vote,
+        passage_vote: m.passage_vote, is_sponsor: m.is_sponsor, is_cosponsor: m.is_cosponsor,
+        primary_issue: m.primary_issue, sub_issue: m.sub_issue, missing_fields: m.missing_fields,
+      })),
+      near_misses: result.data.nearMisses,
+    },
+  });
   // Pre-filter counts, kept so an empty result is diagnosable: "the namespace
   // is thin" and "nothing in it was similar enough" are different problems and
   // the survivor count alone cannot tell them apart.
@@ -534,6 +639,11 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
 
   if (!canEvaluateRelevance) {
     session.matches = candidatesIn;
+    traceStep({
+      stage: 'EVIDENCE_GATE', kind: 'deterministic', status: 'skipped',
+      label: `relevance evaluator did not run (no OpenAI credential) — all ${candidatesIn.length} raw matches passed through UNCHECKED`,
+      input: { candidates: candidatesIn.map((m) => m.action_uid) },
+    });
     return ok({
       retrieved: candidatesIn.length,
       relevance_applied: false,
@@ -569,10 +679,52 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
   const evaluated = await evaluateRelevance(
     candidatesIn.map((m) => toRelevanceCandidate(session, m)),
     relevanceFetcher,
+    {
+      // GATE: one model call per candidate. The full user message, the raw
+      // text back, and the parse — the three things that decide whether a
+      // bill is "about" the promise, side by side.
+      observe: (o) =>
+        traceStep({
+          stage: 'RELEVANCE', kind: 'model',
+          status: o.error ? 'error' : o.result.verdict === 'ERROR' ? 'rejected' : 'ok',
+          subject: o.candidate.action_uid ?? o.candidate.bill_id,
+          label: `${o.candidate.bill_id} → ${o.result.verdict} @ ${o.result.confidence} · ${o.result.action_type} · topic ${o.result.topic_relevant} / action ${o.result.action_relevant} / effort ${o.result.effort_relevant} / specificity ${o.result.specificity_match}`,
+          model: o.request.model, prompt_version: RELEVANCE_PROMPT_CACHE_KEY, prompt_text: RELEVANCE_SYSTEM_PROMPT,
+          usage: responsesUsage(o.envelope), duration_ms: o.durationMs,
+          input: { user_message: o.request.input.find((m) => m.role === 'user')?.content ?? '', reasoning_effort: o.request.reasoning.effort, top_p: o.request.top_p },
+          output: { raw_text: o.rawText, parsed: o.result },
+          error: o.error ?? o.result.error ?? null,
+        }),
+    },
   );
 
   const gate = applyEvidenceGate(evaluated);
   session.evaluated = evaluated;
+
+  // GATE: the evidence gate. Derived from the four axes, never asked of the
+  // model; TRUE_POSITIVE and PARTIAL/SPECIFICITY are admitted, the rest are
+  // counted out by reason.
+  traceStep({
+    stage: 'EVIDENCE_GATE', kind: 'deterministic',
+    label: `admitted ${gate.admitted.length} of ${gate.candidatesIn}` +
+      (Object.keys(gate.dropped).length ? ` · dropped ${Object.entries(gate.dropped).map(([k, v]) => `${k}×${v}`).join(', ')}` : '') +
+      (gate.admittedBeforeDedupe !== gate.admitted.length ? ` · ${gate.admittedBeforeDedupe - gate.admitted.length} deduped` : ''),
+    input: {
+      candidates: evaluated.map((c) => ({
+        action_uid: c.action_uid, bill_id: c.bill_id, verdict: c.relevance.verdict,
+        confidence: c.relevance.confidence, action_type: c.relevance.action_type,
+        topic_relevant: c.relevance.topic_relevant, action_relevant: c.relevance.action_relevant,
+        effort_relevant: c.relevance.effort_relevant, specificity_match: c.relevance.specificity_match,
+        no_vote_available: c.relevance.no_vote_available,
+      })),
+    },
+    output: {
+      admitted: gate.admitted.map((a) => a.action_uid),
+      dropped: gate.dropped,
+      tiers: gate.tiers,
+      admitted_before_dedupe: gate.admittedBeforeDedupe,
+    },
+  });
 
   // ASSERTION — admitted ≤ candidates.
   // A gate that returns more rows than it was given has duplicated evidence,
@@ -672,6 +824,15 @@ async function evaluateEffectsTool(
   const refs = await enrichmentSource.refs();
   const enrichment = await enrichmentSource.forActions(matches.map((m) => m.action_uid));
   session.enrichmentKind = enrichmentSource.kind;
+  traceStep({
+    stage: 'ENRICHMENT', kind: 'io',
+    status: enrichmentSource.kind === 'null' ? 'skipped' : 'ok',
+    label: enrichmentSource.kind === 'mirror'
+      ? `mirror · ${enrichment.size} of ${matches.length} actions enriched (vote dates, whip votes, roles)`
+      : 'no enrichment source — scope and leader gates fail OPEN',
+    input: { actions: matches.map((m) => m.action_uid) },
+    output: { kind: enrichmentSource.kind, enriched: Object.fromEntries(enrichment) },
+  });
 
   const gates: Record<string, GateResult> = {};
   const scorableMatches: MatchedAction[] = [];
@@ -707,6 +868,25 @@ async function evaluateEffectsTool(
       refs,
     );
     gates[m.action_uid] = result;
+    // GATE: fix/03 per action. Every rule and its context, whether or not
+    // one fired — a gate that stayed silent for want of an input is a
+    // finding too.
+    traceStep({
+      stage: 'PRE_EVALUATOR_GATE', kind: 'deterministic',
+      subject: m.action_uid,
+      label: result.scorable
+        ? `${String(m.bill_id ?? '')} scorable${result.hits.length ? ` (non-terminal hits: ${result.hits.map((h) => `${h.gate}:${h.verdict}`).join(', ')})` : ''}`
+        : `${String(m.bill_id ?? '')} GATED by ${result.hit!.gate} → ${result.hit!.verdict}: ${result.hit!.reason}`,
+      input: {
+        bill_id: m.bill_id, cloture_vote: e.cloture_vote ?? m.cloture_vote, passage_vote: e.passage_vote ?? m.passage_vote,
+        party_whip_vote: e.party_whip_vote ?? null, cloture_vote_date: e.cloture_vote_date ?? null,
+        passage_vote_date: e.passage_vote_date ?? null, statement_date: session.statementDate ?? null,
+        scope: session.scope?.scope ?? null, valid_until: session.scope?.valid_until ?? null,
+        anchor: session.scope?.anchor_entity ?? null, role_condition: session.scope?.role_condition ?? null,
+        speech_act: session.scope?.speech_act ?? null,
+      },
+      output: { scorable: result.scorable, hits: result.hits, context: result.context },
+    });
     if (result.scorable) {
       scorableMatches.push(m);
     } else {
@@ -749,8 +929,33 @@ async function evaluateEffectsTool(
       ? await evaluateFulfillment(
           scorableMatches.map((m) => toFulfillmentCandidate(session, m)),
           session.fulfillmentFetcher ?? liveResponsesFetcher('fulfillment'),
+          {
+            // GATE: bill_effect, the axis the verdict follows from. Raw text
+            // and parse per candidate, with the v7 prompt version and hash.
+            observe: (o) =>
+              traceStep({
+                stage: 'FULFILLMENT', kind: 'model',
+                status: o.error ? 'error' : o.result.bill_effect === 'ERROR' ? 'rejected' : 'ok',
+                subject: o.candidate.action_uid ?? o.candidate.bill_id,
+                label: `${o.candidate.bill_id} → ${o.result.bill_effect} · model says ${o.result.alignment} @ ${o.result.confidence}` +
+                  (o.result.same_object === false ? ' · same_object=false' : '') +
+                  (o.result.flags.length ? ` · ${o.result.flags.join(',')}` : ''),
+                model: o.request.model, prompt_version: EVALUATOR_SYSTEM_PROMPT_VERSION, prompt_text: EVALUATOR_SYSTEM_PROMPT,
+                usage: responsesUsage(o.envelope), duration_ms: o.durationMs,
+                input: { user_message: o.request.input.find((m) => m.role === 'user')?.content ?? '', reasoning_effort: o.request.reasoning.effort, top_p: o.request.top_p },
+                output: { raw_text: o.rawText, parsed: o.result },
+                error: o.error ?? o.result.error ?? null,
+              }),
+          },
         )
       : [];
+  if (scorableMatches.length && !canEvaluateFulfillment) {
+    traceStep({
+      stage: 'FULFILLMENT', kind: 'model', status: 'skipped',
+      label: `fulfillment evaluator did not run (no OpenAI credential) — orchestrator's ADVISORY effects used for ${scorableMatches.length} row(s)`,
+      input: { candidates: scorableMatches.map((m) => m.action_uid) },
+    });
+  }
 
   const authoritative = new Map(evaluated.map((e) => [e.action_uid, e.result]));
   session.fulfillment = Object.fromEntries(authoritative);
@@ -821,6 +1026,43 @@ async function evaluateEffectsTool(
   });
   session.scored = scored;
 
+  // GATE: the pure scorer — verdict table, split-vote cap, contract 3, band.
+  // Its inputs are exactly the rows below; its output is the verdict the user
+  // sees unless the judge withholds it. Contract 3 announces itself only as
+  // nd_reason, so that is in the label.
+  traceStep({
+    stage: 'SCORE', kind: 'deterministic',
+    label: `${scored.verdict}` + (scored.band ? ` · ${scored.band}` : '') + ` · ${scored.mode}` +
+      (scored.nd_reason ? ` · ${scored.nd_reason}` : '') +
+      ` · ${scorable.length} scorable, ${gatedRows.length} gated` +
+      (disagreements.length ? ` · ${disagreements.length} effect disagreement(s)` : ''),
+    input: {
+      promise_type: session.interpretation.promise_type,
+      statement_type: session.interpretation.statement_type,
+      is_evaluable: session.interpretation.is_evaluable,
+      gated_count: gatedRows.length,
+      effect_source: canEvaluateFulfillment ? `fulfillment evaluator (${config.models.fulfill})` : 'orchestrator (advisory)',
+      effect_disagreements: disagreements,
+      matches: scorable.map((m) => ({
+        action_uid: m.action_uid, bill_id: m.bill_id, bill_effect: m.bill_effect,
+        orchestrator_effect: byUid.get(m.action_uid)?.bill_effect ?? null,
+        alignment_confidence: m.alignment_confidence, vote: m.vote, cloture_vote: m.cloture_vote,
+        passage_vote: m.passage_vote, is_sponsor: m.is_sponsor, is_cosponsor: m.is_cosponsor,
+        vote_flags: m.vote_flags, score: m.score, strength: m.strength,
+      })),
+    },
+    output: {
+      verdict: scored.verdict, band: scored.band, mode: scored.mode, nd_reason: scored.nd_reason,
+      ranked: scored.ranked, receipt: scored.receipt,
+      evidence: scored.evidence.map((e) => ({
+        action_uid: e.action_uid, bill_id: e.bill_id, bill_effect: e.bill_effect, outcome: e.outcome,
+        direction: e.direction, evidence_type: e.evidence_type, action_tier: e.action_tier,
+        vote_pattern: e.vote_pattern, weight: e.weight, alignment_confidence: e.alignment_confidence,
+        vote_governing: e.vote_governing, vote_flags: e.vote_flags, scoring_flags: e.scoring_flags,
+      })),
+    },
+  });
+
   // ---- THE ADVERSARIAL JUDGE ---------------------------------------------
   //
   // handoff v2 §5, answered for the query path: the deterministic gates run on
@@ -850,6 +1092,7 @@ async function evaluateEffectsTool(
       const gate = session.gates?.[lead.action_uid];
       const f = session.fulfillment?.[lead.action_uid];
       const enriched = (await enrichmentSource.forActions([lead.action_uid])).get(lead.action_uid) ?? {};
+      const scoredBefore = scored.verdict;
 
       // The judge's own deterministic layer runs first and is passed in, so the
       // model confirms or disputes those hits rather than re-deriving them.
@@ -883,6 +1126,20 @@ async function evaluateEffectsTool(
         promise_sub_issue: session.interpretation.sub_issue,
         bill_primary_issue: lead.primary_issue,
         bill_sub_issue: lead.sub_issue,
+      });
+
+      // GATE: the judge's deterministic layer (G0–G4), passed in for the
+      // model to confirm or dispute rather than re-derive.
+      traceStep({
+        stage: 'JUDGE_GATES', kind: 'deterministic', subject: lead.action_uid,
+        label: jg.fired.length ? `fired: ${jg.fired.map((g) => `${g.gate}/${g.class}`).join(', ')}` : 'no judge gate fired',
+        input: {
+          lead_action: lead.action_uid, bill_id: lead.bill_id, promise_alignment: lead.outcome,
+          bill_effect: lead.bill_effect, alignment_confidence: lead.alignment_confidence,
+          senator_role: gate?.context.senator_role ?? null, cloture_result: gate?.context.cloture_result ?? null,
+          party_whip_vote: enriched.party_whip_vote ?? null,
+        },
+        output: jg,
       });
 
       const verdict = await judgeVerdict(
@@ -938,6 +1195,28 @@ async function evaluateEffectsTool(
         session.scored = judged.result;
         console.info(`[judge] ${disposition.disposition} — accusation withheld: ${judged.reason}`);
       }
+      // GATE: what the second opinion did to the verdict. Before/after, so a
+      // withheld accusation is visible as a change and not as a verdict that
+      // was always NOT_DETERMINABLE.
+      traceStep({
+        stage: 'JUDGE', kind: 'deterministic', subject: lead.action_uid,
+        label: `${verdict.grade}${verdict.failed_test ? ` ${verdict.failed_test}` : ''}${verdict.failure_class ? ` ${verdict.failure_class}` : ''} → ${disposition.disposition}` +
+          (judged.withheld ? ` · ${scoredBefore} → ${session.scored!.verdict} (withheld)` : ` · ${scoredBefore} stands`),
+        model: verdict.model, prompt_version: verdict.prompt_version,
+        input: {
+          lead_action: lead.action_uid, bill_id: lead.bill_id, verdict_before: scoredBefore,
+          alignment_confidence: lead.alignment_confidence, gate_results: jg.fired,
+        },
+        output: {
+          judge_verdict: verdict, disposition, withheld: judged.withheld,
+          withheld_reason: judged.withheld ? judged.reason : null, verdict_after: session.scored!.verdict,
+        },
+      });
+    } else {
+      traceStep({
+        stage: 'JUDGE', kind: 'deterministic', status: 'skipped',
+        label: 'verdict is BROKE but no evidence row has direction=breaks — nothing to hand the judge',
+      });
     }
   } else if (isAccusation && !canJudge) {
     // No credential means no second opinion. An unreviewed accusation is not
@@ -954,6 +1233,17 @@ async function evaluateEffectsTool(
       session.scored = judged.result;
       console.warn('[judge] no credential — accusation withheld rather than published unreviewed.');
     }
+    traceStep({
+      stage: 'JUDGE', kind: 'deterministic', status: 'error',
+      label: `no judge credential — BROKE ${judged.withheld ? 'withheld' : 'left standing'} unreviewed (JUDGE_ERROR)`,
+      output: { judge_verdict: verdict, disposition, withheld: judged.withheld, verdict_after: session.scored!.verdict },
+      error: 'no judge credential configured',
+    });
+  } else {
+    traceStep({
+      stage: 'JUDGE', kind: 'deterministic', status: 'skipped',
+      label: `verdict ${scored.verdict} is not an accusation — judge not consulted (this is NOT a pass)`,
+    });
   }
 
   // Returned to the model as a FROZEN result. It explains this; it cannot
@@ -1073,6 +1363,15 @@ async function explainResult(
 
   const problems = explanationProblems(why, session.scored.verdict);
   if (problems.length) {
+    // GATE: the wording checks. A rejected draft is sent back for another
+    // turn, and the UI only ever sees the one that passed — so without this
+    // step the revision loop is invisible.
+    traceStep({
+      stage: 'EXPLAIN_CHECK', kind: 'deterministic', status: 'rejected',
+      label: `draft rejected: ${problems.join('; ')}`,
+      input: { verdict: session.scored.verdict, why, connectors: input.connectors ?? null },
+      output: { problems },
+    });
     return fail({
       code: 'BAD_INPUT',
       message: `The explanation needs a revision: ${problems.join('; ')}. Rewrite and call explain_result again.`,
@@ -1096,6 +1395,12 @@ async function explainResult(
     confidence: Number.isFinite(Number(input.confidence)) ? Number(input.confidence) : 0.5,
   };
   session.explanation = explanation;
+  traceStep({
+    stage: 'EXPLAIN_CHECK', kind: 'deterministic',
+    label: `accepted · ${Object.keys(connectors).length} connector(s) · model confidence ${explanation.confidence}`,
+    input: { verdict: session.scored.verdict },
+    output: explanation,
+  });
 
   return ok({ accepted: true });
 }
