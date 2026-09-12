@@ -111,20 +111,26 @@ back is one query — `min(Promise Date)` on Evaluable Statements.
 
 ## Open items
 
+> **Updated 2026-09-11.** Items 1, 2, 8 and 10 are DONE (PRs #5–#11, all merged and
+> deployed — the frontend is live at https://receipts-eight-tau.vercel.app). The current
+> work list is the 2026-09-09 review brief, whose remaining tasks — judge positives,
+> build the retry, the corrected-accusation display flag — are recorded as README
+> "Known gaps" 1–3. Rows below are kept as written; strike-through marks what closed.
+
 Ordered as I would take them. Lane in brackets.
 
 | | Item |
 |---|---|
-| 1 | **[web]** Render what the evaluation layer computes — gated rows and reasons, judge disposition, `vote_governing` / `vote_flags`. `fix/08` calls gated items "the thing that makes the tool look honest" |
-| 2 | **[web]** `ND_REASON_COPY.NO_MATCHES` — render the coverage sentence. One line, highest leverage |
+| 1 | ~~**[web]** Render what the evaluation layer computes — gated rows and reasons, judge disposition, `vote_governing` / `vote_flags`. `fix/08` calls gated items "the thing that makes the tool look honest"~~ **DONE 2026-09-08/09** |
+| 2 | ~~**[web]** `ND_REASON_COPY.NO_MATCHES` — render the coverage sentence. One line, highest leverage~~ **DONE 2026-09-08/09** |
 | 3 | **[pipeline]** Remove the two corpus verdict tables from the n8n sync set — 007 is applied but is undone by the next run |
 | 4 | **[pipeline]** Activate the mirror sync (`tGcHOxabA29Tjob2`, 8 tables, ~7,900 rows, Tue/Fri 06:00). **Check the schedule trigger is enabled** — it has come back disabled twice, and a disabled trigger silently never fires |
 | 5 | **[pipeline]** Add the 117th Congress to collection |
 | 6 | **[pipeline]** `min(Promise Date)` on Evaluable Statements — a number, not a judgement call |
 | 7 | **[schema]** Run migration 008 STEP 1, then STEP 2, then change the n8n node in the same sitting |
-| 8 | **[web]** Exercise the halt UI in a browser — never done. Demo mode skips scope classification, so it needs an `ANTHROPIC_API_KEY` to trigger |
+| 8 | ~~**[web]** Exercise the halt UI in a browser — never done. Demo mode skips scope classification, so it needs an `ANTHROPIC_API_KEY` to trigger~~ **DONE 2026-09-08/09** |
 | 9 | **[app]** `decisionScore.ts` is **stale and dormant** — `Compute Decision Score` is 25,077 chars against a port reconciled at 20,803. Called only by its own test. **Re-reconcile before anything wires it in** |
-| 10 | **[app]** Rate limiting — spec written, not wired. Wanted before the frontend is public |
+| 10 | ~~**[app]** Rate limiting — spec written, not wired. Wanted before the frontend is public~~ **DONE 2026-09-08/09** |
 | 11 | **[app]** `match_direction` is hardcoded `'promise_to_bill'` — make it a named constant so the trace is honest about the tool being one-directional by design |
 | 12 | **[product]** PostHog wiring, and the privacy-policy line before the first public query |
 
