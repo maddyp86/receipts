@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config.js';
 import { formatTaxonomyForPrompt, isValidCombination } from '../embeddings/taxonomy.js';
 import { TOOL_DEFINITIONS } from '../orchestrator/toolDefs.js';
+import { anthropicContent, anthropicUsage, traceBegin } from '../trace/Trace.js';
 
 // ===========================================================================
 // CLASSIFICATION — the interpret_promise leg.
@@ -99,13 +100,38 @@ export function liveClassifyFetcher(): ClassifyFetcher {
     if (!config.anthropic.apiKey) throw new ClassifyUnavailableError();
 
     const client = new Anthropic({ apiKey: config.anthropic.apiKey });
-    const message = await client.messages.create({
-      model: config.models.classify,
-      max_tokens: CLASSIFY_MAX_TOKENS,
-      system: CLASSIFY_SYSTEM_PROMPT,
-      tools: [interpretTool as unknown as Anthropic.Tool],
-      tool_choice: { type: 'tool', name: 'interpret_promise' },
-      messages: [{ role: 'user', content: promiseText }],
+    // The raw exchange goes to the query trace: the user text in, every
+    // content block out. The parsed tool input is what interpretPromise
+    // records; this is the step before the parse.
+    const end = traceBegin();
+    let message: Anthropic.Message;
+    try {
+      message = await client.messages.create({
+        model: config.models.classify,
+        max_tokens: CLASSIFY_MAX_TOKENS,
+        system: CLASSIFY_SYSTEM_PROMPT,
+        tools: [interpretTool as unknown as Anthropic.Tool],
+        tool_choice: { type: 'tool', name: 'interpret_promise' },
+        messages: [{ role: 'user', content: promiseText }],
+      });
+    } catch (err) {
+      end({
+        stage: 'CLASSIFY_MODEL', kind: 'model', status: 'error',
+        label: 'classifier call failed',
+        model: config.models.classify, prompt_version: 'classify-inline', prompt_text: CLASSIFY_SYSTEM_PROMPT,
+        input: { user_message: promiseText },
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+    end({
+      stage: 'CLASSIFY_MODEL', kind: 'model',
+      status: message.stop_reason === 'max_tokens' ? 'error' : 'ok',
+      label: `stop_reason=${message.stop_reason ?? 'none'}`,
+      model: config.models.classify, prompt_version: 'classify-inline', prompt_text: CLASSIFY_SYSTEM_PROMPT,
+      usage: anthropicUsage(message.usage),
+      input: { user_message: promiseText, forced_tool: 'interpret_promise' },
+      output: { stop_reason: message.stop_reason, content: anthropicContent(message.content) },
     });
 
     if (message.stop_reason === 'max_tokens') {

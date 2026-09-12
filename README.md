@@ -67,6 +67,7 @@ incomplete.
 | **Tests** | `scoring/*.test.ts`, `embeddings/promiseEmbeddingText.test.ts` |
 | **Embedding parity** | `packages/server/src/embeddings/promiseEmbeddingText.ts` |
 | **Tool-use loop** | `packages/server/src/orchestrator/loop.ts` |
+| **Query trace (per-gate log)** | `packages/server/src/trace/` · read with `npm run trace -- <run_id>` · [docs/trace-log.md](docs/trace-log.md) |
 | **Prompts** | `packages/server/src/orchestrator/prompts.ts` |
 | **Data seam** | `packages/server/src/data/` |
 | **Shared types + voter vocabulary** | `packages/shared/src/index.ts` |
@@ -144,6 +145,22 @@ short serverless timeout will cut it off mid-stream. Render/Railway/Fly are the 
 Keys stay server-side. The browser only ever talks to `/api`.
 
 ---
+
+## Tracing a result back through every gate
+
+Every run writes a step-by-step trace: what each gate was given, what it produced, the decision
+it took, and — for every model call — the full user message, the raw text back, the parse, the
+model, the prompt version and the token usage. The run id is the first event on the stream and is
+printed under the reasoning panel. Read it back at `/api/trace/<run_id>`, or render it as a log
+sheet:
+
+```bash
+npm run trace -- <run_id>
+```
+
+It works with `DATABASE_URL` blank (JSONL files under `.data/traces`), and also lands in Supabase
+once [migration 009](docs/supabase-migration-009-query-trace-log.sql) is applied. Details, the
+gate map and the reading guide are in [docs/trace-log.md](docs/trace-log.md).
 
 ## Pipeline reconciliation log
 

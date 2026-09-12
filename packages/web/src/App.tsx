@@ -109,7 +109,11 @@ export default function App() {
         />
       ) : (
         <>
-          <ReasoningStream steps={stream.steps} interpretation={stream.interpretation} />
+          <ReasoningStream
+            steps={stream.steps}
+            interpretation={stream.interpretation}
+            traceId={stream.traceId}
+          />
 
           {stream.uncached ? (
             <UncachedState

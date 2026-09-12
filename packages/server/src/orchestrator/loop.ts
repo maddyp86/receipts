@@ -2,7 +2,16 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { GatedAction, QueryResult, StepId, StreamEvent, ToolError } from '@receipts/shared';
 import { config } from '../config.js';
 import { dispatchTool, newSession, type QuerySession } from './dispatch.js';
-import { queryStore } from '../services.js';
+import { queryStore, traceSinks } from '../services.js';
+import {
+  QueryTrace,
+  anthropicContent,
+  anthropicUsage,
+  traceBegin,
+  traceStep,
+  withTrace,
+  type TraceStage,
+} from '../trace/Trace.js';
 import type { AuditEvent, StoredAlignment, StoredMatch } from '../data/QueryStore.js';
 import { derivePartialSubtype } from '../evaluation/evidenceGate.js';
 import { classifyScope, haltForScope } from '../scope/classifyScope.js';
@@ -36,6 +45,17 @@ const STEP_FOR_TOOL: Record<string, StepId> = {
   search_actions: 'search',
   evaluate_effects: 'score',
   explain_result: 'explain',
+};
+
+/** Where each tool sits in the trace. Named after the gate, not the tool. */
+const STAGE_FOR_TOOL: Record<string, TraceStage> = {
+  interpret_promise: 'INTERPRET',
+  resolve_senator: 'RESOLVE_SENATOR',
+  embed_text: 'EMBED',
+  search_actions: 'SEARCH',
+  evaluate_effects: 'EVALUATE_EFFECTS',
+  explain_result: 'EXPLAIN',
+  queue_senator: 'QUEUE_SENATOR',
 };
 
 const STEP_LABEL: Record<StepId, string> = {
@@ -77,7 +97,22 @@ async function runTool(
   const step = STEP_FOR_TOOL[name];
   if (step) emit({ type: 'step', id: step, label: STEP_LABEL[step], status: 'running' });
 
+  const endTrace = traceBegin();
   const env = await dispatchTool(session, name, input);
+
+  // The tool boundary is where the model's JUDGEMENT (its input) meets the
+  // server's FACTS (the envelope). Recording both sides here is what lets a
+  // reader see what the orchestrator asserted and what the code did with it;
+  // the finer-grained gates inside each handler record themselves.
+  endTrace({
+    stage: STAGE_FOR_TOOL[name] ?? 'EVALUATE_EFFECTS',
+    kind: name === 'embed_text' ? 'io' : 'deterministic',
+    status: env.ok ? 'ok' : 'error',
+    label: env.ok ? (detailFor(name, env) ?? `${name} ok`) : `${env.error.code}: ${env.error.message}`,
+    input: { tool: name, tool_input: input },
+    output: env.ok ? env.data : { error: env.error },
+    error: env.ok ? null : env.error.message,
+  });
 
   if (step) {
     emit({
@@ -159,6 +194,16 @@ export function finish(session: QuerySession, emit: Emit): boolean {
   // Stashed so persistence stores exactly what the user saw, rather than
   // rebuilding it later from parts that may have moved on.
   session.result = result;
+  traceStep({
+    stage: 'RESULT',
+    kind: 'control',
+    label:
+      `${result.scored.verdict}` +
+      (result.scored.band ? ` · ${result.scored.band}` : '') +
+      (result.scored.nd_reason ? ` · ${result.scored.nd_reason}` : '') +
+      (result.judge ? ` · judge ${result.judge.disposition}` : ''),
+    output: result,
+  });
   emit({ type: 'result', result });
   return true;
 }
@@ -239,6 +284,26 @@ async function runDemo(session: QuerySession, emit: Emit): Promise<void> {
 // Live path — Messages API tool use.
 // ---------------------------------------------------------------------------
 
+/**
+ * What the model was just shown, compactly. The first turn is the voter's
+ * request; every later turn is a batch of tool results the trace already
+ * holds in full under their own steps, so only their ids and error flags are
+ * repeated here.
+ */
+function summariseLastMessage(messages: Anthropic.MessageParam[]): unknown {
+  const last = messages[messages.length - 1];
+  if (!last) return null;
+  if (typeof last.content === 'string') return { role: last.role, text: last.content };
+  return {
+    role: last.role,
+    blocks: last.content.map((b) => {
+      if (b.type === 'tool_result') return { type: b.type, tool_use_id: b.tool_use_id, is_error: Boolean(b.is_error) };
+      if (b.type === 'text') return { type: b.type, text: b.text };
+      return { type: b.type };
+    }),
+  };
+}
+
 async function runLive(session: QuerySession, emit: Emit): Promise<void> {
   const client = new Anthropic({ apiKey: config.anthropic.apiKey });
 
@@ -261,15 +326,44 @@ async function runLive(session: QuerySession, emit: Emit): Promise<void> {
   for (let i = 0; i < MAX_ITERATIONS; i += 1) {
     // Streamed so a long turn never hits an HTTP timeout. Note there is no
     // temperature or top_p here — current models reject them — and no prefill.
+    const system = systemPrompt();
+    const endTurn = traceBegin();
     const stream = client.messages.stream({
       model: config.models.explain,
       max_tokens: config.anthropic.maxTokens,
-      system: systemPrompt(),
+      system,
       tools: TOOL_DEFINITIONS as unknown as Anthropic.Tool[],
       messages,
     });
 
-    const message = await stream.finalMessage();
+    let message: Anthropic.Message;
+    try {
+      message = await stream.finalMessage();
+    } catch (err) {
+      endTurn({
+        stage: 'ORCHESTRATOR_TURN', kind: 'model', status: 'error',
+        label: `turn ${i + 1} failed`,
+        model: config.models.explain, prompt_version: 'orchestrator-system', prompt_text: system,
+        input: { turn: i + 1, messages_in: messages.length, last_message: summariseLastMessage(messages) },
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+
+    // The orchestrator's narration and tool calls are the AI output that
+    // vanished entirely before this: only the parsed tool inputs reached the
+    // session. Every content block of every turn is recorded here.
+    endTurn({
+      stage: 'ORCHESTRATOR_TURN', kind: 'model',
+      status: message.stop_reason === 'refusal' || message.stop_reason === 'max_tokens' ? 'error' : 'ok',
+      label:
+        `turn ${i + 1} · stop_reason=${message.stop_reason ?? 'none'} · ` +
+        `tools ${message.content.filter((b) => b.type === 'tool_use').map((b) => (b as Anthropic.ToolUseBlock).name).join(', ') || 'none'}`,
+      model: config.models.explain, prompt_version: 'orchestrator-system', prompt_text: system,
+      usage: anthropicUsage(message.usage),
+      input: { turn: i + 1, messages_in: messages.length, last_message: summariseLastMessage(messages) },
+      output: { stop_reason: message.stop_reason, content: anthropicContent(message.content) },
+    });
 
     // Check the stop reason before reading content: a refusal has no usable
     // content and must not be rendered as an answer.
@@ -702,24 +796,31 @@ export function buildAuditEvents(session: QuerySession, queryId: string): AuditE
   return events;
 }
 
-async function persist(session: QuerySession, sessionId: string | null): Promise<void> {
+async function persist(session: QuerySession, sessionId: string | null): Promise<string | null> {
   // Nothing worth storing until the promise was at least interpreted. A row
   // with no classification is not a training example, it is noise.
   //
   // Logged rather than returned silently: "no row appeared" and "no row was
   // attempted" look identical in the database, and only one of them is a bug.
+  // The trace records the skip too, so a run with no app_queries row says why.
   if (!sessionId) {
     console.warn('[persist] skipped — no session id (startSession failed above).');
-    return;
+    traceStep({ stage: 'PERSIST', kind: 'io', status: 'skipped', label: 'no session id — startSession failed' });
+    return null;
   }
   if (!session.interpretation) {
     console.warn(
       `[persist] skipped — query never got past interpretation ` +
         `(uncached senator or an early error). politician=${session.politicianId}`,
     );
-    return;
+    traceStep({
+      stage: 'PERSIST', kind: 'io', status: 'skipped',
+      label: 'never got past interpretation — no app_queries row (halt, uncached senator, or early error)',
+    });
+    return null;
   }
 
+  const endPersist = traceBegin();
   try {
     const queryId = await queryStore.saveQuery({
       session_id: sessionId,
@@ -760,15 +861,18 @@ async function persist(session: QuerySession, sessionId: string | null): Promise
       alignments: [...buildAlignments(session), ...buildGatedAlignments(session)],
     });
 
-    // THE TRACE. Best effort, and deliberately after the row exists so every
-    // event has something to hang off. A failure here is logged, never thrown:
-    // losing the trace must not turn an answered query into an error. The
+    // THE AUDIT LOG. Best effort, and deliberately after the row exists so
+    // every event has something to hang off. A failure here is logged, never
+    // thrown: losing it must not turn an answered query into an error. The
     // v_accusations_rendered view catches the case that actually matters — an
     // accusation stored with no trace behind it.
+    let auditWritten: number | string = 0;
+    const events = buildAuditEvents(session, queryId);
     try {
-      const events = buildAuditEvents(session, queryId);
       if (events.length) await queryStore.appendAuditEvents(events);
+      auditWritten = events.length;
     } catch (err) {
+      auditWritten = `FAILED: ${err instanceof Error ? err.message : String(err)}`;
       console.error(
         '[persist] audit trace NOT written (non-fatal):',
         err instanceof Error ? err.message : err,
@@ -778,16 +882,40 @@ async function persist(session: QuerySession, sessionId: string | null): Promise
     // plausible uuid and stores nothing, so an unconditional "stored" here
     // would assert a row that does not exist — the exact silent-success shape
     // this codebase exists to avoid.
-    if (queryStore.kind !== 'local') {
-      const m = buildMatches(session);
+    const m = buildMatches(session);
+    const stored = queryStore.kind !== 'local';
+    if (stored) {
       console.info(
         `[persist] stored query for ${session.politicianId} — ` +
           `${m.length} candidates (${m.filter((x) => x.admitted).length} admitted), ` +
           `${buildAlignments(session).length} alignments`,
       );
     }
+    endPersist({
+      stage: 'PERSIST', kind: 'io',
+      status: stored ? 'ok' : 'skipped',
+      label: stored
+        ? `app_queries ${queryId} · ${m.length} candidates (${m.filter((x) => x.admitted).length} admitted) · ${buildAlignments(session).length} alignments · ${typeof auditWritten === 'number' ? `${auditWritten} audit events` : auditWritten}`
+        : 'DATABASE_URL unset — nothing persisted (NullQueryStore)',
+      output: {
+        store: queryStore.kind,
+        query_id: stored ? queryId : null,
+        candidates: m.length,
+        admitted: m.filter((x) => x.admitted).length,
+        alignments: buildAlignments(session).length,
+        gated_alignments: buildGatedAlignments(session).length,
+        audit_events: events,
+        audit_written: auditWritten,
+      },
+    });
+    return stored ? queryId : null;
   } catch (err) {
     console.error('[persist] query NOT saved (non-fatal):', err instanceof Error ? err.message : err);
+    endPersist({
+      stage: 'PERSIST', kind: 'io', status: 'error', label: 'saveQuery failed — no app_queries row',
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
   }
 }
 
@@ -819,6 +947,12 @@ async function classifyStatementScope(session: QuerySession, emit: Emit): Promis
     const message = err instanceof Error ? err.message : String(err);
     session.scopeUnavailable = message;
     console.error('[scope] classification unavailable (non-fatal):', message);
+    traceStep({
+      stage: 'SCOPE_CLASSIFY', kind: 'deterministic', status: 'error',
+      label: 'scope classification unavailable — FAILED OPEN, scope gates will not run',
+      input: { text: session.promiseText, date: session.statementDate ?? '' },
+      error: message,
+    });
     emit({
       type: 'step',
       id: 'classify_scope',
@@ -873,61 +1007,126 @@ export async function runQuery(
     statementDate: meta.statementDate,
   });
 
+  const traceMeta = {
+    demo_mode: config.demoMode,
+    fixture_mode: config.fixtureMode,
+    models: config.models,
+    query_store: queryStore.kind,
+    session_scoped: Boolean(meta.sessionKey),
+  };
+
   const replay = resultCache.get(key);
   if (replay) {
     // Replayed through the SAME emit, in the SAME order, so the client cannot
     // tell a hit from a fresh run — the steps, the interpretation and the
     // result all arrive exactly as they did the first time. A cache that
     // rendered differently would be a second UI to keep honest.
+    //
+    // That includes the original run's `trace` event, which is the honest
+    // link: the answer on screen was produced by THAT run. The replay gets a
+    // run of its own with one step, so the request is still accounted for.
     console.info(`[cache] replaying ${replay.length} events for this session`);
+    const original = replay.find((e): e is Extract<StreamEvent, { type: 'trace' }> => e.type === 'trace');
+    const replayTrace = new QueryTrace(traceSinks, { politicianId, promiseText, meta: traceMeta });
+    replayTrace.record({
+      stage: 'CACHE_REPLAY', kind: 'control',
+      label: `replayed ${replay.length} events from run ${original?.run_id ?? 'unknown'} — no model was called`,
+      input: { original_run_id: original?.run_id ?? null, corrections: corrections ?? null, statement_date: meta.statementDate ?? null },
+      output: { event_types: replay.map((e) => e.type) },
+    });
     for (const event of replay) emit(event);
+    await replayTrace.close('replay');
     return;
   }
 
   const session = newSession(politicianId, promiseText, corrections, meta.statementDate);
+  const trace = new QueryTrace(traceSinks, { politicianId, promiseText, meta: traceMeta });
 
   // Every event this run produces, so a cacheable run can be replayed later.
+  // The terminal events are mirrored into the trace as they pass, so a halt,
+  // an error and an uncached stop are steps in the same sequence as
+  // everything else rather than facts that only the browser ever saw.
   const recorded: StreamEvent[] = [];
   const record: Emit = (event) => {
     recorded.push(event);
+    if (event.type === 'halt') {
+      trace.record({ stage: 'HALT', kind: 'control', label: `${event.halt.reason} — stopped before retrieval`, output: event.halt });
+    } else if (event.type === 'error') {
+      trace.record({ stage: 'ERROR', kind: 'control', status: 'error', label: `${event.error.code}: ${event.error.message}`, output: event.error, error: event.error.message });
+    } else if (event.type === 'uncached') {
+      trace.record({ stage: 'UNCACHED', kind: 'control', label: `${event.senator.name} is not analysed — ${event.queued ? 'request queued' : 'not queued'}`, output: event });
+    }
     emit(event);
   };
 
-  // Opened up front so a query that later fails still has a session to hang
-  // off. Best effort, like the write itself.
-  let sessionId: string | null = null;
-  try {
-    sessionId = await queryStore.startSession(meta);
-  } catch (err) {
-    console.error('[persist] session not opened (non-fatal):', err instanceof Error ? err.message : err);
-  }
+  // The trace id is the FIRST event, so even a stream that dies in its first
+  // second has told the browser where its record is.
+  record({ type: 'trace', run_id: trace.runId });
+  trace.record({
+    stage: 'REQUEST', kind: 'control', label: `${politicianId} · "${promiseText.slice(0, 80)}${promiseText.length > 80 ? '…' : ''}"`,
+    input: {
+      politician_id: politicianId,
+      promise_text: promiseText,
+      corrections: corrections ?? null,
+      statement_date: meta.statementDate ?? null,
+      user_agent: meta.userAgent ?? null,
+      ...traceMeta,
+    },
+  });
 
-  try {
-    // Before anything else — and before any model call that costs money.
-    if (await classifyStatementScope(session, record)) return;
-
-    if (config.demoMode) {
-      await runDemo(session, record);
-    } else {
-      await runLive(session, record);
+  await withTrace(trace, async () => {
+    // Opened up front so a query that later fails still has a session to hang
+    // off. Best effort, like the write itself.
+    let sessionId: string | null = null;
+    try {
+      sessionId = await queryStore.startSession(meta);
+    } catch (err) {
+      console.error('[persist] session not opened (non-fatal):', err instanceof Error ? err.message : err);
     }
-  } catch (err) {
-    console.error('[loop]', err);
-    const error: ToolError = {
-      code: 'INTERNAL',
-      message: 'Something went wrong while checking this promise.',
-      recoverable: true,
-      details: { cause: err instanceof Error ? err.message : String(err) },
-    };
-    record({ type: 'error', error });
-  } finally {
-    record({ type: 'done' });
-    // Stored only when the run reached a real conclusion. An errored run is
-    // never cached: a transient upstream failure that got stuck here would
-    // become a sticky one, still telling the user it is broken after it had
-    // recovered. See isCacheable.
-    if (isCacheable(recorded)) resultCache.set(key, recorded);
-    // After `done`, so persistence never delays the answer.
-    await persist(session, sessionId);
-  }
+
+    try {
+      // Before anything else — and before any model call that costs money.
+      if (await classifyStatementScope(session, record)) return;
+
+      if (config.demoMode) {
+        await runDemo(session, record);
+      } else {
+        await runLive(session, record);
+      }
+    } catch (err) {
+      console.error('[loop]', err);
+      const error: ToolError = {
+        code: 'INTERNAL',
+        message: 'Something went wrong while checking this promise.',
+        recoverable: true,
+        details: { cause: err instanceof Error ? err.message : String(err) },
+      };
+      record({ type: 'error', error });
+    } finally {
+      record({ type: 'done' });
+      // Stored only when the run reached a real conclusion. An errored run is
+      // never cached: a transient upstream failure that got stuck here would
+      // become a sticky one, still telling the user it is broken after it had
+      // recovered. See isCacheable.
+      const cacheable = isCacheable(recorded);
+      if (cacheable) resultCache.set(key, recorded);
+      // After `done`, so persistence never delays the answer.
+      const queryId = await persist(session, sessionId);
+      trace.setQueryId(queryId);
+      trace.record({
+        stage: 'DONE', kind: 'control',
+        label: `${concludedAs(recorded)} · ${recorded.length} events · ${cacheable ? 'cached for this session' : 'not cached'}`,
+        output: { events: recorded.map((e) => e.type), cacheable, query_id: queryId },
+      });
+      await trace.close(concludedAs(recorded));
+    }
+  });
+}
+
+/** How a run ended, from the events it emitted. Error wins over everything. */
+function concludedAs(events: StreamEvent[]): 'result' | 'halt' | 'uncached' | 'error' {
+  if (events.some((e) => e.type === 'error')) return 'error';
+  if (events.some((e) => e.type === 'halt')) return 'halt';
+  if (events.some((e) => e.type === 'uncached')) return 'uncached';
+  return 'result';
 }

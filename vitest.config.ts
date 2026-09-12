@@ -34,6 +34,9 @@ export default defineConfig({
       PINECONE_API_KEY: '',
       PINECONE_HOST: '',
       DATABASE_URL: '',
+      // No trace files from the suite. Tests that want a trace push a memory
+      // sink onto `traceSinks`; see orchestrator/traceRun.test.ts.
+      TRACE_DIR: 'off',
     },
   },
 });
