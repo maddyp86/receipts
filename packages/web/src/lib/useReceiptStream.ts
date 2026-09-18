@@ -39,6 +39,13 @@ export interface StreamState {
    */
   halt: QueryHalt | null;
   error: ToolError | null;
+  /**
+   * The server-side run id for this stream. First event on every fresh run;
+   * on a replay it is the ORIGINAL run's id, which is the honest link. Shown
+   * under the reasoning panel so a wrong-looking result can be walked back
+   * gate by gate at /api/trace/:id.
+   */
+  traceId: string | null;
 }
 
 const EMPTY: StreamState = {
@@ -49,6 +56,7 @@ const EMPTY: StreamState = {
   uncached: null,
   halt: null,
   error: null,
+  traceId: null,
 };
 
 export function useReceiptStream() {
@@ -107,6 +115,8 @@ export function useReceiptStream() {
 
         setState((prev) => {
           switch (event.type) {
+            case 'trace':
+              return { ...prev, traceId: event.run_id };
             case 'step': {
               // One row per step id; later events update it in place so the
               // panel reads as a sequence, not a log.

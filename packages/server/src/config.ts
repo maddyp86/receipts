@@ -327,6 +327,22 @@ export const config = {
     maxEntries: num(process.env.RESULT_CACHE_MAX_ENTRIES, 500),
   },
 
+  /**
+   * The per-run query trace (trace/Trace.ts).
+   *
+   * `dir` is where the JSONL file sink writes — one file per run — and is the
+   * sink that works with DATABASE_URL blank, which is how local verification
+   * runs. Empty string disables the file sink. Bounded by `maxFiles` so a
+   * long-lived container cannot fill its disk one query at a time.
+   */
+  trace: {
+    dir:
+      str(process.env.TRACE_DIR).toLowerCase() === 'off'
+        ? ''
+        : resolve(MONOREPO_ROOT, str(process.env.TRACE_DIR) || '.data/traces'),
+    maxFiles: num(process.env.TRACE_MAX_FILES, 200),
+  },
+
   features: {
     /**
      * Lets the user assert "he promised this", upgrading the verdict vocabulary

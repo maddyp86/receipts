@@ -15,7 +15,8 @@
     "build": "npm run build --workspace @receipts/web",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b packages/shared packages/server packages/web"
+    "typecheck": "tsc -b packages/shared packages/server packages/web",
+    "trace": "node tools/trace-sheet.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

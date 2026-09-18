@@ -4,7 +4,34 @@
     {
       "name": "receipts",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "receipts-demo",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "DEMO_MODE=true",
+        "FIXTURE_MODE=true",
+        "DATABASE_URL=",
+        "npm",
+        "run",
+        "dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "receipts-live-nodb",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "DATABASE_URL=",
+        "npm",
+        "run",
+        "dev"
+      ],
       "port": 5173
     }
   ]

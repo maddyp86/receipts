@@ -5,6 +5,7 @@ import { config, describeCredentials, describeMode, describeModels } from './con
 import { senatorCache } from './data/SenatorCache.js';
 import { runQuery } from './orchestrator/loop.js';
 import { queryStore } from './services.js';
+import { describeTraceSinks, traceReader } from './services.js';
 import { SupabaseQueryStore } from './data/SupabaseQueryStore.js';
 import { primaryIssues, subIssuesFor } from './embeddings/taxonomy.js';
 import type { Corrections } from '@receipts/shared';
@@ -87,6 +88,33 @@ app.get('/api/query/:id', async (req, res) => {
         message: 'Could not read that result.',
         recoverable: true,
       },
+    });
+  }
+});
+
+/**
+ * The step-by-step trace of one run, by run id ONLY.
+ *
+ * The id is the first event on every stream and is shown under the reasoning
+ * panel, so a result that looks wrong on screen can be walked back gate by
+ * gate. Same posture as share links: an opaque uuid, no list, no search.
+ * 404 on a miss — a trace that was never written says so rather than being
+ * reconstructed from the stored result.
+ */
+app.get('/api/trace/:runId', async (req, res) => {
+  try {
+    const trace = await traceReader.get(String(req.params.runId));
+    if (!trace) {
+      res.status(404).json({
+        error: { code: 'BAD_INPUT', message: 'No trace for that run id.', recoverable: false },
+      });
+      return;
+    }
+    res.json(trace);
+  } catch (err) {
+    console.error('[trace]', err);
+    res.status(503).json({
+      error: { code: 'UPSTREAM_UNAVAILABLE', message: 'Could not read that trace.', recoverable: true },
     });
   }
 });
@@ -202,6 +230,7 @@ app.listen(config.port, () => {
   // Its own line: `trust proxy hops` is the value that silently inverts the
   // limiter into a global one when it is wrong, so it needs to be readable in
   // the deploy log rather than trailing off the end of the cors warning.
+  console.info(`  ${describeTraceSinks()}`);
   console.info(
     `  rate limit: query ${config.rateLimit.queryPer15Min}/15min, ${config.rateLimit.queryPerDay}/day · ` +
       `read ${config.rateLimit.readPer15Min}/15min · health exempt · trust proxy hops ${config.rateLimit.trustProxyHops}`,

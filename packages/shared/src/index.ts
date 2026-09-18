@@ -781,7 +781,19 @@ export interface DoneEvent {
   type: 'done';
 }
 
+/**
+ * The id of this run's trace. FIRST event on every fresh stream, so a result
+ * that looks wrong can be walked back gate by gate: /api/trace/:run_id. A
+ * replayed stream carries the ORIGINAL run's id, which is the honest link —
+ * the answer on screen was produced by that run, not by the replay.
+ */
+export interface TraceEvent {
+  type: 'trace';
+  run_id: string;
+}
+
 export type StreamEvent =
+  | TraceEvent
   | StepEvent
   | InterpretationEvent
   | UncachedEvent

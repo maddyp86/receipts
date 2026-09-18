@@ -1,4 +1,5 @@
 import type { Interpretation, StepEvent } from '@receipts/shared';
+import { apiUrl } from '../lib/api.js';
 
 // ===========================================================================
 // The streamed reasoning panel.
@@ -20,9 +21,11 @@ const MARK: Record<StepEvent['status'], string> = {
 interface Props {
   steps: StepEvent[];
   interpretation: Interpretation | null;
+  /** The run id, for walking a result back through every gate. */
+  traceId?: string | null;
 }
 
-export function ReasoningStream({ steps, interpretation }: Props) {
+export function ReasoningStream({ steps, interpretation, traceId }: Props) {
   if (!steps.length) return null;
 
   return (
@@ -49,6 +52,17 @@ export function ReasoningStream({ steps, interpretation }: Props) {
             </li>
           ))}
         </ol>
+        {traceId ? (
+          // Deliberately quiet. This is for whoever is repairing the pipeline,
+          // not for the voter — but it has to be ON the result, because a
+          // wrong answer with no id is a wrong answer nobody can trace.
+          <p className="trace-id">
+            Trace{' '}
+            <a href={apiUrl(`/api/trace/${traceId}`)} target="_blank" rel="noreferrer">
+              <code>{traceId}</code>
+            </a>
+          </p>
+        ) : null}
       </section>
 
       {interpretation ? (

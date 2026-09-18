@@ -4,7 +4,7 @@ import {
   EVALUATOR_SYSTEM_PROMPT_VERSION,
 } from './evaluatorPromptV7.js';
 import type { ResponsesEnvelope, ResponsesRequestBody } from './relevance.js';
-import { normalizeRelevanceResponse } from './relevance.js';
+import { normalizeRelevanceResponse, notify, type EvaluationObservation } from './relevance.js';
 import { config } from '../config.js';
 
 // ===========================================================================
@@ -364,7 +364,11 @@ export type ResponsesFetcher = (body: ResponsesRequestBody) => Promise<Responses
 export async function evaluateFulfillment(
   candidates: FulfillmentCandidate[],
   fetcher: ResponsesFetcher,
-  opts: { concurrency?: number } = {},
+  opts: {
+    concurrency?: number;
+    /** Trace hook, one call per candidate. See EvaluationObservation. */
+    observe?: (o: EvaluationObservation<FulfillmentCandidate, FulfillmentResult>) => void;
+  } = {},
 ): Promise<EvaluatedFulfillment[]> {
   const concurrency = opts.concurrency ?? 10;
   const out: EvaluatedFulfillment[] = new Array(candidates.length);
@@ -376,15 +380,28 @@ export async function evaluateFulfillment(
       if (i >= candidates.length) return;
       const candidate = candidates[i]!;
       const uid = S(candidate.action_uid);
+      const request = buildFulfillmentRequest(candidate);
+      const t0 = Date.now();
+      let envelope: ResponsesEnvelope | null = null;
+      let rawText: string | null = null;
       try {
-        const envelope = await fetcher(buildFulfillmentRequest(candidate));
+        envelope = await fetcher(request);
         // Reuses the relevance normaliser precisely for the reasoning-item
         // trap: reasoning is on, so output[0] is a reasoning item and the
         // message must be found by type, never by index.
         const { text } = normalizeRelevanceResponse(envelope);
+        rawText = text;
         out[i] = { action_uid: uid, result: parseFulfillmentResponse(text) };
+        notify(opts.observe, {
+          candidate, request, envelope, rawText, error: null,
+          durationMs: Date.now() - t0, result: out[i]!.result,
+        });
       } catch (e) {
         out[i] = { action_uid: uid, result: fulfillmentErrorResult((e as Error).message) };
+        notify(opts.observe, {
+          candidate, request, envelope, rawText, error: (e as Error).message,
+          durationMs: Date.now() - t0, result: out[i]!.result,
+        });
       }
     }
   };

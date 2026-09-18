@@ -81,6 +81,7 @@ every confidence is `null`, contract 3 fails closed as designed, and the verdict
 | **The adversarial judge (WF13 port)** | `packages/server/src/judge/` |
 | ↳ deterministic gates, the Sonnet judge, dispositions + the retry invariant | `judgeGates.ts`, `judge.ts`, `dispositions.ts` |
 | **Tool-use loop** — the fixed sequence, and the per-session replay cache | `orchestrator/loop.ts`, `dispatch.ts` |
+| **Query trace** — one row per gate, raw model I/O; read with `npm run trace -- <run_id>` | `packages/server/src/trace/`, [docs/trace-log.md](docs/trace-log.md) |
 | **Rate limiting** | `packages/server/src/rateLimit.ts` |
 | **Data seam** — action store, query store, result cache | `packages/server/src/data/` |
 | **Embedding parity** | `packages/server/src/embeddings/promiseEmbeddingText.ts` |
@@ -215,6 +216,22 @@ determined abuser — see `docs/rate-limiting-spec.md` for what they deliberatel
 Full detail, the env table, and the verification banner are in [DEPLOY.md](DEPLOY.md).
 
 ---
+
+## Tracing a result back through every gate
+
+Every run writes a step-by-step trace: what each gate was given, what it produced, the decision
+it took, and — for every model call — the full user message, the raw text back, the parse, the
+model, the prompt version and the token usage. The run id is the first event on the stream and is
+printed under the reasoning panel. Read it back at `/api/trace/<run_id>`, or render it as a log
+sheet:
+
+```bash
+npm run trace -- <run_id>
+```
+
+It works with `DATABASE_URL` blank (JSONL files under `.data/traces`), and also lands in Supabase
+once [migration 009](docs/supabase-migration-009-query-trace-log.sql) is applied. Details, the
+gate map and the reading guide are in [docs/trace-log.md](docs/trace-log.md).
 
 ## Pipeline reconciliation log
 

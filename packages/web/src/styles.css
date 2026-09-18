@@ -302,6 +302,24 @@ textarea.promise::placeholder {
   font-size: 0.9rem;
 }
 
+/* The run id under the steps. Quiet by design: a repair handle, not copy. */
+.trace-id {
+  margin: 0.85rem 0 0;
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+}
+
+.trace-id code {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.trace-id a {
+  color: inherit;
+  text-decoration-color: var(--ink-faint);
+}
+
 @keyframes pulse {
   0%,
   100% {
