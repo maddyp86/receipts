@@ -170,7 +170,10 @@ export function stubExplanation(
   if (scored.verdict === 'NOT_DETERMINABLE') {
     why = `${ND_REASON_COPY[scored.nd_reason ?? 'NO_MATCHES']} (Demo mode: this explanation is canned, not written for your promise.)`;
   } else if (scored.mode === 'ranked') {
-    why = `${name}'s record here points both ways. We found ${n} recorded actions on this promise, and they do not all line up — the larger share points toward "${VERDICT_PHRASE[scored.verdict]}", with real evidence on the other side shown below. (Demo mode: this explanation is canned, not written for your promise.)`;
+    // Free-typed text is a Policy Position by default, so the demo speaks the
+    // position vocabulary too: a demo that said "Kept" would be rejected by
+    // the same wording guard the live path runs.
+    why = `${name}'s record here points both ways. We found ${n} recorded actions on this statement, and they do not all line up — the larger share is ${scored.verdict === 'KEPT' ? 'consistent with it' : 'counter to it'}, with real evidence on the other side shown below. (Demo mode: this explanation is canned, not written for your promise.)`;
   } else {
     why = `We found ${n} recorded ${n === 1 ? 'action' : 'actions'} by ${name} on this promise, and ${n === 1 ? 'it points' : 'they all point'} the same way. (Demo mode: this explanation is canned, not written for your promise.)`;
   }

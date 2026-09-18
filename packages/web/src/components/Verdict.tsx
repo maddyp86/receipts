@@ -6,6 +6,8 @@ import {
   VERDICT_PHRASE,
   confidenceTraceLabel,
   judgeDispositionSentence,
+  outcomeHeadline,
+  verdictWord,
   type QueryResult,
 } from '@receipts/shared';
 import { EvidenceCard } from './EvidenceCard.js';
@@ -30,11 +32,22 @@ const ICON: Record<string, string> = {
   NOT_DETERMINABLE: '—',
 };
 
+/**
+ * The headline, in the STATEMENT'S vocabulary.
+ *
+ * `scored.verdict` is the internal bucket and is KEPT for a consistent policy
+ * position as much as for a kept campaign promise. The word a reader sees is
+ * chosen by statement type and provenance in `outcomeHeadline` — this
+ * component used to print VERDICT_PHRASE directly, so every free-typed
+ * statement was headlined "Kept" while its own evidence cards said CONSISTENT.
+ * A position is never kept; nobody promised anything.
+ */
 function headline(result: QueryResult): string {
   const { verdict, band, mode } = result.scored;
   if (verdict === 'NOT_DETERMINABLE') return VERDICT_PHRASE.NOT_DETERMINABLE;
+  const { statement_type, provenance } = result.interpretation;
   const suffix = band ? ` — ${BAND_PHRASE[band]}` : '';
-  return `${VERDICT_PHRASE[verdict]}${suffix}${mode === 'ranked' ? ', but it’s mixed' : ''}`;
+  return `${outcomeHeadline(verdict, statement_type, provenance)}${suffix}${mode === 'ranked' ? ', but it’s mixed' : ''}`;
 }
 
 function AnalystTrace({ result }: { result: QueryResult }) {
@@ -205,8 +218,13 @@ export function Verdict({ result }: { result: QueryResult }) {
           </span>
           {headline(result)}
         </h2>
+        {/* The reader's OWN words, attributed to the reader. The restatement
+            is the classifier's paraphrase; printing it in quotation marks
+            beside the senator's name presented model output as something the
+            senator said. The paraphrase is already shown, labelled, in the
+            "What we think you asked" panel. */}
         <p className="verdict-band">
-          {senator.name} · “{result.interpretation.restated}”
+          {senator.name} · you asked about: “{result.interpretation.raw}”
         </p>
         <p className="verdict-why">{level1}</p>
 
@@ -255,7 +273,7 @@ export function Verdict({ result }: { result: QueryResult }) {
       {scored.mode === 'ranked' && dominant && dissent ? (
         <>
           <h3 className="section-heading">
-            What points toward “{VERDICT_PHRASE[dominant.verdict]}”
+            What points toward “{verdictWord(dominant.verdict, result.interpretation.statement_type)}”
           </h3>
           {evidenceFor(dominant.evidence_uids).map((e) => (
             <EvidenceCard
@@ -267,7 +285,7 @@ export function Verdict({ result }: { result: QueryResult }) {
           ))}
 
           <h3 className="section-heading">
-            What points the other way — “{VERDICT_PHRASE[dissent.verdict]}”
+            What points the other way — “{verdictWord(dissent.verdict, result.interpretation.statement_type)}”
           </h3>
           {evidenceFor(dissent.evidence_uids).map((e) => (
             <EvidenceCard
