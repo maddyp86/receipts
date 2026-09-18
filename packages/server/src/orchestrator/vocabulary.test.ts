@@ -61,10 +61,22 @@ describe('explanationProblems — the guard rejects the wrong vocabulary', () =>
       'The senator kept this promise by co-sponsoring the bill.',
       'This produced a "Kept" outcome with medium confidence.',
       'The record shows the promise was broken.',
-      'They broke with the position.',
+      'On this pledge, the senator broke faith with what was said.',
+      'The verdict here is kept.',
     ]) {
       const problems = explanationProblems(why, 'KEPT', 'Policy Position');
       expect(problems.some((p) => /stated position/.test(p)), why).toBe(true);
+    }
+  });
+
+  it('does NOT reject kept/broke used as ordinary verbs about the bill', () => {
+    // Both of these are real model outputs the first version of the guard
+    // bounced. "kept ... in place" is about the rule, not the promise.
+    for (const why of [
+      'Because a NAY vote defeated the disapproval resolution and kept the underlying EPA rule in place, this vote is consistent with the position.',
+      'The senator voted NAY, which defeated the resolution and kept the clean air rule in effect. The record is consistent with the position.',
+    ]) {
+      expect(explanationProblems(why, 'KEPT', 'Policy Position'), why).toEqual([]);
     }
   });
 

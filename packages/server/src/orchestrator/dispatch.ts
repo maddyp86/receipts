@@ -1313,6 +1313,23 @@ async function evaluateEffectsTool(
 
 // ---------------------------------------------------------------------------
 
+/**
+ * "kept" / "broke" / "broken" used as a verdict, not as an ordinary verb.
+ *
+ * Quoted ("Kept"), or in the same clause as the thing a verdict is about —
+ * promise, pledge, commitment, their word, the outcome or verdict itself.
+ * "kept the rule in place" is not a verdict and passes.
+ */
+export function usesPromiseVerdict(text: string): boolean {
+  const t = text.toLowerCase();
+  if (/["“'‘](kept|broke|broken)["”'’]/.test(t)) return true;
+  const nouns = '(promise|promises|pledge|commitment|their word|his word|her word|outcome|verdict)';
+  return (
+    new RegExp(`\\b(kept|broke|broken)\\b[^.;]{0,40}\\b${nouns}\\b`).test(t) ||
+    new RegExp(`\\b${nouns}\\b[^.;]{0,40}\\b(kept|broke|broken)\\b`).test(t)
+  );
+}
+
 /** The words the explanation must use for this statement type. */
 function vocabularyFor(statementType: string): string {
   return statementType === 'Policy Position'
@@ -1337,10 +1354,14 @@ export function explanationProblems(
   const problems: string[] = [];
   const text = lower(why);
 
-  // A position has no promise to keep. Reject the promise vocabulary outright
-  // rather than letting the model's "Kept" leak through beside cards that say
-  // CONSISTENT.
-  if (statementType === 'Policy Position' && /\b(kept|broke|broken)\b/.test(text)) {
+  // A position has no promise to keep. Reject the promise vocabulary used AS
+  // A VERDICT rather than letting the model's "Kept" leak through beside cards
+  // that say CONSISTENT. Only as a verdict: "kept the underlying rule in
+  // place" and "the resolution broke a tie" are ordinary English about the
+  // bill, and a first version of this check bounced a correct explanation for
+  // exactly that. Verdict use is the word quoted, or within a clause of
+  // promise / pledge / commitment / outcome / verdict.
+  if (statementType === 'Policy Position' && usesPromiseVerdict(text)) {
     problems.push(
       'this is a stated position, not a campaign promise — say "consistent with" or "runs counter to", never kept, broke or broken',
     );
