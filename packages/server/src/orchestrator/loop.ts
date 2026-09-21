@@ -13,7 +13,7 @@ import {
   type TraceStage,
 } from '../trace/Trace.js';
 import type { AuditEvent, StoredAlignment, StoredMatch } from '../data/QueryStore.js';
-import { derivePartialSubtype } from '../evaluation/evidenceGate.js';
+import { derivePartialSubtype, describeExclusions } from '../evaluation/evidenceGate.js';
 import { classifyScope, haltForScope } from '../scope/classifyScope.js';
 import { describeCoverage } from '../scoring/coverage.js';
 import { cacheKey, isCacheable, resultCache } from '../data/ResultCache.js';
@@ -188,6 +188,20 @@ export function finish(session: QuerySession, emit: Emit): boolean {
           counterargument: session.judge.verdict.senator_counterargument || null,
           failed_test: session.judge.verdict.failed_test || null,
           failure_class: session.judge.verdict.failure_class || null,
+        }
+      : undefined,
+    // The path to the evidence, in counts. Retrieval and the relevance gate
+    // were the two steps a reader could not see at all: the result carried
+    // the survivors and nothing about what they survived. Attached whenever a
+    // search ran; absent (not zeroed) when the run never reached one.
+    search: session.retrieval || session.matches
+      ? {
+          returned: session.retrieval?.returned ?? null,
+          below_floor: session.retrieval?.belowFloor ?? null,
+          evaluated: session.evaluated?.length ?? session.matches?.length ?? 0,
+          admitted: session.relevance ? session.relevance.admitted.length : (session.matches?.length ?? 0),
+          relevance_applied: Boolean(session.relevance),
+          exclusions: session.relevance ? describeExclusions(session.relevance.dropped) : [],
         }
       : undefined,
   };

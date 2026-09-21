@@ -536,13 +536,30 @@ export function coverageSentence(coverage: CoverageWindow): string {
     return 'This covers only the legislation we have analyzed, which may not be a senator’s full record.';
   }
 
-  const span =
-    list.length === 1
-      ? `the ${ordinal(list[0]!)} Congress`
-      : `the ${list.slice(0, -1).map(ordinal).join(', ')} and ${ordinal(list[list.length - 1]!)} Congress`;
-
-  return `We searched ${span}. Anything before that is outside the record we have analyzed, so an empty result here is not a finding that the senator has no record on the subject.`;
+  return `We searched ${congressSpan(list)}. Anything before that is outside the record we have analyzed, so an empty result here is not a finding that the senator has no record on the subject.`;
 }
+
+/**
+ * "the 118th and 119th Congress", or null when the window is unknown. The
+ * same list `coverageSentence` speaks from, for copy that needs only the span.
+ */
+export function coverageSpanPhrase(coverage: CoverageWindow): string | null {
+  if (coverage.unknown) return null;
+  const list = coverage.congresses.length
+    ? coverage.congresses
+    : coverage.observed
+      ? Array.from(
+          { length: coverage.observed.max - coverage.observed.min + 1 },
+          (_, i) => coverage.observed!.min + i,
+        )
+      : [];
+  return list.length ? congressSpan(list) : null;
+}
+
+const congressSpan = (list: number[]): string =>
+  list.length === 1
+    ? `the ${ordinal(list[0]!)} Congress`
+    : `the ${list.slice(0, -1).map(ordinal).join(', ')} and ${ordinal(list[list.length - 1]!)} Congress`;
 
 const ordinal = (n: number): string => {
   const rem100 = n % 100;
@@ -658,6 +675,30 @@ export function judgeDispositionSentence(disposition: string | null | undefined)
   return null;
 }
 
+/**
+ * What the search did, in counts a reader can follow.
+ *
+ * The browser only ever received the survivors: the evidence rows and the
+ * gated rows. "We found ten, five were close enough, three of those turned out
+ * to be about something else" was in the trace and the database and nowhere a
+ * reader could see it — so the details block could only show the scorer's
+ * arithmetic, not the path to it.
+ */
+export interface SearchSummary {
+  /** Vectors the store returned before any floor. Null when unknown. */
+  returned: number | null;
+  /** Of those, how many fell below the WEAK floor and were never evaluated. */
+  below_floor: number | null;
+  /** Candidates that reached the relevance evaluator (or passed through unchecked). */
+  evaluated: number;
+  /** Candidates the evidence gate admitted. */
+  admitted: number;
+  /** False when no evaluator ran — the candidates passed through UNCHECKED. */
+  relevance_applied: boolean;
+  /** The gate's reader-facing sentences for what it dropped, in its own words. */
+  exclusions: string[];
+}
+
 export interface QueryResult {
   senator: Senator;
   interpretation: Interpretation;
@@ -683,6 +724,8 @@ export interface QueryResult {
    * accusation. It does NOT mean the reading passed review.
    */
   judge?: JudgeDisclosure;
+  /** The retrieval and relevance counts, for the reader-facing walkthrough. */
+  search?: SearchSummary;
 }
 
 // ---------------------------------------------------------------------------
