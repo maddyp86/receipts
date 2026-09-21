@@ -465,7 +465,7 @@ export interface ScoredResult {
 // ---------------------------------------------------------------------------
 
 export interface Explanation {
-  /** The Level-1 "why", 2–3 sentences, no statistics. */
+  /** The Level-1 "why": one paragraph written as a reply to the reader, no statistics. */
   why: string;
   /** action_uid -> one-line "why this bill" connector. */
   connectors: Record<string, string>;

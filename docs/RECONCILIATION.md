@@ -1926,3 +1926,52 @@ defect class that matters most here.
 **Only Matthew can do:** run `docs/supabase-migration-009-query-trace-log.sql`
 as `postgres`.
 
+## 2026-09-20 — the explanation prompt diverges from WF11 `Build Prompt`, deliberately
+
+`orchestrator/prompts.ts` `EXPLANATION_CONSTRAINTS` was a near-verbatim port of
+WF11's reasoning-only `Build Prompt`. It is no longer a transcription, and the
+divergence is the correct one for this tool.
+
+**Why.** WF11 writes for a senator profile: a summary of a computed score.
+The query tool answers one person who typed a statement. Matthew's 2026-09-18
+review: the explanation "doesn't come across as conversational … explaining
+to them how we got this evidence based on the initial query." On the
+gun-safety run the shipped text opened "Senator Schumer co-sponsored
+multiple bills…" and never mentioned that three of the five admitted bills
+had been set aside as a different object — the reader saw them on the cards
+below with no account of why they did not count.
+
+**What changed.** The shape on top of the constraints, not the constraints.
+Three candidate shapes were sampled against the frozen results of two real
+runs (`d98db78f…` gun safety, `154ddde8…` clean air) and the current prompt
+replayed the same way as a baseline. Chosen: "direct reply" — name the
+question, say what was found and what the senator did, say what it means in
+the statement's vocabulary, then a REQUIRED sentence for anything seen and
+set aside, then the limit of the evidence. The set-aside sentence is
+borrowed from the "walk-through" candidate, which was the only one that
+accounted for the neutral rows on both runs. Per-card lines are now asked
+for on neutral cards too, saying why the bill did not count.
+
+**Unchanged, verbatim from the port:** never recompute, never contradict the
+verdict, never attribute motive, no statistics vocabulary, the CRA
+NAY-preserves rule, cloture and passage named separately, sponsorship weaker
+than a vote. Plus the statement-type vocabulary rule from PR #14.
+
+**Found while sampling, logged not fixed:** the motive-word guard in
+`explanationProblems` flags "avoid" when it describes what a facility does
+under a rule ("reclassified to avoid stricter controls"), not the senator.
+The rejection costs a rewrite turn, not a result. Worth scoping the motive
+list to sentences about the senator.
+
+**Verified live** (`DATABASE_URL` blank, run `77b8aa22-ba45-4a82-95e9-b769442043d0`,
+the gun-safety statement): the reply opens "You asked whether Schumer has
+backed…", names S.3214 and S.494 with their Congress, gives the set-aside
+sentence for the safe-storage and assault-weapons bills (neutral) and the
+PLCAA and CDC bills (dropped at relevance), and closes on the limit —
+co-sponsorship only, and red flag laws untested. Accepted by the wording
+guard on the first draft; six connector lines, one per card including the
+neutral ones.
+
+**n8n side:** nothing to adopt. WF11's audience is the profile; this shape is
+for the query tool only.
+
