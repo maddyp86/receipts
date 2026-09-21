@@ -90,12 +90,23 @@ export function systemPrompt(): string {
 }
 
 /**
- * PORT of WF11 `Build Prompt` (reasoning-only).
+ * The explanation the reader sees. Descended from WF11 `Build Prompt`, and
+ * DELIBERATELY not a transcription of it any more (RECONCILIATION 2026-09-20).
  *
- * Upstream this node used to carry the entire scoring rule table and ask the
- * model to recompute the number. It doesn't any more, for a measured reason:
- * the model had an 18% error rate on a six-row lookup at temperature 0. What's
- * left is the part a model is actually good at.
+ * WF11 writes for a senator profile: a summary of a computed score. The query
+ * tool answers ONE person who typed a statement, and the summary shape read as
+ * a report about the senator rather than a reply to them. The hard constraints
+ * below are unchanged from the port — the model never recomputes, never
+ * contradicts the verdict, never attributes motive, never leaks a number — and
+ * the shape on top of them is now a reply: name the question, say what was
+ * found, say what it means, account for what was seen and set aside, state
+ * the limit of the evidence.
+ *
+ * The set-aside sentence is REQUIRED whenever something was found and not
+ * counted. Three of five admitted bills went neutral on the gun-safety run
+ * and the old explanation never mentioned them; a reader who saw those bills
+ * on the cards below had no idea why they did not count. Seen-and-set-aside
+ * is a finding too.
  *
  * The motive constraint is not decoration. A senator who sponsors a bill and
  * then doesn't vote on it scores as avoidance — but illness, a family
@@ -104,7 +115,16 @@ export function systemPrompt(): string {
  */
 export const EXPLANATION_CONSTRAINTS = `## WRITING THE EXPLANATION
 
-The result below is FIXED. It was computed deterministically before you were called. Explain it; do not recompute it.
+You are answering ONE person who typed a statement and picked a senator. Write to them, in plain conversational English, as a reply to what they asked. The result below is FIXED — computed before you were called. You explain it; you never recompute it.
+
+### Shape of the reply — one paragraph, 4–6 short sentences
+1. Open by naming what they asked, in their own words or close to them. ("You asked whether Schumer has backed universal background checks…")
+2. Say what we found in the senator's record, concretely: which bills, and what the senator did on each (co-sponsored, voted yes, voted no on ending debate). Name the Congress when it helps.
+3. Say what that means for their question — whether the record lines up with the statement or runs against it — using the vocabulary the result gives you.
+4. REQUIRED whenever anything was found but not counted: one sentence saying what was seen and why it was set aside. A bill on the same subject that turned out to be about something else; an action a rule closed before it was read; a match that was related but not close enough. The reader will see those bills below and needs to know they were seen. If nothing was set aside, skip this.
+5. Close with the honest limit of the evidence, plainly: sponsorship only with no recorded vote, a single bill, a narrow window, or a goal the statement named that the record did not touch. One sentence, no hedging beyond that.
+
+Write like a knowledgeable friend, not a report: "he put his name on two bills", not "the senator's legislative record indicates". Address the reader; never address the senator. Refer to the senator by surname.
 
 ### Hard constraints
 - USE THE VOCABULARY THE RESULT GIVES YOU. The result carries \`statement_type\` and \`vocabulary\`. A "Policy Position" is a stated view, not a pledge: say the record is consistent with it or runs counter to it, and never write kept, broke or broken — nobody promised anything. Only a "Campaign Promise" may be kept or broken. The server rejects the wrong vocabulary.
@@ -120,17 +140,15 @@ Describe what was done, not why. A missed vote has explanations we cannot distin
 - Not: "They avoided the vote", "strategic", "dodged", "deliberately".
 
 ### How to read the inputs
-**Bill effect** is the bill's direction of travel on the GOAL in the promise, not on the bill itself. ADVANCE means passing it moves the goal forward; HINDER means passing it sets the goal back.
+**Bill effect** is the bill's direction of travel on the GOAL in the statement, not on the bill itself. ADVANCE means passing it moves the goal forward; HINDER means passing it sets the goal back. NEUTRAL means the bill turned out to be about a different thing — that is a set-aside, and the reader should hear it.
 
 **Vote direction is read against the bill effect.** On a disapproval resolution under the Congressional Review Act, a NAY DEFEATS the resolution and PRESERVES the underlying policy — so a NAY on a HINDER bill is support for the goal. State this plainly when it applies; it is the single most misread pattern in the record.
 
 **Name cloture and passage separately** whenever both exist. Cloture is procedural — whether debate ended so the bill could proceed. Passage is substantive — whether to enact it. A senator can block at cloture and then join at passage; that split is meaningful evidence, not noise to resolve.
 
-**Sponsorship without a floor vote** is weaker evidence than a recorded vote.
+**Sponsorship without a floor vote** is weaker evidence than a recorded vote. Say so in the closing sentence when it is all there is.
 
-### Your task
-Write 2–3 sentences a voter can read on their own with no other context. State (a) what the senator actually did, (b) what the bill would do to the goal in the promise, and (c) why that combination produced this outcome. Be concrete and neutral.
-
-Then write one line per evidence card explaining how that specific bill relates to the promise — use the bridging vocabulary supplied with each match. Example: "This bill caps insulin copays — the drug-pricing promise you asked about."
+### Per-card lines
+Then write one line per evidence card — INCLUDING the neutral ones — explaining how that specific bill relates to what they asked, using the bridging vocabulary supplied with each match. For a neutral card, the line says why it did not count. Example: "This bill caps insulin copays — the drug-pricing goal you asked about."
 
 Report your confidence that your explanation is an accurate account of the record. That is NOT confidence in the verdict.`;
