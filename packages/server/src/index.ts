@@ -5,7 +5,8 @@ import { config, describeCredentials, describeMode, describeModels } from './con
 import { senatorCache } from './data/SenatorCache.js';
 import { runQuery } from './orchestrator/loop.js';
 import { queryStore } from './services.js';
-import { describeTraceSinks, traceReader } from './services.js';
+import { describeTraceSinks, traceReader, traceSinks } from './services.js';
+import { answerFollowup } from './followup/followup.js';
 import { SupabaseQueryStore } from './data/SupabaseQueryStore.js';
 import { primaryIssues, subIssuesFor } from './embeddings/taxonomy.js';
 import type { Corrections } from '@receipts/shared';
@@ -128,7 +129,60 @@ app.get('/api/senators', (_req, res) => {
     // it offers it. Offering a control that the server will reject is worse
     // than not offering it.
     campaign_promise_override: config.features.campaignPromiseOverride,
+    // Follow-up questions need a live model to answer with. In demo mode the
+    // box is not offered, because a control the server will refuse is worse
+    // than no control.
+    followups_available: !config.demoMode,
   });
+});
+
+/**
+ * A follow-up question about one finished result. Explain-only.
+ *
+ * Answered from the run's own trace (by id, like everything else), under
+ * the same wording guard as the explanation, and never persisted — the only
+ * record is the follow-up's own trace run. Rate-limited as a query: it is
+ * one paid model call.
+ */
+app.post('/api/followup', queryDailyLimiter, queryBurstLimiter, async (req, res) => {
+  const body = (req.body ?? {}) as { run_id?: unknown; question?: unknown; history?: unknown };
+  const runId = String(body.run_id ?? '').trim();
+  const question = String(body.question ?? '').trim();
+  const history = Array.isArray(body.history)
+    ? body.history
+        .filter((h): h is { role: 'user' | 'assistant'; text: string } =>
+          Boolean(h) && typeof h === 'object' && (h as { role?: unknown }).role !== undefined &&
+          ((h as { role: unknown }).role === 'user' || (h as { role: unknown }).role === 'assistant') &&
+          typeof (h as { text?: unknown }).text === 'string')
+        .slice(-10)
+        .map((h) => ({ role: h.role, text: h.text.slice(0, 2000) }))
+    : [];
+
+  if (!/^[0-9a-f-]{36}$/i.test(runId) || !question) {
+    res.status(400).json({ error: { code: 'BAD_INPUT', message: 'run_id and question are required.', recoverable: false } });
+    return;
+  }
+  if (question.length > 500) {
+    res.status(400).json({ error: { code: 'BAD_INPUT', message: 'Keep the question under 500 characters.', recoverable: false } });
+    return;
+  }
+  if (config.demoMode) {
+    res.status(503).json({ error: { code: 'UPSTREAM_UNAVAILABLE', message: 'Follow-up questions need a live model, and this deployment is in demo mode.', recoverable: false } });
+    return;
+  }
+
+  try {
+    const record = await traceReader.get(runId);
+    if (!record || record.run.status !== 'result') {
+      res.status(404).json({ error: { code: 'BAD_INPUT', message: 'No finished result with that id to ask about.', recoverable: false } });
+      return;
+    }
+    const answer = await answerFollowup({ record, question, history }, { sinks: traceSinks });
+    res.json(answer);
+  } catch (err) {
+    console.error('[followup]', err);
+    res.status(503).json({ error: { code: 'UPSTREAM_UNAVAILABLE', message: 'Could not answer right now.', recoverable: true } });
+  }
 });
 
 /**
