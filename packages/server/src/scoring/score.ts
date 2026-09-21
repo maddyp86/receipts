@@ -53,6 +53,10 @@ import { applyWithholding } from './withholding.js';
 export type ScorableMatch = MatchedAction & {
   bill_effect: BillEffect;
   bill_effect_reasoning: string;
+  /** Dates from the mirror, passed through untouched to the evidence row. */
+  action_date?: string | null;
+  cloture_vote_date?: string | null;
+  passage_vote_date?: string | null;
   /** Optional whip comparison; only affects tier selection for abstentions. */
   party_alignment?: string;
   /**
