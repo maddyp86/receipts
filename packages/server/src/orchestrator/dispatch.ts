@@ -1251,6 +1251,10 @@ async function evaluateEffectsTool(
   // regardless of anything the model says next.
   return ok({
     verdict: scored.verdict,
+    // The bucket above is internal. What the reader is told depends on the
+    // statement type, and the explainer has to know which words it may use.
+    statement_type: session.interpretation.statement_type,
+    vocabulary: vocabularyFor(session.interpretation.statement_type),
     band: scored.band,
     mode: scored.mode,
     nd_reason: scored.nd_reason,
@@ -1309,10 +1313,59 @@ async function evaluateEffectsTool(
 
 // ---------------------------------------------------------------------------
 
-/** Wording checks. Cheap, but they catch the failures that actually happen. */
-function explanationProblems(why: string, verdict: string): string[] {
+/**
+ * "kept" / "broke" / "broken" used as a verdict, not as an ordinary verb.
+ *
+ * Quoted ("Kept"), or in the same clause as the thing a verdict is about —
+ * promise, pledge, commitment, their word, the outcome or verdict itself.
+ * "kept the rule in place" is not a verdict and passes.
+ */
+export function usesPromiseVerdict(text: string): boolean {
+  const t = text.toLowerCase();
+  if (/["“'‘](kept|broke|broken)["”'’]/.test(t)) return true;
+  const nouns = '(promise|promises|pledge|commitment|their word|his word|her word|outcome|verdict)';
+  return (
+    new RegExp(`\\b(kept|broke|broken)\\b[^.;]{0,40}\\b${nouns}\\b`).test(t) ||
+    new RegExp(`\\b${nouns}\\b[^.;]{0,40}\\b(kept|broke|broken)\\b`).test(t)
+  );
+}
+
+/** The words the explanation must use for this statement type. */
+function vocabularyFor(statementType: string): string {
+  return statementType === 'Policy Position'
+    ? 'This is a stated POSITION, not a campaign promise. Say the record is "consistent with" or ' +
+        '"runs counter to" the position. NEVER write kept, broke or broken — nobody promised anything.'
+    : 'This is a campaign promise. Kept / broke vocabulary applies.';
+}
+
+/**
+ * Wording checks. Cheap, but they catch the failures that actually happen.
+ *
+ * Exported for tests. `statementType` picks the vocabulary: the verdict bucket
+ * is KEPT for a consistent policy position, and an explanation that turns that
+ * into "kept the promise" asserts a commitment nobody made — the exact claim
+ * the provenance rules exist to prevent.
+ */
+export function explanationProblems(
+  why: string,
+  verdict: string,
+  statementType: string = 'Campaign Promise',
+): string[] {
   const problems: string[] = [];
   const text = lower(why);
+
+  // A position has no promise to keep. Reject the promise vocabulary used AS
+  // A VERDICT rather than letting the model's "Kept" leak through beside cards
+  // that say CONSISTENT. Only as a verdict: "kept the underlying rule in
+  // place" and "the resolution broke a tie" are ordinary English about the
+  // bill, and a first version of this check bounced a correct explanation for
+  // exactly that. Verdict use is the word quoted, or within a clause of
+  // promise / pledge / commitment / outcome / verdict.
+  if (statementType === 'Policy Position' && usesPromiseVerdict(text)) {
+    problems.push(
+      'this is a stated position, not a campaign promise — say "consistent with" or "runs counter to", never kept, broke or broken',
+    );
+  }
 
   for (const term of BANNED_LEVEL1_TERMS) {
     if (text.includes(lower(term))) {
@@ -1361,7 +1414,11 @@ async function explainResult(
     return fail({ code: 'BAD_INPUT', message: 'why is required.', recoverable: true });
   }
 
-  const problems = explanationProblems(why, session.scored.verdict);
+  const problems = explanationProblems(
+    why,
+    session.scored.verdict,
+    session.interpretation?.statement_type ?? 'Campaign Promise',
+  );
   if (problems.length) {
     // GATE: the wording checks. A rejected draft is sent back for another
     // turn, and the UI only ever sees the one that passed — so without this

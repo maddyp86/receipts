@@ -839,18 +839,35 @@ export function outcomeHeadline(
 
   if (statementType === 'Policy Position') {
     return bucket === 'KEPT'
-      ? 'His record is consistent with this position'
-      : 'His record runs counter to this position';
+      ? 'Their record is consistent with this position'
+      : 'Their record runs counter to this position';
   }
 
   if (provenance === 'asserted') {
     return bucket === 'KEPT'
-      ? 'You indicated this was a campaign promise. On that basis, his record is consistent with it'
-      : 'You indicated this was a campaign promise. On that basis, his record runs counter to it';
+      ? 'You indicated this was a campaign promise. On that basis, their record is consistent with it'
+      : 'You indicated this was a campaign promise. On that basis, their record runs counter to it';
   }
 
   // Corpus-verified promise: the strongest claim the product makes, and earned.
   return bucket === 'KEPT' ? 'Kept' : 'Broke';
+}
+
+/**
+ * The one- or two-word label for a direction, in the statement's vocabulary.
+ *
+ * For headings like "What points toward …". Same rule as outcomeHeadline: a
+ * free-typed statement is a position, and a position is never "kept" — the
+ * verdict bucket is KEPT internally, but the word a reader sees is
+ * "consistent". VERDICT_PHRASE is the promise vocabulary and must only be
+ * printed when the promise standard actually applies.
+ */
+export function verdictWord(bucket: Verdict, statementType: StatementType): string {
+  if (bucket === 'NOT_DETERMINABLE') return VERDICT_PHRASE.NOT_DETERMINABLE;
+  if (statementType === 'Policy Position') {
+    return bucket === 'KEPT' ? 'Consistent' : 'Runs counter';
+  }
+  return VERDICT_PHRASE[bucket];
 }
 
 export const BAND_PHRASE: Record<ConfidenceBand, string> = {

@@ -107,6 +107,7 @@ export const EXPLANATION_CONSTRAINTS = `## WRITING THE EXPLANATION
 The result below is FIXED. It was computed deterministically before you were called. Explain it; do not recompute it.
 
 ### Hard constraints
+- USE THE VOCABULARY THE RESULT GIVES YOU. The result carries \`statement_type\` and \`vocabulary\`. A "Policy Position" is a stated view, not a pledge: say the record is consistent with it or runs counter to it, and never write kept, broke or broken — nobody promised anything. Only a "Campaign Promise" may be kept or broken. The server rejects the wrong vocabulary.
 - NEVER compute, adjust, second-guess, or comment on any number.
 - NEVER contradict the verdict you are given.
 - NEVER say an action kept or broke the promise in a direction opposite to the verdict.
