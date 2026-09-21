@@ -162,7 +162,7 @@ export const TOOL_DEFINITIONS = [
         why: {
           type: 'string',
           description:
-            '2–3 sentences a voter can read with no other context: what the senator did, what the bill would do to the goal, and why that produced this outcome.',
+            'One paragraph of 4–6 short sentences, written as a reply to the person who asked: name their question, say what was found and what the senator did, say what it means in the vocabulary the result gives you, account for anything seen and set aside, and state the limit of the evidence.',
         },
         connectors: {
           type: 'array',

@@ -107,6 +107,44 @@ describe('the coverage window reaches the browser', () => {
   });
 });
 
+describe('the search summary reaches the browser', () => {
+  // The walkthrough reads "we found ten, five were close enough" from these
+  // counts. Before this field the browser only ever received the survivors.
+  it('carries retrieval counts and the gate\'s own exclusion sentences', () => {
+    const { emitted } = run({
+      matches: [match(118)],
+      retrieval: { returned: 10, belowFloor: 2, topScore: 0.63, topK: 10 },
+      evaluated: Array.from({ length: 8 }, (_, i) => ({ action_uid: `e${i}` })) as never,
+      relevance: {
+        admitted: [{ action_uid: 'e0' }, { action_uid: 'e1' }],
+        dropped: { FALSE_POSITIVE: 3, 'PARTIAL/DIRECTIONAL': 3 },
+        tiers: { TRUE_POSITIVE: 2 },
+        admittedBeforeDedupe: 2,
+        candidatesIn: 8,
+      } as never,
+    });
+    const search = resultOf(emitted).search!;
+    expect(search).toMatchObject({ returned: 10, below_floor: 2, evaluated: 8, admitted: 2, relevance_applied: true });
+    expect(search.exclusions.join(' ')).toMatch(/different subject/);
+  });
+
+  it('says the relevance check did NOT run rather than pretending everything passed', () => {
+    const { emitted } = run({
+      matches: [match(118), match(119)],
+      retrieval: { returned: 2, belowFloor: 0, topScore: 0.6, topK: 10 },
+    });
+    const search = resultOf(emitted).search!;
+    expect(search.relevance_applied).toBe(false);
+    expect(search.admitted).toBe(2);
+    expect(search.exclusions).toEqual([]);
+  });
+
+  it('is absent, not zeroed, when no search ran', () => {
+    const { emitted } = run({ matches: undefined });
+    expect(resultOf(emitted).search).toBeUndefined();
+  });
+});
+
 describe('gated rows reach the browser', () => {
   const gatedRow = {
     action_uid: 'ACT-1',

@@ -19,10 +19,11 @@ import {
 } from './components/CorrectionPanel.js';
 import type { Corrections } from '@receipts/shared';
 import { apiUrl } from './lib/api.js';
+import { FollowUp } from './components/FollowUp.js';
 
 export default function App() {
   const [senators, setSenators] = useState<Senator[]>([]);
-  const [modes, setModes] = useState({ demo: false, fixture: false, override: false });
+  const [modes, setModes] = useState({ demo: false, fixture: false, override: false, followups: false });
   const [taxonomy, setTaxonomy] = useState<TaxonomyEntry[]>([]);
   const [selected, setSelected] = useState('S000148');
   const [promise, setPromise] = useState('');
@@ -38,6 +39,7 @@ export default function App() {
           demo: Boolean(d.demo_mode),
           fixture: Boolean(d.fixture_mode),
           override: Boolean(d.campaign_promise_override),
+          followups: Boolean(d.followups_available),
         });
       })
       .catch(() => {
@@ -147,6 +149,13 @@ export default function App() {
               busy={busy}
               onRerun={rerunWithCorrections}
             />
+          ) : null}
+
+          {/* After the result, before "ask something else": questions about
+              THIS result are answered from its own record and cannot change
+              it; a new statement is a new query. */}
+          {stream.phase === 'done' && stream.result && stream.traceId ? (
+            <FollowUp traceId={stream.traceId} available={modes.followups} senatorName={senatorName} />
           ) : null}
 
           {stream.phase === 'done' && !stream.uncached && !stream.error && !stream.halt ? (

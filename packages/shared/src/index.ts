@@ -385,6 +385,37 @@ export interface DirectedAction extends MatchedAction {
    * value from the column's own vocabulary, and `0` is a value.
    */
   alignment_confidence: number | null;
+
+  // -- When it happened. From the Supabase mirror via the pre-evaluator gates,
+  //    which is the only place a date enters the request path. ---------------
+  /**
+   * ISO date of the action. May be a STAND-IN: when the mirror has no exact
+   * date it supplies the first day of the Congress, and the gates flag that as
+   * `ACTION_DATE_PROXY` in `vote_flags`. Anything rendering this must check the
+   * flag before calling it the day the senator acted. Null when unknown.
+   */
+  action_date?: string | null;
+  /** ISO date of the cloture roll call, when the mirror has one. */
+  cloture_vote_date?: string | null;
+  /** ISO date of the passage roll call, when the mirror has one. */
+  passage_vote_date?: string | null;
+}
+
+/** '…-118' → 118. The Congress is encoded in the bill id and nowhere else reliable. */
+export function congressOfBillId(billId: string | null | undefined): number | null {
+  const m = /-(\d{3})$/.exec(String(billId ?? '').trim());
+  return m ? Number.parseInt(m[1]!, 10) : null;
+}
+
+/** 118 → "2023–2024". The nth Congress convenes in January of 1789 + 2(n−1). */
+export function congressYears(n: number): string {
+  const start = 1789 + 2 * (n - 1);
+  return `${start}–${start + 1}`;
+}
+
+/** 118 → "118th Congress (2023–2024)". */
+export function congressLabel(n: number): string {
+  return `${ordinal(n)} Congress (${congressYears(n)})`;
 }
 
 // ---------------------------------------------------------------------------
@@ -465,7 +496,7 @@ export interface ScoredResult {
 // ---------------------------------------------------------------------------
 
 export interface Explanation {
-  /** The Level-1 "why", 2–3 sentences, no statistics. */
+  /** The Level-1 "why": one paragraph written as a reply to the reader, no statistics. */
   why: string;
   /** action_uid -> one-line "why this bill" connector. */
   connectors: Record<string, string>;
@@ -536,13 +567,30 @@ export function coverageSentence(coverage: CoverageWindow): string {
     return 'This covers only the legislation we have analyzed, which may not be a senator’s full record.';
   }
 
-  const span =
-    list.length === 1
-      ? `the ${ordinal(list[0]!)} Congress`
-      : `the ${list.slice(0, -1).map(ordinal).join(', ')} and ${ordinal(list[list.length - 1]!)} Congress`;
-
-  return `We searched ${span}. Anything before that is outside the record we have analyzed, so an empty result here is not a finding that the senator has no record on the subject.`;
+  return `We searched ${congressSpan(list)}. Anything before that is outside the record we have analyzed, so an empty result here is not a finding that the senator has no record on the subject.`;
 }
+
+/**
+ * "the 118th and 119th Congress", or null when the window is unknown. The
+ * same list `coverageSentence` speaks from, for copy that needs only the span.
+ */
+export function coverageSpanPhrase(coverage: CoverageWindow): string | null {
+  if (coverage.unknown) return null;
+  const list = coverage.congresses.length
+    ? coverage.congresses
+    : coverage.observed
+      ? Array.from(
+          { length: coverage.observed.max - coverage.observed.min + 1 },
+          (_, i) => coverage.observed!.min + i,
+        )
+      : [];
+  return list.length ? congressSpan(list) : null;
+}
+
+const congressSpan = (list: number[]): string =>
+  list.length === 1
+    ? `the ${ordinal(list[0]!)} Congress`
+    : `the ${list.slice(0, -1).map(ordinal).join(', ')} and ${ordinal(list[list.length - 1]!)} Congress`;
 
 const ordinal = (n: number): string => {
   const rem100 = n % 100;
@@ -658,6 +706,30 @@ export function judgeDispositionSentence(disposition: string | null | undefined)
   return null;
 }
 
+/**
+ * What the search did, in counts a reader can follow.
+ *
+ * The browser only ever received the survivors: the evidence rows and the
+ * gated rows. "We found ten, five were close enough, three of those turned out
+ * to be about something else" was in the trace and the database and nowhere a
+ * reader could see it — so the details block could only show the scorer's
+ * arithmetic, not the path to it.
+ */
+export interface SearchSummary {
+  /** Vectors the store returned before any floor. Null when unknown. */
+  returned: number | null;
+  /** Of those, how many fell below the WEAK floor and were never evaluated. */
+  below_floor: number | null;
+  /** Candidates that reached the relevance evaluator (or passed through unchecked). */
+  evaluated: number;
+  /** Candidates the evidence gate admitted. */
+  admitted: number;
+  /** False when no evaluator ran — the candidates passed through UNCHECKED. */
+  relevance_applied: boolean;
+  /** The gate's reader-facing sentences for what it dropped, in its own words. */
+  exclusions: string[];
+}
+
 export interface QueryResult {
   senator: Senator;
   interpretation: Interpretation;
@@ -683,6 +755,8 @@ export interface QueryResult {
    * accusation. It does NOT mean the reading passed review.
    */
   judge?: JudgeDisclosure;
+  /** The retrieval and relevance counts, for the reader-facing walkthrough. */
+  search?: SearchSummary;
 }
 
 // ---------------------------------------------------------------------------

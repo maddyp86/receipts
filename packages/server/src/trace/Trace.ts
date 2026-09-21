@@ -71,7 +71,9 @@ export type TraceStage =
   | 'RESULT'
   | 'ERROR'
   | 'PERSIST'
-  | 'DONE';
+  | 'DONE'
+  /** A follow-up question's model call. Lives in its own run, `meta.followup_of` names the original. */
+  | 'FOLLOWUP';
 
 export type TraceKind = 'model' | 'deterministic' | 'io' | 'control';
 

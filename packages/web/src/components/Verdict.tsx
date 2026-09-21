@@ -12,6 +12,7 @@ import {
 } from '@receipts/shared';
 import { EvidenceCard } from './EvidenceCard.js';
 import { GatedActions } from './GatedActions.js';
+import { HowWeGotHere } from './HowWeGotHere.js';
 import { CoverageNote } from './States.js';
 
 // ===========================================================================
@@ -22,8 +23,14 @@ import { CoverageNote } from './States.js';
 // copy comes from the shared vocabulary table rather than from formatting the
 // numbers.
 //
-// Level 2 is the analyst drill-down: the same factors, the gate/dial trace, and
-// the flags. A skeptic can disagree with the weighting and still trust the facts.
+// Level 2 is "How we got here": the path from the statement to the verdict, in
+// plain language, one step per gate, derived from the result's own fields.
+//
+// Level 3 is the analyst drill-down: the same factors as raw values, the
+// gate/dial trace, and the flags. A skeptic can disagree with the weighting and
+// still trust the facts. It sits one toggle deeper than the walkthrough because
+// it reads as the internal system it is — right for an analyst, wrong as the
+// first thing a reader opens.
 // ===========================================================================
 
 const ICON: Record<string, string> = {
@@ -175,6 +182,7 @@ function AnalystTrace({ result }: { result: QueryResult }) {
 }
 
 export function Verdict({ result }: { result: QueryResult }) {
+  const [showDetails, setShowDetails] = useState(false);
   const [showTrace, setShowTrace] = useState(false);
   const { scored, explanation, senator } = result;
 
@@ -263,12 +271,25 @@ export function Verdict({ result }: { result: QueryResult }) {
       <button
         type="button"
         className="details-toggle"
-        aria-expanded={showTrace}
-        onClick={() => setShowTrace((v) => !v)}
+        aria-expanded={showDetails}
+        onClick={() => setShowDetails((v) => !v)}
       >
-        {showTrace ? 'Hide the details' : 'Show the details'}
+        {showDetails ? 'Hide how we got here' : 'Show how we got here'}
       </button>
-      {showTrace ? <AnalystTrace result={result} /> : null}
+      {showDetails ? (
+        <>
+          <HowWeGotHere result={result} />
+          <button
+            type="button"
+            className="details-toggle analyst-toggle"
+            aria-expanded={showTrace}
+            onClick={() => setShowTrace((v) => !v)}
+          >
+            {showTrace ? 'Hide the analyst trace' : 'Show the analyst trace (raw values)'}
+          </button>
+          {showTrace ? <AnalystTrace result={result} /> : null}
+        </>
+      ) : null}
 
       {scored.mode === 'ranked' && dominant && dissent ? (
         <>

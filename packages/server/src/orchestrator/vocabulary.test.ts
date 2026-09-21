@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { outcomeHeadline, verdictWord } from '@receipts/shared';
 import { explanationProblems } from './dispatch.js';
+import { EXPLANATION_CONSTRAINTS } from './prompts.js';
 import { stubExplanation } from '../llm/stub.js';
 import type { ScoredResult, Senator } from '@receipts/shared';
 
@@ -112,5 +113,33 @@ describe('the demo stub obeys the same rule', () => {
     const { why } = stubExplanation(ranked, senator);
     expect(explanationProblems(why, 'KEPT', 'Policy Position')).toEqual([]);
     expect(why).toMatch(/consistent with it/);
+  });
+});
+
+describe('the explanation constraints ask for a reply, not a report', () => {
+  // The shape lives in prose the model reads, so the only way to pin it is to
+  // assert the prose. Each of these is a clause the 2026-09-20 review asked for.
+  it('opens from the reader\'s question and addresses the reader', () => {
+    expect(EXPLANATION_CONSTRAINTS).toMatch(/Open by naming what they asked/);
+    expect(EXPLANATION_CONSTRAINTS).toMatch(/Address the reader; never address the senator/);
+  });
+
+  it('REQUIRES a sentence for what was seen and set aside', () => {
+    expect(EXPLANATION_CONSTRAINTS).toMatch(/REQUIRED whenever anything was found but not counted/);
+    expect(EXPLANATION_CONSTRAINTS).toMatch(/INCLUDING the neutral ones/);
+  });
+
+  it('keeps every hard constraint from the port', () => {
+    for (const rule of [
+      'NEVER compute, adjust, second-guess, or comment on any number',
+      'NEVER contradict the verdict you are given',
+      'NEVER speculate about motive',
+      'Do not use the words score, modifier, points, similarity, threshold, or confidence band',
+      'never write kept, broke or broken',
+      'a NAY DEFEATS the resolution and PRESERVES the underlying policy',
+      'Name cloture and passage separately',
+    ]) {
+      expect(EXPLANATION_CONSTRAINTS, rule).toContain(rule);
+    }
   });
 });

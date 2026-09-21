@@ -2,6 +2,8 @@ import { useState } from 'react';
 import {
   STRENGTH_PHRASE,
   VOTE_FLAG_COPY,
+  congressLabel,
+  congressOfBillId,
   governingVoteSentence,
   type DirectedAction,
 } from '@receipts/shared';
@@ -19,6 +21,10 @@ import {
 //      cloture YEA is the claim a senator's office knocks down (handoff v2 §4),
 //      and naming both without saying which decided leaves the reader to guess
 //      at the very point the verdict turns on.
+//   4. A date is only called the day the senator acted when it is one. The
+//      mirror supplies the first day of the Congress when it has no exact date
+//      and the gates flag it; that renders as the Congress and "exact date not
+//      in our record", never as a date.
 // ===========================================================================
 
 const VOTE_WORD: Record<string, string> = { YEA: 'voted yes', NAY: 'voted no' };
@@ -30,8 +36,8 @@ function describeBehaviour(e: DirectedAction): string {
   const cloture = named(e.cloture_vote);
   const passage = named(e.passage_vote);
 
-  if (cloture) parts.push(`${cloture} on ending debate`);
-  if (passage) parts.push(`${passage} on final passage`);
+  if (cloture) parts.push(`${cloture} on ending debate${onDate(e.cloture_vote_date)}`);
+  if (passage) parts.push(`${passage} on final passage${onDate(e.passage_vote_date)}`);
   if (!parts.length) {
     const flat = named(e.vote);
     if (flat) parts.push(`${flat} on this bill`);
@@ -57,6 +63,37 @@ function describeEffect(e: DirectedAction): string | null {
   return null;
 }
 
+/** " on 12 March 2024", or "" when there is no real roll-call date. */
+function onDate(iso: string | null | undefined): string {
+  const d = formatDate(iso);
+  return d ? ` on ${d}` : '';
+}
+
+function formatDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+}
+
+/**
+ * When it happened, honestly.
+ *
+ * A real roll-call date is already in the behaviour sentence. This line covers
+ * the rest: a sponsorship, or an action whose only date is the stand-in. The
+ * Congress is always known (it is in the bill id), so the reader always gets
+ * at least "during the 118th Congress (2023–2024)".
+ */
+function whenLine(e: DirectedAction, congress: number | null): string | null {
+  const proxy = (e.vote_flags ?? []).includes('ACTION_DATE_PROXY');
+  const hasRollCall = Boolean(formatDate(e.cloture_vote_date) || formatDate(e.passage_vote_date));
+  if (hasRollCall) return null; // the sentence above already carries the date
+  const real = !proxy ? formatDate(e.action_date) : null;
+  if (real) return `When: ${real}.`;
+  if (congress) return `When: during the ${congressLabel(congress)} — the exact date is not in our record.`;
+  return null;
+}
+
 interface Props {
   action: DirectedAction;
   connector?: string;
@@ -67,9 +104,13 @@ export function EvidenceCard({ action, connector, senatorName }: Props) {
   const [open, setOpen] = useState(false);
   const relation = STRENGTH_PHRASE[action.strength];
   const governing = governingVoteSentence(action.vote_governing);
+  const congress = action.congress ?? congressOfBillId(action.bill_id);
+  const when = whenLine(action, congress);
   const disclosures = (action.vote_flags ?? [])
     .map((flag) => ({ flag, copy: VOTE_FLAG_COPY[flag] }))
-    .filter((d): d is { flag: string; copy: string } => Boolean(d.copy));
+    // The proxy-date flag is now said in the "When" line, in context. Keeping
+    // it here too would say the same thing twice on every sponsorship card.
+    .filter((d): d is { flag: string; copy: string } => Boolean(d.copy) && !(d.flag === 'ACTION_DATE_PROXY' && when));
 
   return (
     <article className="evidence" data-direction={action.direction}>
@@ -81,12 +122,28 @@ export function EvidenceCard({ action, connector, senatorName }: Props) {
         <span className="relation">{relation}</span>
       </div>
 
+      {/* Identity line. Bill id and Congress are what a reader needs to look
+          the bill up anywhere else; the policy area is the label retrieval
+          and the evaluators worked from. */}
+      <p className="evidence-meta">
+        <span>{action.bill_id}</span>
+        {congress ? <span>{congressLabel(congress)}</span> : null}
+        {action.primary_issue ? (
+          <span>
+            {action.primary_issue}
+            {action.sub_issue ? ` / ${action.sub_issue}` : ''}
+          </span>
+        ) : null}
+      </p>
+
       {connector ? <p className="connector">{connector}</p> : null}
 
       <p className="behaviour">
         <strong>{senatorName}</strong> {describeBehaviour(action)}.{' '}
         {describeEffect(action)}
       </p>
+
+      {when ? <p className="when">{when}</p> : null}
 
       {/* Which vote decided, in plain language. The raw `vote_governing` string
           is analyst vocabulary — one of its values contains "threshold", a
@@ -121,6 +178,16 @@ export function EvidenceCard({ action, connector, senatorName }: Props) {
           {action.intended_effects ? (
             <p>
               <strong>Intended effects.</strong> {action.intended_effects}
+            </p>
+          ) : null}
+          {action.mechanisms ? (
+            <p>
+              <strong>How it works.</strong> {action.mechanisms}
+            </p>
+          ) : null}
+          {action.affected_stakeholders ? (
+            <p>
+              <strong>Who it affects.</strong> {action.affected_stakeholders}
             </p>
           ) : null}
           {action.missing_fields.length ? (
