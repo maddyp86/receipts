@@ -101,6 +101,7 @@ an evaluator response that did not parse).
 | 28 | `PERSIST` | io | `app_queries` id, candidate/alignment counts, audit events written; or `skipped` with the reason; or `error` |
 | 29 | `DONE` | control | How the run concluded, event count, cached or not |
 | — | `CACHE_REPLAY` | control | A replay is its own run with this single step, pointing at the original run id. The browser is sent the **original** id — that run produced the answer |
+| — | `FOLLOWUP` | model | A follow-up question is its own run (`meta.followup_of` names the result it is about): `REQUEST` → one `FOLLOWUP` step per model attempt (`rejected` when the wording guard bounced a draft; at most two) → `DONE`. Input is the question and the size of the context built from the original trace; output is the raw answer and the guard's problems. Nothing else about a follow-up is stored anywhere |
 
 In DEMO mode the model stages are absent (no model is called) and the
 deterministic stages run on the stubs. A live query produces roughly 25–60

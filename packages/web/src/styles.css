@@ -666,6 +666,74 @@ textarea.promise::placeholder {
   padding: 0.13rem 0.45rem;
 }
 
+.followup {
+  margin-top: 1.5rem;
+}
+
+.followup-lead {
+  margin: 0 0 0.8rem;
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+}
+
+.followup-turns {
+  list-style: none;
+  margin: 0 0 0.9rem;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.followup-turn {
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--rule);
+}
+
+.followup-turn.user {
+  background: var(--unclear-wash);
+}
+
+.followup-turn[data-refused='true'] {
+  border-style: dashed;
+}
+
+.followup-turn p {
+  margin: 0.2rem 0 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.followup-who {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-faint);
+}
+
+.followup-input {
+  min-height: 3.4rem;
+}
+
+.followup-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-top: 0.5rem;
+}
+
+.followup-submit {
+  padding: 0.55rem 1rem;
+  font-size: 0.95rem;
+}
+
+.followup-error {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: var(--broke);
+}
+
 .evidence-meta {
   display: flex;
   flex-wrap: wrap;

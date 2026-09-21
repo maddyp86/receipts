@@ -233,6 +233,15 @@ It works with `DATABASE_URL` blank (JSONL files under `.data/traces`), and also 
 once [migration 009](docs/supabase-migration-009-query-trace-log.sql) is applied. Details, the
 gate map and the reading guide are in [docs/trace-log.md](docs/trace-log.md).
 
+## Asking about a result
+
+Under every finished result there is a box for follow-up questions: why a bill counted or didn't,
+which vote decided, what a term means. The answer is written from that run's own trace and
+nothing else, under the same wording guard as the explanation, and it cannot produce a new
+verdict — a question that needs a new search is told it is a new query. The exchange lives in the
+tab and is never persisted; the only record is the follow-up's own trace run. Hidden in demo mode,
+where there is no model to answer with.
+
 ## Pipeline reconciliation log
 
 The ported modules are transcriptions of live n8n nodes and need re-reading whenever the pipeline
