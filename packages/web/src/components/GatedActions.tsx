@@ -1,4 +1,4 @@
-import type { GatedAction } from '@receipts/shared';
+import { congressLabel, congressOfBillId, type GatedAction } from '@receipts/shared';
 
 // ===========================================================================
 // Actions a gate closed before the evaluator ran.
@@ -40,6 +40,11 @@ export function GatedActions({ gated }: { gated?: GatedAction[] }) {
             {g.bill_number ? <span className="evidence-bill">{g.bill_number}</span> : null}
             <span className="relation not-evaluated">Not evaluated</span>
           </div>
+
+          <p className="evidence-meta">
+            <span>{g.bill_id}</span>
+            {congressOfBillId(g.bill_id) ? <span>{congressLabel(congressOfBillId(g.bill_id)!)}</span> : null}
+          </p>
 
           {/* The gate's own words. Written for a reader and rendered verbatim —
               paraphrasing here would put our summary of a deterministic rule in

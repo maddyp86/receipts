@@ -385,6 +385,37 @@ export interface DirectedAction extends MatchedAction {
    * value from the column's own vocabulary, and `0` is a value.
    */
   alignment_confidence: number | null;
+
+  // -- When it happened. From the Supabase mirror via the pre-evaluator gates,
+  //    which is the only place a date enters the request path. ---------------
+  /**
+   * ISO date of the action. May be a STAND-IN: when the mirror has no exact
+   * date it supplies the first day of the Congress, and the gates flag that as
+   * `ACTION_DATE_PROXY` in `vote_flags`. Anything rendering this must check the
+   * flag before calling it the day the senator acted. Null when unknown.
+   */
+  action_date?: string | null;
+  /** ISO date of the cloture roll call, when the mirror has one. */
+  cloture_vote_date?: string | null;
+  /** ISO date of the passage roll call, when the mirror has one. */
+  passage_vote_date?: string | null;
+}
+
+/** '…-118' → 118. The Congress is encoded in the bill id and nowhere else reliable. */
+export function congressOfBillId(billId: string | null | undefined): number | null {
+  const m = /-(\d{3})$/.exec(String(billId ?? '').trim());
+  return m ? Number.parseInt(m[1]!, 10) : null;
+}
+
+/** 118 → "2023–2024". The nth Congress convenes in January of 1789 + 2(n−1). */
+export function congressYears(n: number): string {
+  const start = 1789 + 2 * (n - 1);
+  return `${start}–${start + 1}`;
+}
+
+/** 118 → "118th Congress (2023–2024)". */
+export function congressLabel(n: number): string {
+  return `${ordinal(n)} Congress (${congressYears(n)})`;
 }
 
 // ---------------------------------------------------------------------------

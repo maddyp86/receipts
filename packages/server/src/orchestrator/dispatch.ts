@@ -1004,6 +1004,12 @@ async function evaluateEffectsTool(
       // the action date is a stand-in — so FLOOR_LEADER can only originate
       // here. Handoff v2 §4 lists it in `vote_flags` beside SPLIT_VOTE.
       vote_flags: gates[m.action_uid]?.context.vote_flags ?? [],
+      // When it happened, for the card. The gates already resolved the action
+      // date (and flagged a stand-in); the roll-call dates come straight from
+      // the mirror. Null, never '', when absent.
+      action_date: gates[m.action_uid]?.context.action_date || null,
+      cloture_vote_date: enrichment.get(m.action_uid)?.cloture_vote_date || null,
+      passage_vote_date: enrichment.get(m.action_uid)?.passage_vote_date || null,
       // Passed through uncapped. scoreMatches applies the split-vote cap, so
       // the cap is enforced in exactly one place regardless of caller.
       // Null rather than 0 when no evaluator ran: 0 is a confidence, absence
