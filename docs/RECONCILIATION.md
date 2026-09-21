@@ -1975,3 +1975,31 @@ neutral ones.
 **n8n side:** nothing to adopt. WF11's audience is the profile; this shape is
 for the query tool only.
 
+## 2026-09-20 — follow-up questions, explain-only, not persisted
+
+Matthew's 2026-09-18 review, point 5: "what if someone has a follow-up
+question on this query? The current system only allows them to launch a new
+query." Two shapes were on the table — explain-only, or refine-and-rerun
+(a follow-up that changes the question and re-runs from embedding). He chose
+explain-only.
+
+**What shipped** (`packages/server/src/followup/`, `POST /api/followup`,
+`web/components/FollowUp.tsx`): one non-streamed call on the explain model,
+answering from a compact context built from the run's trace — the parsed
+findings of every gate, never the raw evaluator prompts, which are ~40k
+tokens of inputs rather than findings. The system prompt bars a new verdict,
+re-weighing, motive, statistics vocabulary, anything outside the run, and
+requires the statement-type vocabulary. The answer passes the same
+`explanationProblems` guard as the explanation: one retry with the problems,
+then a refusal rather than a rendered bad draft. Rate-limited as a query.
+Hidden in demo mode (`followups_available` on `/api/senators`).
+
+**Decision, assumed and stated:** the exchange is NOT persisted. It lives in
+the tab; the only record is the follow-up's own trace run
+(`meta.followup_of` names the original). Reasoning: a follow-up is user text
+about a user query, and writing it to `app_queries` would widen the training
+column without a decision to. Reversible if wanted — the trace already holds
+every exchange for `TRACE_MAX_FILES` runs.
+
+**Not a pipeline concern.** No n8n equivalent; nothing to adopt either way.
+
