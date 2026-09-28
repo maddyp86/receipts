@@ -505,7 +505,19 @@ function toRelevanceCandidate(session: QuerySession, m: MatchedAction): Relevanc
   };
 }
 
-function toFulfillmentCandidate(session: QuerySession, m: MatchedAction): FulfillmentCandidate {
+/**
+ * The evaluator's view of one candidate.
+ *
+ * `gate` and `enriched` are passed in rather than looked up: both were already
+ * computed for this row on the request path, and re-deriving them here is how
+ * the evaluator and the gates end up disagreeing about what happened.
+ */
+function toFulfillmentCandidate(
+  session: QuerySession,
+  m: MatchedAction,
+  enriched: ActionEnrichment = {},
+  gate?: GateResult,
+): FulfillmentCandidate {
   const c = session.interpretation!;
   return {
     // Drives the verdict vocabulary AND the prompt's -0.1 confidence penalty,
@@ -530,27 +542,44 @@ function toFulfillmentCandidate(session: QuerySession, m: MatchedAction): Fulfil
       : undefined,
 
     vote: m.vote ?? 'NA',
-    cloture_vote: m.cloture_vote,
-    passage_vote: m.passage_vote,
+    // Pinecone carries the votes; the mirror carries the dates around them.
+    // Where both exist the mirror wins, the same precedence the gates use.
+    cloture_vote: enriched.cloture_vote ?? m.cloture_vote,
+    passage_vote: enriched.passage_vote ?? m.passage_vote,
     is_sponsor: boolStr(m.is_sponsor),
     is_cosponsor: boolStr(m.is_cosponsor),
 
     // ---- v7 context.
     //
-    // Scope fields come from the live classifier. Everything below them —
-    // vote dates, whip vote, cloture result, senator role, action date — needs
-    // the enrichment reader, which needs the Supabase mirror, which is not
-    // synced (verified 2026-09-07: every mirror table has zero rows). They are
-    // deliberately left undefined so the v7 template renders its explicit
-    // UNKNOWN / NA markers. The prompt treats an absent field as "not
-    // established", never as the permissive value, so this degrades the
-    // evaluator's confidence rather than its correctness.
+    // Scope fields come from the live classifier; the rest comes from the
+    // Supabase mirror through the enrichment reader and the pre-evaluator
+    // gates, which resolved them for this same row moments earlier.
+    //
+    // Until now every one of these was left undefined — a comment here dated
+    // 2026-09-07 recorded that the mirror had zero rows, and it stayed true in
+    // the code long after it stopped being true in the database. The gates were
+    // reading enrichment while the evaluator was still being told UNKNOWN.
+    //
+    // An absent field still renders as an explicit UNKNOWN / NA: the v7 prompt
+    // treats absence as "not established", never as the permissive value, so a
+    // thin mirror costs the evaluator confidence rather than correctness.
     promise_date: session.statementDate,
     scope: session.scope?.scope,
     valid_until: session.scope?.valid_until,
     anchor_entity: session.scope?.anchor_entity,
     role_condition: session.scope?.role_condition,
     bill_congress: congressOf(m.bill_id ?? ''),
+    cloture_vote_date: enriched.cloture_vote_date ?? undefined,
+    passage_vote_date: enriched.passage_vote_date ?? undefined,
+    party_whip_vote: enriched.party_whip_vote ?? undefined,
+    senator_role: gate?.context.senator_role,
+    cloture_result: gate?.context.cloture_result,
+    bill_class: gate?.context.bill_class,
+    vote_flags: gate?.context.vote_flags?.length ? gate.context.vote_flags.join(', ') : undefined,
+    // The gates' resolved date, which prefers a recorded vote, then the real
+    // cosponsorship date, then the Congress-start proxy — and flags the proxy
+    // in vote_flags so the model can see it is a stand-in.
+    action_date: gate?.context.action_date,
   };
 }
 
@@ -932,7 +961,9 @@ async function evaluateEffectsTool(
   const evaluated =
     scorableMatches.length && canEvaluateFulfillment
       ? await evaluateFulfillment(
-          scorableMatches.map((m) => toFulfillmentCandidate(session, m)),
+          scorableMatches.map((m) =>
+            toFulfillmentCandidate(session, m, enrichment.get(m.action_uid) ?? {}, gates[m.action_uid]),
+          ),
           session.fulfillmentFetcher ?? liveResponsesFetcher('fulfillment'),
           {
             // GATE: bill_effect, the axis the verdict follows from. Raw text
