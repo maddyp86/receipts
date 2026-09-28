@@ -118,6 +118,15 @@ export interface GateRow {
   cloture_vote_id?: string | null;
   cloture_vote_date?: string | null;
   passage_vote_date?: string | null;
+  /**
+   * The date the senator joined the bill, from WF2c's `Cosponsored At`.
+   *
+   * NOT the row's `Action Date`, which the ingestion workflow stamps with the
+   * bill's introduction date for every cosponsorship. Supplying it here lets a
+   * vote-less sponsorship be dated from the record instead of from the
+   * Congress-start proxy below.
+   */
+  cosponsored_at?: string | null;
   /** From the relevance step; DATED_VEHICLE closes G4b. */
   partial_subtype?: string | null;
   anchor_vehicle?: string | null;
@@ -203,15 +212,28 @@ export function preEvaluatorGates(
   const clotureDate = parseDate(row.cloture_vote_date);
   const passageDate = parseDate(row.passage_vote_date);
 
+  // WHEN THIS ACTION HAPPENED, best real date first.
+  //
+  // A recorded vote dates itself, so passage and cloture still lead. Behind
+  // them sits `Cosponsored At` — the date the senator's name went on the bill,
+  // which for a vote-less sponsorship is the only real date there is. It was
+  // previously unavailable here, so every such row fell through to the proxy.
+  //
   // Congress start is a PROXY, not a date we know. It is the earliest an action
   // in that Congress could have happened, so a window test built on it
   // under-fires rather than over-fires — the safe direction. Flagged so a
   // reader can tell a real date from a stand-in.
+  //
+  // NOTE the row's own `Action Date` is deliberately still not read: the
+  // ingestion workflow stamps it with the bill's INTRODUCTION date for every
+  // cosponsorship, so it is wrong by up to 659 days on the live corpus.
+  const cosponsoredDate = parseDate(row.cosponsored_at);
   const actionDate =
     passageDate ??
     clotureDate ??
+    cosponsoredDate ??
     (congress && CONGRESS_START[congress] ? new Date(CONGRESS_START[congress]!) : null);
-  const actionDateIsProxy = !passageDate && !clotureDate;
+  const actionDateIsProxy = !passageDate && !clotureDate && !cosponsoredDate;
 
   const senatorRole = refs.roleAt(S(row.politician_id), congress) || 'NONE';
   const clotureResult = normaliseClotureResult(refs.clotureResult(clotureId));

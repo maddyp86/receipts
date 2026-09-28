@@ -34,8 +34,56 @@ const { Pool } = pg;
 
 const S = (v: unknown): string => (v === null || v === undefined ? '' : String(v).trim());
 
+/**
+ * What the pipeline records about a senator's sponsorship of one bill.
+ *
+ * WF2c `Extract Progress & Effort` writes these ten columns onto
+ * `Politician Bill Actions`. They describe the RECORD, not effort: a tier of
+ * SPONSOR_ADVANCED says the bill moved past referral, never that the sponsor
+ * pushed it there. Nothing here may reach a numeric score — see
+ * `scoring/effortSignal.ts` for why (the sponsorship double-count).
+ *
+ * Every field is optional and absence means UNKNOWN, never a negative. A row
+ * from before WF2c ran, or a mirror that is behind, must degrade the narrative
+ * rather than assert that a senator did nothing.
+ */
+export interface SponsorshipEnrichment {
+  /** SPONSOR_ADVANCED · SPONSOR_STALLED · ORIGINAL_COSPONSOR · LATE_COSPONSOR · UNRESOLVED · NA_VOTE_ONLY */
+  sponsor_tier?: string | null;
+  /**
+   * The date the senator actually joined the bill.
+   *
+   * LOAD-BEARING, and the reason this field exists. The ingestion workflow
+   * stamps every cosponsorship row's `Action Date` with the bill's
+   * INTRODUCTION date, so `Action Date` is wrong for late cosponsors —
+   * measured on the live mirror: 171 of 172 LATE_COSPONSOR rows disagree with
+   * it, by up to 659 days. Any date test about a cosponsorship reads this.
+   */
+  cosponsored_at?: string | null;
+  original_cosponsor?: boolean | null;
+  /** Position among cosponsors ordered by join date. Null for a sponsor. */
+  cosponsor_ordinal?: number | null;
+  /** All cosponsors including withdrawn. */
+  cosponsor_total?: number | null;
+  days_after_introduction?: number | null;
+  /** Date the name was removed. DISCLOSE ONLY — never scored, never weighted. */
+  withdrawn_at?: string | null;
+  /**
+   * TRUE · FALSE · NO_COMMITTEE · NA_PRIOR_CONGRESS · UNAVAILABLE.
+   *
+   * Kept as the raw marker rather than a boolean: NA_PRIOR_CONGRESS (membership
+   * is computed for the current Congress only) and UNAVAILABLE (the roster
+   * fetch failed) are both "we do not know", and a boolean would turn either
+   * into "he does not sit on it".
+   */
+  committee_member?: string | null;
+  /** Committees the bill was referred to AND the senator sits on. */
+  committee_member_of?: string[];
+  progress_checked_at?: string | null;
+}
+
 /** Everything the gates and evaluator v7 need about one candidate action. */
-export interface ActionEnrichment {
+export interface ActionEnrichment extends SponsorshipEnrichment {
   cloture_vote?: string | null;
   cloture_vote_id?: string | null;
   cloture_vote_date?: string | null;
@@ -197,6 +245,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
           passage_vote: pickRow(j, 'Passage Vote'),
           passage_vote_date: pickRow(j, 'Passage Vote Date'),
           action_date: pickRow(j, 'Action Date'),
+          ...sponsorshipOf(j),
         });
       }
     } catch (err) {
@@ -232,6 +281,55 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
   async close(): Promise<void> {
     await this.pool.end();
   }
+}
+
+/**
+ * The ten WF2c columns, read from the verbatim source row.
+ *
+ * Exported for the tests, which pin the parse against real mirror rows rather
+ * than against a live database.
+ */
+export function sponsorshipOf(row: Record<string, unknown>): SponsorshipEnrichment {
+  const committees = pickRow(row, 'Committee Member Of');
+  return {
+    sponsor_tier: pickRow(row, 'Sponsor Tier'),
+    cosponsored_at: pickRow(row, 'Cosponsored At'),
+    original_cosponsor: boolOf(pickRow(row, 'Original Cosponsor')),
+    cosponsor_ordinal: intOf(pickRow(row, 'Cosponsor Ordinal')),
+    cosponsor_total: intOf(pickRow(row, 'Cosponsor Total')),
+    days_after_introduction: intOf(pickRow(row, 'Days After Introduction')),
+    withdrawn_at: pickRow(row, 'Withdrawn At'),
+    // NOT run through pickRow's NA-to-null rule alone: NO_COMMITTEE,
+    // NA_PRIOR_CONGRESS and UNAVAILABLE are meaningful markers and must survive
+    // as themselves. Plain 'NA' (a vote-only row) still becomes null.
+    committee_member: pickRow(row, 'Committee Member'),
+    committee_member_of: committees
+      ? committees.split(';').map((c) => c.trim()).filter(Boolean)
+      : undefined,
+    progress_checked_at: pickRow(row, 'Progress Checked At'),
+  };
+}
+
+/**
+ * Sheet booleans, which arrive as 'TRUE' / 'true' / true.
+ *
+ * Null rather than false when absent: `Original Cosponsor` is 'NA' on sponsor
+ * and vote-only rows, and reading that as "not an original cosponsor" would
+ * describe a bill's own author as a latecomer.
+ */
+function boolOf(v: string | null): boolean | null {
+  if (v === null) return null;
+  const t = v.toUpperCase();
+  if (t === 'TRUE' || t === 'YES' || t === 'Y' || t === '1') return true;
+  if (t === 'FALSE' || t === 'NO' || t === 'N' || t === '0') return false;
+  return null;
+}
+
+/** Sheet integers. Null on 'NA', blank, or anything non-numeric. */
+function intOf(v: string | null): number | null {
+  if (v === null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
 /** Case-insensitive read from the verbatim source row. */
