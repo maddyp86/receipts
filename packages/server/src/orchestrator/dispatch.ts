@@ -854,6 +854,10 @@ async function evaluateEffectsTool(
         cloture_vote_id: e.cloture_vote_id,
         cloture_vote_date: e.cloture_vote_date,
         passage_vote_date: e.passage_vote_date,
+        // The date the senator's name went on the bill. Without it a vote-less
+        // sponsorship is dated from the Congress-start proxy, so a bounded
+        // statement's window test silently never fires for late cosponsors.
+        cosponsored_at: e.cosponsored_at,
         stakeholder_groups: m.affected_stakeholders ? [String(m.affected_stakeholders)] : [],
       },
       {
@@ -880,7 +884,8 @@ async function evaluateEffectsTool(
       input: {
         bill_id: m.bill_id, cloture_vote: e.cloture_vote ?? m.cloture_vote, passage_vote: e.passage_vote ?? m.passage_vote,
         party_whip_vote: e.party_whip_vote ?? null, cloture_vote_date: e.cloture_vote_date ?? null,
-        passage_vote_date: e.passage_vote_date ?? null, statement_date: session.statementDate ?? null,
+        passage_vote_date: e.passage_vote_date ?? null, cosponsored_at: e.cosponsored_at ?? null,
+        sponsor_tier: e.sponsor_tier ?? null, statement_date: session.statementDate ?? null,
         scope: session.scope?.scope ?? null, valid_until: session.scope?.valid_until ?? null,
         anchor: session.scope?.anchor_entity ?? null, role_condition: session.scope?.role_condition ?? null,
         speech_act: session.scope?.speech_act ?? null,
@@ -1120,6 +1125,7 @@ async function evaluateEffectsTool(
         cloture_vote_date: enriched.cloture_vote_date ?? null,
         passage_vote_date: enriched.passage_vote_date ?? null,
         action_date: enriched.action_date ?? null,
+        cosponsored_at: enriched.cosponsored_at ?? null,
         alignment_reasoning: f?.reasoning ?? null,
         bill_effect_reasoning: lead.bill_effect_reasoning,
         vote_flags: lead.vote_flags,
@@ -1173,7 +1179,10 @@ async function evaluateEffectsTool(
           senator_role: gate?.context.senator_role ?? null,
           is_sponsor: String(lead.is_sponsor),
           is_cosponsor: String(lead.is_cosponsor),
-          action_date: enriched.action_date ?? null,
+          // The cosponsorship date when there is one: the judge is asked to
+          // dispute a reading, and a date 659 days out would have it dispute
+          // the wrong thing.
+          action_date: enriched.cosponsored_at ?? enriched.action_date ?? null,
           vote_flags: lead.vote_flags,
           vote_governing: lead.vote_governing,
           bill_effect: String(lead.bill_effect),
