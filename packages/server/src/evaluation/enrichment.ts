@@ -96,12 +96,45 @@ export interface ActionEnrichment extends SponsorshipEnrichment {
   mechanisms?: string | null;
 }
 
+/**
+ * How far a bill got and how it ended, from `Bills Master` via WF2c.
+ *
+ * PRESENTATION ONLY. Progress may change how a finding is worded — "did not
+ * advance past committee" is a fact a reader deserves — but it may never flip a
+ * verdict and never enter a numeric score. The vocabulary is deliberately about
+ * the record: a bill that reached IN_COMMITTEE was given a hearing or reported,
+ * which says nothing about who moved it there.
+ */
+export interface BillEnrichment {
+  /** INTRODUCED → REFERRED → IN_COMMITTEE → … → ENACTED / VETOED. */
+  progress_stage?: string | null;
+  /** ACTIVE · ENACTED · VETOED · FAILED · PROV_KILL · AGREED_TO · DIED_AT_<stage>. */
+  progress_outcome?: string | null;
+  progress_stage_at?: string | null;
+  last_action_at?: string | null;
+  last_action_text?: string | null;
+  /** e.g. 'SSCM: Referred To, Reported By'. The citable form of the tier. */
+  committee_activity?: string | null;
+  referred_committees?: string[];
+  /** Active (non-withdrawn) cosponsors. */
+  cosponsor_count?: number | null;
+  /**
+   * 'SELF', or the bill whose enactment carried this text.
+   *
+   * A bill that "died" whose text became law under another number is a kept
+   * promise the current output misses entirely. Null when unknown.
+   */
+  enacted_via?: string | null;
+}
+
 export interface EnrichmentSource {
   readonly kind: 'mirror' | 'null';
   /** Reference lookups for the gates. */
   refs(): Promise<GateRefs>;
   /** Per-action enrichment, keyed by action_uid. */
   forActions(actionUids: string[]): Promise<Map<string, ActionEnrichment>>;
+  /** Per-bill progress, keyed by bill_id. */
+  forBills(billIds: string[]): Promise<Map<string, BillEnrichment>>;
   close?(): Promise<void>;
 }
 
@@ -123,6 +156,9 @@ export const nullEnrichmentSource: EnrichmentSource = {
     };
   },
   async forActions() {
+    return new Map();
+  },
+  async forBills() {
     return new Map();
   },
 };
@@ -278,6 +314,38 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
     return out;
   }
 
+  /**
+   * Bill progress, batched by bill_id exactly as `forActions` batches by
+   * action_uid — the candidates are already down to the 2–4 the evidence gate
+   * admitted, so this is one query per request rather than one per row.
+   *
+   * A bill with no row here returns nothing, and every consumer treats that as
+   * "we do not know how far it got" rather than "it went nowhere".
+   */
+  async forBills(billIds: string[]): Promise<Map<string, BillEnrichment>> {
+    const ids = [...new Set(billIds.map((b) => S(b)).filter(Boolean))];
+    if (!ids.length) return new Map();
+
+    const out = new Map<string, BillEnrichment>();
+    try {
+      const { rows } = await this.pool.query<{
+        bill_id: string;
+        row: Record<string, unknown>;
+      }>(
+        `select bill_id, row
+           from mirror.mirror_bills_master
+          where bill_id = any($1::text[])`,
+        [ids],
+      );
+      for (const r of rows) out.set(S(r.bill_id), billProgressOf(r.row ?? {}));
+    } catch (err) {
+      // Same posture as every other reader here: a missing table or a renamed
+      // column costs the narrative its progress clause, never the verdict.
+      console.error('[enrichment] bill progress unavailable:', describe(err));
+    }
+    return out;
+  }
+
   async close(): Promise<void> {
     await this.pool.end();
   }
@@ -307,6 +375,24 @@ export function sponsorshipOf(row: Record<string, unknown>): SponsorshipEnrichme
       ? committees.split(';').map((c) => c.trim()).filter(Boolean)
       : undefined,
     progress_checked_at: pickRow(row, 'Progress Checked At'),
+  };
+}
+
+/** The `Bills Master` progress columns, read from the verbatim source row. */
+export function billProgressOf(row: Record<string, unknown>): BillEnrichment {
+  const referred = pickRow(row, 'Referred Committees');
+  return {
+    progress_stage: pickRow(row, 'Progress Stage'),
+    progress_outcome: pickRow(row, 'Progress Outcome'),
+    progress_stage_at: pickRow(row, 'Progress Stage At'),
+    last_action_at: pickRow(row, 'Last Action At'),
+    last_action_text: pickRow(row, 'Last Action Text'),
+    committee_activity: pickRow(row, 'Committee Activity'),
+    referred_committees: referred
+      ? referred.split(';').map((c) => c.trim()).filter(Boolean)
+      : undefined,
+    cosponsor_count: intOf(pickRow(row, 'Cosponsor Count')),
+    enacted_via: pickRow(row, 'Enacted Via'),
   };
 }
 
