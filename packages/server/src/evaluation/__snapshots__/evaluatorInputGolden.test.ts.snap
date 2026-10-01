@@ -1,0 +1,47 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`evaluator input for a bill with no version rows > is byte-identical to the message before per-version text existed 1`] = `
+"Evaluate whether this senator's legislative action is evidence about the statement below, following the system rules. Use ONLY the information provided.
+
+## STATEMENT
+- Statement Type: Campaign Promise
+- Statement UID: QUERY
+- Statement: I will protect the E-Rate program that connects schools to the internet.
+- Stance: In Favor
+- Primary / Sub Issue: Technology / Broadband & Internet Access
+- Date made: 2024-10-01
+- Scope: STANDING
+- Anchor entity: none
+- Role condition: UNKNOWN
+- Relevance step: match verdict NA, partial subtype NA, temporal reference NA
+
+## BILL
+- Bill ID: sjres7-119 (119th Congress)
+- Bill class: REVERSAL
+- Title: A joint resolution providing for congressional disapproval of the rule relating to E-Rate support for Wi-Fi hotspots
+- Summary (may reflect sponsor framing): Disapproves the FCC rule extending E-Rate support to Wi-Fi hotspot lending.
+- Primary / Sub Issue: Technology / Broadband & Internet Access
+
+## BILL IMPACT ANALYSIS
+- Intended Effects: Ends E-Rate reimbursement for off-premises hotspots.
+- Mechanisms: Congressional Review Act disapproval of the FCC order.
+- Affected Stakeholders:
+  • All — Positive: Schools; libraries; students without home internet.; Negative: none stated
+
+## REVERSAL TARGET (only meaningful when Reverses Existing Policy is true)
+- Reverses Existing Policy: false
+- Target Name: N/A
+- Target Source: N/A
+- Target Effect: N/A
+
+## SENATOR'S ACTION
+- Senator role at the time: MINORITY_LEADER
+- Cloture Vote: NA on NA — result: UNKNOWN
+- Passage Vote: Nay on 5/8/2025
+- Party whip's vote: Yea — party alignment: NA
+- Is Sponsor: FALSE · Is Co-Sponsor: FALSE
+- Action date: 2025-05-08
+- Vote flags: FLOOR_LEADER
+
+Return the JSON specified in the system message."
+`;
