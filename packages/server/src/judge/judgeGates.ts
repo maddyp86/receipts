@@ -153,6 +153,11 @@ export interface JudgeGateRow {
   cloture_vote_date?: string | null;
   passage_vote_date?: string | null;
   action_date?: string | null;
+  /**
+   * WF2c's `Cosponsored At`. Preferred over `action_date` for a sponsorship,
+   * which the ingestion workflow stamps with the bill's introduction date.
+   */
+  cosponsored_at?: string | null;
   alignment_reasoning?: string | null;
   bill_effect_reasoning?: string | null;
   vote_flags?: string[] | string | null;
@@ -198,7 +203,11 @@ export function judgeGates(r: JudgeGateRow): JudgeGateResult {
 
   const clotureDate = parseDate(r.cloture_vote_date);
   const passageDate = parseDate(r.passage_vote_date);
-  const actionDate = passageDate ?? clotureDate ?? parseDate(r.action_date);
+  // Same precedence as the pre-evaluator gates: a recorded vote dates itself,
+  // then the real cosponsorship date, and only then the row's `Action Date` —
+  // which is the bill's introduction date on every cosponsorship row.
+  const actionDate =
+    passageDate ?? clotureDate ?? parseDate(r.cosponsored_at) ?? parseDate(r.action_date);
 
   const isAccusation = ACCUSATIONS.has(verdict);
 
