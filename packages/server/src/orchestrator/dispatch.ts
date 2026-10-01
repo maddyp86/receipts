@@ -26,6 +26,13 @@ import {
 import { liveResponsesFetcher } from '../evaluation/responsesFetcher.js';
 import { preEvaluatorGates, type GateResult } from '../evaluation/preEvaluatorGates.js';
 import { enrichmentSource, type ActionEnrichment } from '../evaluation/enrichment.js';
+import {
+  applyTextVersion,
+  governingActOf,
+  selectTextVersion,
+  type TextVersion,
+  type TextVersionSelection,
+} from '../evaluation/textVersions.js';
 import { judgeGates } from '../judge/judgeGates.js';
 import { judgeErrorVerdict, judgeVerdict, type JudgeFetcher, type JudgeVerdict } from '../judge/judge.js';
 import {
@@ -131,6 +138,11 @@ export interface QuerySession {
   scopeUnavailable?: string;
   /** Pre-evaluator gate outcome per action_uid, scorable or not. */
   gates?: Record<string, GateResult>;
+  /**
+   * Which version of the bill's text each scorable action was evaluated
+   * against, keyed by action_uid. Absent for bills with no version rows.
+   */
+  textVersions?: Record<string, TextVersionSelection>;
   /**
    * Actions a gate closed before the evaluator ran.
    *
@@ -511,12 +523,29 @@ function toRelevanceCandidate(session: QuerySession, m: MatchedAction): Relevanc
  * `gate` and `enriched` are passed in rather than looked up: both were already
  * computed for this row on the request path, and re-deriving them here is how
  * the evaluator and the gates end up disagreeing about what happened.
+ *
+ * Exported for the tests, which pin this exact message byte for byte.
  */
-function toFulfillmentCandidate(
+export function toFulfillmentCandidate(
   session: QuerySession,
   m: MatchedAction,
   enriched: ActionEnrichment = {},
   gate?: GateResult,
+  /**
+   * The version of the bill's text in effect when the governing act happened.
+   * Null — the common case — leaves the candidate exactly as it was before
+   * per-version text existed; `applyTextVersion` returns the same object.
+   */
+  version: TextVersion | null = null,
+): FulfillmentCandidate {
+  return applyTextVersion(baseFulfillmentCandidate(session, m, enriched, gate), version);
+}
+
+function baseFulfillmentCandidate(
+  session: QuerySession,
+  m: MatchedAction,
+  enriched: ActionEnrichment,
+  gate: GateResult | undefined,
 ): FulfillmentCandidate {
   const c = session.interpretation!;
   return {
@@ -939,6 +968,57 @@ async function evaluateEffectsTool(
   session.gates = gates;
   session.gated = gatedRows;
 
+  // ---- WHICH TEXT EACH ACTION WAS TAKEN ON ------------------------------
+  //
+  // Congress rewrites bills under the same number. A senator who cosponsored
+  // the introduced hr5334 signed an educator tax deduction, not the Russia
+  // sanctions act the number carries now, and must be judged against the text
+  // that existed when he acted. See textVersions.ts for the rules.
+  //
+  // Read for the scorable rows only — a gated row never reaches the evaluator.
+  // Most bills have no version rows and take the unchanged path.
+  const versionRows = await enrichmentSource.forVersions(scorableMatches.map((m) => String(m.bill_id ?? '')));
+  const textVersions: Record<string, TextVersionSelection> = {};
+  for (const m of scorableMatches) {
+    const rows = versionRows.get(String(m.bill_id ?? '')) ?? [];
+    if (!rows.length) continue;
+    const e: ActionEnrichment = enrichment.get(m.action_uid) ?? {};
+    // The same votes the evaluator is shown, so the date that picks the text
+    // belongs to the act that decides the verdict.
+    const act = governingActOf({
+      vote: m.vote,
+      cloture_vote: e.cloture_vote ?? m.cloture_vote,
+      passage_vote: e.passage_vote ?? m.passage_vote,
+      cloture_vote_date: e.cloture_vote_date,
+      passage_vote_date: e.passage_vote_date,
+      is_sponsor: m.is_sponsor,
+      is_cosponsor: m.is_cosponsor,
+      cosponsored_at: e.cosponsored_at,
+    });
+    const selection = selectTextVersion(rows, act);
+    if (!selection) continue;
+    textVersions[m.action_uid] = selection;
+    // GATE: which text the evaluator will read. A SELECTED row changes the
+    // evaluator's input; every other status leaves it on the latest summary
+    // and says why.
+    const d = selection.disclosure;
+    traceStep({
+      stage: 'TEXT_VERSION', kind: 'deterministic', subject: m.action_uid,
+      status: d.status === 'SELECTED' ? 'ok' : 'skipped',
+      label:
+        `${String(m.bill_id ?? '')} · ${d.governed_by ?? 'no act'} ${d.action_date ?? '(undated)'} → ` +
+        (d.status === 'SELECTED'
+          ? `${d.code} (${d.date})`
+          : d.status === 'TEXT_UNAVAILABLE'
+            ? `${d.code} (${d.date}) in effect but unusable — latest summary used`
+            : `${d.status} — latest summary used`) +
+        (d.taxonomy_divergent ? ' · taxonomy divergent' : ''),
+      input: { act, versions: rows.map((r) => ({ uid: r.impact_version_uid, code: r.text_version_code, date: r.text_version_date })) },
+      output: d,
+    });
+  }
+  session.textVersions = textVersions;
+
   // ---- FULFILLMENT LEG --------------------------------------------------
   // bill_effect is decided by gpt-5.4-mini running WF10A's 32,507-char prompt,
   // NOT by the orchestrating model. The corpus was scored by that model on that
@@ -962,7 +1042,13 @@ async function evaluateEffectsTool(
     scorableMatches.length && canEvaluateFulfillment
       ? await evaluateFulfillment(
           scorableMatches.map((m) =>
-            toFulfillmentCandidate(session, m, enrichment.get(m.action_uid) ?? {}, gates[m.action_uid]),
+            toFulfillmentCandidate(
+              session,
+              m,
+              enrichment.get(m.action_uid) ?? {},
+              gates[m.action_uid],
+              textVersions[m.action_uid]?.version ?? null,
+            ),
           ),
           session.fulfillmentFetcher ?? liveResponsesFetcher('fulfillment'),
           {
@@ -1040,6 +1126,9 @@ async function evaluateEffectsTool(
       // the action date is a stand-in — so FLOOR_LEADER can only originate
       // here. Handoff v2 §4 lists it in `vote_flags` beside SPLIT_VOTE.
       vote_flags: gates[m.action_uid]?.context.vote_flags ?? [],
+      // Which text this was judged against. Set only for bills with version
+      // rows, so every other evidence row is unchanged.
+      ...(textVersions[m.action_uid] ? { text_version: textVersions[m.action_uid]!.disclosure } : {}),
       // When it happened, for the card. The gates already resolved the action
       // date (and flagged a stand-in); the roll-call dates come straight from
       // the mirror. Null, never '', when absent.
@@ -1135,6 +1224,26 @@ async function evaluateEffectsTool(
       const f = session.fulfillment?.[lead.action_uid];
       const enriched = (await enrichmentSource.forActions([lead.action_uid])).get(lead.action_uid) ?? {};
       const scoredBefore = scored.verdict;
+      // The judge reviews the evaluator's reading, so it must read the same
+      // text. Shown the enrolled NDAA while the evaluator read the introduced
+      // VA bill, it would dispute a correct reading.
+      const leadVersion = session.textVersions?.[lead.action_uid]?.version ?? null;
+      const leadText = leadVersion
+        ? {
+            title: leadVersion.title_source === 'TEXT' && leadVersion.title ? leadVersion.title : String(lead.title ?? ''),
+            summary: leadVersion.summary,
+            intended_effects: leadVersion.intended_effects,
+            mechanisms: leadVersion.mechanisms,
+            stakeholders:
+              leadVersion.stakeholders.map((g) => g.stakeholder_group).filter(Boolean).join('; ') || null,
+          }
+        : {
+            title: String(lead.title ?? ''),
+            summary: lead.summary,
+            intended_effects: lead.intended_effects,
+            mechanisms: lead.mechanisms,
+            stakeholders: lead.affected_stakeholders ?? null,
+          };
 
       // The judge's own deterministic layer runs first and is passed in, so the
       // model confirms or disputes those hits rather than re-deriving them.
@@ -1145,8 +1254,8 @@ async function evaluateEffectsTool(
         politician_id: session.politicianId,
         bill_id: String(lead.bill_id ?? ''),
         promise_text: session.promiseText,
-        bill_title: String(lead.title ?? ''),
-        stakeholder_group: lead.affected_stakeholders ?? null,
+        bill_title: leadText.title,
+        stakeholder_group: leadText.stakeholders,
         cloture_vote: enriched.cloture_vote ?? lead.cloture_vote,
         passage_vote: enriched.passage_vote ?? lead.passage_vote,
         vote: lead.vote,
@@ -1195,12 +1304,12 @@ async function evaluateEffectsTool(
           role_condition: session.scope?.role_condition ?? null,
           promise_date: session.statementDate ?? null,
           bill_id: String(lead.bill_id ?? ''),
-          bill_title: String(lead.title ?? ''),
-          bill_summary: lead.summary,
+          bill_title: leadText.title,
+          bill_summary: leadText.summary,
           bill_class: gate?.context.bill_class ?? null,
-          intended_effects: lead.intended_effects,
-          mechanisms: lead.mechanisms,
-          stakeholders: lead.affected_stakeholders ?? null,
+          intended_effects: leadText.intended_effects,
+          mechanisms: leadText.mechanisms,
+          stakeholders: leadText.stakeholders,
           cloture_vote: enriched.cloture_vote ?? lead.cloture_vote,
           cloture_vote_date: enriched.cloture_vote_date ?? null,
           cloture_result: gate?.context.cloture_result ?? null,
@@ -1322,6 +1431,17 @@ async function evaluateEffectsTool(
       is_cosponsor: e.is_cosponsor,
       bill_keywords: e.bill_keywords,
       scoring_flags: e.scoring_flags,
+      // Which version of the bill's text the action was judged against, when
+      // the bill has more than one. `title` above is the bill's CURRENT title.
+      text_version: e.text_version
+        ? {
+            status: e.text_version.status,
+            code: e.text_version.code,
+            date: e.text_version.date,
+            title: e.text_version.title,
+            later_became: e.text_version.latest?.title ?? null,
+          }
+        : undefined,
       // Disclosure (handoff v2 §4). The model is shown which vote governed and
       // whether the row was split so it cannot narrate "voted NAY" over a
       // cloture YEA it never saw.
@@ -1353,7 +1473,10 @@ async function evaluateEffectsTool(
     effect_disagreements: disagreements,
     instruction:
       'This result is final. Explain it with explain_result; do not restate it differently. ' +
-      'Where your own effect judgement differed from the evaluator, the evaluator governs.',
+      'Where your own effect judgement differed from the evaluator, the evaluator governs. ' +
+      'Where an evidence row has text_version with status SELECTED, the action was judged against ' +
+      'that version of the bill, not its current title: describe the bill as that version, and if ' +
+      'later_became is set, say plainly that the bill was later rewritten.',
   });
 }
 

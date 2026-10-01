@@ -60,6 +60,7 @@ export type TraceStage =
   | 'SEARCH'
   | 'ENRICHMENT'
   | 'PRE_EVALUATOR_GATE'
+  | 'TEXT_VERSION'
   | 'FULFILLMENT'
   | 'SCORE'
   | 'EVALUATE_EFFECTS'

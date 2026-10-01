@@ -399,6 +399,53 @@ export interface DirectedAction extends MatchedAction {
   cloture_vote_date?: string | null;
   /** ISO date of the passage roll call, when the mirror has one. */
   passage_vote_date?: string | null;
+
+  /**
+   * Which version of the bill's text this action was evaluated against.
+   *
+   * ABSENT when the bill has no per-version impact statements — most bills,
+   * and they are evaluated exactly as before. When present it is DISCLOSURE:
+   * a voter reading a verdict on a gut-and-amend bill must be able to see that
+   * the text in question is the introduced version, and that the bill later
+   * became something else.
+   */
+  text_version?: TextVersionDisclosure;
+}
+
+/** The act whose date picked the text: the same act that governs the verdict. */
+export type TextVersionGoverningAct = 'CLOTURE' | 'PASSAGE' | 'VOTE' | 'SPONSORSHIP';
+
+export interface TextVersionDisclosure {
+  /**
+   * SELECTED              evaluated against this version's own impact statement.
+   * TEXT_UNAVAILABLE      the version in effect is known but unusable (version
+   *                       mismatch, or no readable text); the latest summary was
+   *                       used and the disclosure says which version it should
+   *                       have been.
+   * NO_ACTION_DATE        the record has no date for the governing act, so the
+   *                       action cannot be placed in the bill's history.
+   * BEFORE_FIRST_VERSION  the act predates every version on file.
+   *
+   * Every status but SELECTED means the evaluator saw the latest summary.
+   */
+  status: 'SELECTED' | 'TEXT_UNAVAILABLE' | 'NO_ACTION_DATE' | 'BEFORE_FIRST_VERSION';
+  governed_by: TextVersionGoverningAct | null;
+  /** YYYY-MM-DD of the governing act. */
+  action_date: string | null;
+  /** The version in effect: congress.gov code (is, eh, eas, …), type, date, and its own title. */
+  code: string | null;
+  type: string | null;
+  date: string | null;
+  title: string | null;
+  /** TEXT · MODEL · CANONICAL. Only a TEXT title is the version's own heading. */
+  title_source: string | null;
+  flagged_for_review: boolean;
+  /** The bill's last version, when it is not the one evaluated. Undated = enrolled. */
+  latest: { code: string; type: string | null; date: string | null; title: string | null } | null;
+  /** Versions of this bill were classified under different issue pairs. Disclosed, never acted on. */
+  taxonomy_divergent: boolean;
+  taxonomy_divergence_detail: string | null;
+  version_count: number;
 }
 
 /** '…-118' → 118. The Congress is encoded in the bill id and nowhere else reliable. */
