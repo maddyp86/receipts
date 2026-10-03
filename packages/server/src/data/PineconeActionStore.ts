@@ -24,7 +24,8 @@ interface PineconeMatch {
 
 const str = (v: unknown): string => (v === null || v === undefined ? '' : String(v).trim());
 
-const bool = (v: unknown): boolean => {
+/** Exported for the sheet-flag regression test; see evaluation/sheetFlags.test.ts. */
+export const bool = (v: unknown): boolean => {
   const t = str(v).toUpperCase();
   return v === true || t === 'TRUE' || t === 'YES' || t === '1';
 };
