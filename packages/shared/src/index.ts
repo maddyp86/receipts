@@ -498,6 +498,14 @@ export type NotDeterminableReason =
    */
   | 'WITHHELD_PENDING_REVIEW'
   /**
+   * Every action behind an accusation was judged without the bill text that
+   * existed when the senator acted: the version in effect was unreadable or
+   * failed a quality check, so the evaluator saw the bill's LATEST text — on a
+   * gut-and-amend bill, different legislation. Same posture as the other two
+   * withholdings: not published, and not an exoneration.
+   */
+  | 'WITHHELD_TEXT_UNAVAILABLE'
+  /**
    * A pre-evaluator gate closed every candidate before the evaluator ran: the
    * statement's window had passed, its precondition no longer held, or the
    * vehicle could not bear on it. Each gated action carries its own reason.
@@ -1040,6 +1048,10 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   // clearing.
   WITHHELD_PENDING_REVIEW:
     "A second review didn't back this reading, so we're not publishing it. The bills and votes are below — read them and judge for yourself.",
+  // Not exculpatory either. The text the senator acted on is missing from the
+  // record we have, which says nothing about which way he acted.
+  WITHHELD_TEXT_UNAVAILABLE:
+    "This bill was rewritten after the senator acted on it, and the version of the text in effect at the time isn't available to us. We won't call the promise broken on the strength of a different version. The bills and votes are below — read them and judge for yourself.",
   GATED:
     "The legislation we found can't settle this statement — the window it applied to had closed, or the bills were too broad to say anything about it specifically. Each item below says which.",
 };
@@ -1100,6 +1112,13 @@ export function governingVoteSentence(voteGoverning: string | null | undefined):
 }
 
 /**
+ * Disclosure flag: the action was judged without the text in effect when it
+ * happened. Set by the scorer from `text_version.status === 'TEXT_UNAVAILABLE'`.
+ * Read by the band dial and by contract-3-style withholding — see score.ts.
+ */
+export const TEXT_AT_ACTION_UNAVAILABLE = 'TEXT_AT_ACTION_UNAVAILABLE';
+
+/**
  * Reader-facing copy for the disclosure flags travelling on a row.
  *
  * These are a separate channel from `scoring_flags`: they are shown beside the
@@ -1117,6 +1136,11 @@ export const VOTE_FLAG_COPY: Record<string, string> = {
     'They held a floor leadership role at the time — a role that involves casting procedural votes on the chamber\'s behalf.',
   ACTION_DATE_PROXY:
     'We do not have an exact date for this action, so the start of that Congress was used when checking timing.',
+  // Said wherever it applies, because without it the reader assumes the bill
+  // described on the card is the one the senator acted on. On a gut-and-amend
+  // bill it may not be.
+  [TEXT_AT_ACTION_UNAVAILABLE]:
+    'This bill was rewritten over time, and the version of its text in effect when the senator acted is not available to us. It was judged against a later version, so this reading is low confidence.',
 };
 
 /**

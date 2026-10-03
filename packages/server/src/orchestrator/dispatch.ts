@@ -1476,7 +1476,9 @@ async function evaluateEffectsTool(
       'Where your own effect judgement differed from the evaluator, the evaluator governs. ' +
       'Where an evidence row has text_version with status SELECTED, the action was judged against ' +
       'that version of the bill, not its current title: describe the bill as that version, and if ' +
-      'later_became is set, say plainly that the bill was later rewritten.',
+      'later_became is set, say plainly that the bill was later rewritten. Where a row carries the ' +
+      'vote flag TEXT_AT_ACTION_UNAVAILABLE, say that the text in effect when the senator acted is not ' +
+      'available and the reading is low confidence; never state the finding about that row as certain.',
   });
 }
 

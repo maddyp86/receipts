@@ -32,11 +32,18 @@ import type { FulfillmentCandidate } from './fulfillment.js';
 //      is NEVER selected. Enrollment follows the last floor vote, so it is
 //      never the text a senator voted on or signed. It sorts last and is
 //      carried only to disclose what the bill became.
-//   4. If the version in effect is unusable — `Version Mismatch`, or no text
-//      (congress.gov published only a PDF and WF5 flagged it with an empty
-//      summary) — nothing is substituted and the disclosure says so. Falling
-//      back to an EARLIER version would judge the senator against text that was
-//      no longer in effect, and present it as the right one.
+//   4. If the version in effect is unusable — `Version Mismatch`, `Flagged For
+//      Review`, or an empty summary — nothing is substituted and the disclosure
+//      says so. Falling back to an EARLIER version would judge the senator
+//      against text that was no longer in effect, and present it as the right
+//      one. The scorer then refuses to present the verdict as confident.
+//
+//      A FLAGGED row is unusable, not merely dispreferred. Measured 2026-10-02:
+//      16 of the 21 flagged rows are versions whose text congress.gov never
+//      published as HTML, and WF5 wrote them with a NON-EMPTY summary that
+//      reads "The bill summary text was unavailable, so …". Nothing but the
+//      flag separates those from a real summary, so the flag has to decide —
+//      at the cost of blocking 5 flagged rows whose summaries are sound.
 //   5. No version rows for the bill → null, and the caller behaves exactly as
 //      it did before this module existed.
 // ===========================================================================
@@ -207,8 +214,9 @@ export function parseVersionRow(r: VersionMirrorRow): TextVersion {
   };
 }
 
-/** A version whose text can stand in for the latest summary. */
-const usable = (v: TextVersion): boolean => !v.version_mismatch && v.summary.length > 0;
+/** A version whose text can stand in for the latest summary. See rule 4. */
+const usable = (v: TextVersion): boolean =>
+  !v.version_mismatch && !v.flagged_for_review && v.summary.length > 0;
 
 // ---------------------------------------------------------------------------
 // The governing act
@@ -341,16 +349,10 @@ export function selectTextVersion(
 
   const inEffectDate = onOrBefore[onOrBefore.length - 1]!.date;
   // Two versions on the same day (rs and rh, say): a usable one beats an
-  // unusable one, then an unflagged one beats a flagged one, then code order so
-  // the choice is stable.
+  // unusable one, then code order so the choice is stable.
   const sameDay = onOrBefore
     .filter((v) => v.date === inEffectDate)
-    .sort(
-      (a, b) =>
-        Number(usable(b)) - Number(usable(a)) ||
-        Number(a.flagged_for_review) - Number(b.flagged_for_review) ||
-        a.code.localeCompare(b.code),
-    );
+    .sort((a, b) => Number(usable(b)) - Number(usable(a)) || a.code.localeCompare(b.code));
   const inEffect = sameDay[0]!;
 
   if (!usable(inEffect)) {

@@ -1,4 +1,4 @@
-import type { DirectedAction, ScoredResult } from '@receipts/shared';
+import { TEXT_AT_ACTION_UNAVAILABLE, type DirectedAction, type ScoredResult } from '@receipts/shared';
 
 // ===========================================================================
 // BEHAVIOURAL CONTRACT 3 (handoff v2 §10).
@@ -76,6 +76,33 @@ export function applyWithholding(
   // Only accusations. KEPT and NOT_DETERMINABLE pass through untouched.
   if (result.verdict !== 'BROKE') {
     return { result, withheld: false, reason: '' };
+  }
+
+  // FIRST, and ahead of the counterargument: an accusation resting ENTIRELY on
+  // actions judged against a later version of the bill than the one the
+  // senator acted on. A counterargument cannot repair that — the reading was of
+  // the wrong text. One breaking action with its text available is enough to
+  // carry the reading to the confidence check below; the band dial has already
+  // marked the result Low for the rest.
+  const breaking = result.evidence.filter((e) => e.direction === 'breaks');
+  if (breaking.length && breaking.every((e) => (e.vote_flags ?? []).includes(TEXT_AT_ACTION_UNAVAILABLE))) {
+    const reason =
+      `This reading would say the senator broke the promise, but every action behind it was judged ` +
+      `against a later version of the bill than the one in effect when the senator acted — that ` +
+      `version's text is not available. An accusation is not published on the strength of a ` +
+      `different version.`;
+    return {
+      withheld: true,
+      reason,
+      result: {
+        ...result,
+        verdict: 'NOT_DETERMINABLE',
+        band: null,
+        mode: 'not_determinable',
+        nd_reason: 'WITHHELD_TEXT_UNAVAILABLE',
+        receipt: { ...result.receipt, trace: [...(result.receipt.trace ?? []), `Withheld: ${reason}`] },
+      },
+    };
   }
 
   if (opts.counterargumentPresent) {

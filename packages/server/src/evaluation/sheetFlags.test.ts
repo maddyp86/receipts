@@ -72,9 +72,11 @@ describe.each(SHAPES)('a flag stored as %s', (_label, TRUE) => {
     expect(selectTextVersion(rows, { kind: 'PASSAGE', date: '2025-06-01' })!.version?.code).toBe('rs');
   });
 
-  it('a lone flagged version in effect is disclosed as flagged', () => {
+  it('a lone flagged version in effect blocks its slot and is disclosed as flagged', () => {
     const s = selectTextVersion([versionRow('rs', '2025-06-01', { 'Flagged For Review': TRUE })], { kind: 'PASSAGE', date: '2025-07-01' })!;
+    expect(s.disclosure.status).toBe('TEXT_UNAVAILABLE');
     expect(s.disclosure.flagged_for_review).toBe(true);
+    expect(s.version).toBeNull();
   });
 
   it('Taxonomy Divergent is honoured on the stored-flag fallback', () => {
