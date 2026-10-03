@@ -1448,13 +1448,19 @@ async function evaluateEffectsTool(
       scoring_flags: e.scoring_flags,
       // Which version of the bill's text the action was judged against, when
       // the bill has more than one. `title` above is the bill's CURRENT title.
+      // Titles only when read from the version's own text. The rest are mostly
+      // document headers ("H.R. 2872 Engrossed Amendment Senate (EAS)") that a
+      // model would quote as if they were the bill's name.
       text_version: e.text_version
         ? {
             status: e.text_version.status,
             code: e.text_version.code,
             date: e.text_version.date,
-            title: e.text_version.title,
-            later_became: e.text_version.latest?.title ?? null,
+            title: e.text_version.title_source === 'TEXT' ? e.text_version.title : null,
+            later_became:
+              e.text_version.rewritten && e.text_version.latest?.title_source === 'TEXT'
+                ? e.text_version.latest.title
+                : null,
           }
         : undefined,
       // Disclosure (handoff v2 §4). The model is shown which vote governed and

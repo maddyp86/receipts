@@ -8,6 +8,7 @@ import {
   parseVersionRow,
   selectTextVersion,
   taxonomyDivergence,
+  textTitlesDiffer,
   type GoverningAct,
   type VersionMirrorRow,
 } from './textVersions.js';
@@ -524,5 +525,85 @@ describe('applyTextVersion', () => {
     const v = parseVersionRow(row({ code: 'is', date: '2025-01-10', extra: { 'Affected Stakeholders JSON': '{not json' } }));
     expect(applyTextVersion({ ...base, affected_stakeholders: [{ stakeholder_group: 'Latest' }] }, v).affected_stakeholders)
       .toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Titles: trusted only when read from the version's own text.
+// ---------------------------------------------------------------------------
+
+describe('textTitlesDiffer — only titles read from the text count', () => {
+  const v = (code: string, title: string, titleSource: string) =>
+    parseVersionRow(row({ code, date: '2025-01-10', title, titleSource }));
+
+  it('is true when two TEXT titles say different things', () => {
+    expect(textTitlesDiffer([v('is', 'A bill about veterans', 'TEXT'), v('enr', 'An act about defense', 'TEXT')])).toBe(true);
+  });
+
+  it('ignores punctuation, case and spacing', () => {
+    expect(textTitlesDiffer([v('is', 'A Bill, about  veterans.', 'TEXT'), v('es', 'a bill about veterans', 'TEXT')])).toBe(false);
+  });
+
+  // MODEL titles are mostly document headers; CANONICAL is the current title on
+  // every row. Neither can show that the text changed.
+  it.each(['MODEL', 'CANONICAL', 'NA'])('does not count a %s title', (src) => {
+    expect(textTitlesDiffer([v('is', 'A bill about veterans', 'TEXT'), v('eah', 'H.R. 1 Engrossed Amendment House (EAH)', src)])).toBe(false);
+  });
+
+  it('is false with fewer than two TEXT titles — unknown is not "different"', () => {
+    expect(textTitlesDiffer([v('is', 'A bill', 'TEXT')])).toBe(false);
+    expect(textTitlesDiffer([])).toBe(false);
+  });
+});
+
+describe('taxonomy divergence is disclosed only when the titles differ too', () => {
+  // The live pattern on 49 of 64 divergent bills: the same text, classified
+  // under two issue pairs. Model drift, not a rewrite — and not shown.
+  it('is not disclosed when the issue pairs differ but the text titles do not', () => {
+    const rows = [
+      row({ code: 'is', date: '2025-01-10', title: 'A joint resolution disapproving the rule', pi: 'Environment', si: 'Wildlife Protection' }),
+      row({ code: 'es', date: '2025-03-01', title: 'A joint resolution disapproving the rule', pi: 'Government Reform', si: 'Government Operations & Oversight' }),
+    ];
+    const d = selectTextVersion(rows, passage('2025-04-01'))!.disclosure;
+    expect(d.taxonomy_divergent).toBe(false);
+    expect(d.taxonomy_divergence_detail).toBeNull();
+  });
+
+  it('is disclosed when both the pairs and the text titles differ', () => {
+    const rows = [
+      row({ code: 'is', date: '2025-01-10', title: 'To disinter the remains of one veteran', pi: 'Foreign Policy & Defense', si: 'Military Personnel / Veterans' }),
+      row({ code: 'eah', date: '2025-12-10', title: 'To authorize appropriations for fiscal year 2026', pi: 'Foreign Policy & Defense', si: 'Defense Spending' }),
+    ];
+    expect(selectTextVersion(rows, passage('2025-12-17'))!.disclosure.taxonomy_divergent).toBe(true);
+  });
+});
+
+describe('rewritten — the version evaluated and the latest say different things', () => {
+  it('s1071-119: a March 2025 cosponsorship was of a bill later rewritten', () => {
+    const d = selectTextVersion(rowsOf('s1071-119'), sponsorship('2025-03-20'))!.disclosure;
+    expect(d.rewritten).toBe(true);
+    expect(d.latest?.title_source).toBe('TEXT');
+  });
+
+  it('hr5334-119: an introduced-text cosponsorship was of a bill later rewritten', () => {
+    expect(selectTextVersion(rowsOf('hr5334-119'), sponsorship('2025-09-20'))!.disclosure.rewritten).toBe(true);
+  });
+
+  // The engrossed amendment has a MODEL title, so whether it differs from the
+  // enrolled text cannot be told from titles. Not claimed.
+  it('is not claimed when the version evaluated has no title read from its text', () => {
+    const d = selectTextVersion(rowsOf('hr5334-119'), passage('2026-08-10'))!.disclosure;
+    expect(d.code).toBe('eas');
+    expect(d.rewritten).toBe(false);
+  });
+
+  it('is false for an ordinary amendment that kept the title', () => {
+    const rows = [row({ code: 'is', date: '2025-01-10', title: 'A bill' }), row({ code: 'es', date: '2025-03-01', title: 'A bill' })];
+    expect(selectTextVersion(rows, sponsorship('2025-01-10'))!.disclosure.rewritten).toBe(false);
+  });
+
+  it('is false when the version evaluated is the latest', () => {
+    const rows = [row({ code: 'is', date: '2025-01-10', title: 'A' }), row({ code: 'es', date: '2025-03-01', title: 'B' })];
+    expect(selectTextVersion(rows, passage('2025-04-01'))!.disclosure.rewritten).toBe(false);
   });
 });
