@@ -28,6 +28,7 @@ import { preEvaluatorGates, type GateResult } from '../evaluation/preEvaluatorGa
 import { enrichmentSource, type ActionEnrichment } from '../evaluation/enrichment.js';
 import {
   applyTextVersion,
+  gateTextOf,
   governingActOf,
   selectTextVersion,
   type TextVersion,
@@ -892,82 +893,6 @@ async function evaluateEffectsTool(
     output: { kind: enrichmentSource.kind, enriched: Object.fromEntries(enrichment) },
   });
 
-  const gates: Record<string, GateResult> = {};
-  const scorableMatches: MatchedAction[] = [];
-  const gatedRows: NonNullable<QuerySession['gated']> = [];
-
-  for (const m of matches) {
-    const e: ActionEnrichment = enrichment.get(m.action_uid) ?? {};
-    const result = preEvaluatorGates(
-      {
-        politician_id: session.politicianId,
-        bill_id: String(m.bill_id ?? ''),
-        promise_text: session.promiseText,
-        bill_title: String(m.title ?? ''),
-        // Pinecone carries the votes; enrichment carries the context around
-        // them. Where both exist the mirror wins — it has the dates.
-        cloture_vote: e.cloture_vote ?? m.cloture_vote,
-        passage_vote: e.passage_vote ?? m.passage_vote,
-        party_whip_vote: e.party_whip_vote,
-        cloture_vote_id: e.cloture_vote_id,
-        cloture_vote_date: e.cloture_vote_date,
-        passage_vote_date: e.passage_vote_date,
-        // The date the senator's name went on the bill. Without it a vote-less
-        // sponsorship is dated from the Congress-start proxy, so a bounded
-        // statement's window test silently never fires for late cosponsors.
-        cosponsored_at: e.cosponsored_at,
-        stakeholder_groups: m.affected_stakeholders ? [String(m.affected_stakeholders)] : [],
-      },
-      {
-        date: session.statementDate ? new Date(session.statementDate) : null,
-        scope: session.scope?.scope,
-        validUntil: session.scope?.valid_until ? new Date(session.scope.valid_until) : null,
-        validUntilRaw: session.scope?.valid_until,
-        anchor: session.scope?.anchor_entity,
-        roleCondition: session.scope?.role_condition,
-        speechAct: session.scope?.speech_act,
-      },
-      refs,
-    );
-    gates[m.action_uid] = result;
-    // GATE: fix/03 per action. Every rule and its context, whether or not
-    // one fired — a gate that stayed silent for want of an input is a
-    // finding too.
-    traceStep({
-      stage: 'PRE_EVALUATOR_GATE', kind: 'deterministic',
-      subject: m.action_uid,
-      label: result.scorable
-        ? `${String(m.bill_id ?? '')} scorable${result.hits.length ? ` (non-terminal hits: ${result.hits.map((h) => `${h.gate}:${h.verdict}`).join(', ')})` : ''}`
-        : `${String(m.bill_id ?? '')} GATED by ${result.hit!.gate} → ${result.hit!.verdict}: ${result.hit!.reason}`,
-      input: {
-        bill_id: m.bill_id, cloture_vote: e.cloture_vote ?? m.cloture_vote, passage_vote: e.passage_vote ?? m.passage_vote,
-        party_whip_vote: e.party_whip_vote ?? null, cloture_vote_date: e.cloture_vote_date ?? null,
-        passage_vote_date: e.passage_vote_date ?? null, cosponsored_at: e.cosponsored_at ?? null,
-        sponsor_tier: e.sponsor_tier ?? null, statement_date: session.statementDate ?? null,
-        scope: session.scope?.scope ?? null, valid_until: session.scope?.valid_until ?? null,
-        anchor: session.scope?.anchor_entity ?? null, role_condition: session.scope?.role_condition ?? null,
-        speech_act: session.scope?.speech_act ?? null,
-      },
-      output: { scorable: result.scorable, hits: result.hits, context: result.context },
-    });
-    if (result.scorable) {
-      scorableMatches.push(m);
-    } else {
-      gatedRows.push({
-        action_uid: m.action_uid,
-        bill_id: String(m.bill_id ?? ''),
-        bill_number: m.bill_number,
-        title: String(m.title ?? ''),
-        gate: String(result.hit!.gate),
-        verdict: String(result.hit!.verdict),
-        reason: result.hit!.reason,
-        source_url: m.source_url || undefined,
-      });
-    }
-  }
-  session.gates = gates;
-  session.gated = gatedRows;
-
   // ---- WHICH TEXT EACH ACTION WAS TAKEN ON ------------------------------
   //
   // Congress rewrites bills under the same number. A senator who cosponsored
@@ -975,11 +900,14 @@ async function evaluateEffectsTool(
   // sanctions act the number carries now, and must be judged against the text
   // that existed when he acted. See textVersions.ts for the rules.
   //
-  // Read for the scorable rows only — a gated row never reaches the evaluator.
-  // Most bills have no version rows and take the unchanged path.
-  const versionRows = await enrichmentSource.forVersions(scorableMatches.map((m) => String(m.bill_id ?? '')));
+  // Read BEFORE the gates, for every candidate, because the gates classify the
+  // bill too: G4 reads the title to decide whether it is an appropriations
+  // vehicle, and the latest title on s1071-119 is the FY2026 NDAA even for a
+  // March 2025 cosponsorship of a single-veteran VA bill. Most bills have no
+  // version rows and take the unchanged path.
+  const versionRows = await enrichmentSource.forVersions(matches.map((m) => String(m.bill_id ?? '')));
   const textVersions: Record<string, TextVersionSelection> = {};
-  for (const m of scorableMatches) {
+  for (const m of matches) {
     const rows = versionRows.get(String(m.bill_id ?? '')) ?? [];
     if (!rows.length) continue;
     const e: ActionEnrichment = enrichment.get(m.action_uid) ?? {};
@@ -1018,6 +946,93 @@ async function evaluateEffectsTool(
     });
   }
   session.textVersions = textVersions;
+
+  const gates: Record<string, GateResult> = {};
+  const scorableMatches: MatchedAction[] = [];
+  const gatedRows: NonNullable<QuerySession['gated']> = [];
+
+  for (const m of matches) {
+    const e: ActionEnrichment = enrichment.get(m.action_uid) ?? {};
+    // The bill as it stood when the senator acted, where the record has it.
+    const gateText = gateTextOf(textVersions[m.action_uid], {
+      bill_title: String(m.title ?? ''),
+      stakeholder_groups: m.affected_stakeholders ? [String(m.affected_stakeholders)] : [],
+    });
+    const result = preEvaluatorGates(
+      {
+        politician_id: session.politicianId,
+        bill_id: String(m.bill_id ?? ''),
+        promise_text: session.promiseText,
+        bill_title: gateText.bill_title,
+        // Pinecone carries the votes; enrichment carries the context around
+        // them. Where both exist the mirror wins — it has the dates.
+        cloture_vote: e.cloture_vote ?? m.cloture_vote,
+        passage_vote: e.passage_vote ?? m.passage_vote,
+        party_whip_vote: e.party_whip_vote,
+        cloture_vote_id: e.cloture_vote_id,
+        cloture_vote_date: e.cloture_vote_date,
+        passage_vote_date: e.passage_vote_date,
+        // The date the senator's name went on the bill. Without it a vote-less
+        // sponsorship is dated from the Congress-start proxy, so a bounded
+        // statement's window test silently never fires for late cosponsors.
+        cosponsored_at: e.cosponsored_at,
+        stakeholder_groups: gateText.stakeholder_groups,
+      },
+      {
+        date: session.statementDate ? new Date(session.statementDate) : null,
+        scope: session.scope?.scope,
+        validUntil: session.scope?.valid_until ? new Date(session.scope.valid_until) : null,
+        validUntilRaw: session.scope?.valid_until,
+        anchor: session.scope?.anchor_entity,
+        roleCondition: session.scope?.role_condition,
+        speechAct: session.scope?.speech_act,
+      },
+      refs,
+    );
+    gates[m.action_uid] = result;
+    // GATE: fix/03 per action. Every rule and its context, whether or not
+    // one fired — a gate that stayed silent for want of an input is a
+    // finding too.
+    traceStep({
+      stage: 'PRE_EVALUATOR_GATE', kind: 'deterministic',
+      subject: m.action_uid,
+      label: result.scorable
+        ? `${String(m.bill_id ?? '')} scorable${result.hits.length ? ` (non-terminal hits: ${result.hits.map((h) => `${h.gate}:${h.verdict}`).join(', ')})` : ''}`
+        : `${String(m.bill_id ?? '')} GATED by ${result.hit!.gate} → ${result.hit!.verdict}: ${result.hit!.reason}`,
+      input: {
+        bill_id: m.bill_id,
+        // The title the bill was classified by: the version in effect when it
+        // has its own heading, otherwise the current one.
+        bill_title: gateText.bill_title,
+        text_version: textVersions[m.action_uid]?.disclosure.code ?? null,
+        cloture_vote: e.cloture_vote ?? m.cloture_vote, passage_vote: e.passage_vote ?? m.passage_vote,
+        party_whip_vote: e.party_whip_vote ?? null, cloture_vote_date: e.cloture_vote_date ?? null,
+        passage_vote_date: e.passage_vote_date ?? null, cosponsored_at: e.cosponsored_at ?? null,
+        sponsor_tier: e.sponsor_tier ?? null, statement_date: session.statementDate ?? null,
+        scope: session.scope?.scope ?? null, valid_until: session.scope?.valid_until ?? null,
+        anchor: session.scope?.anchor_entity ?? null, role_condition: session.scope?.role_condition ?? null,
+        speech_act: session.scope?.speech_act ?? null,
+      },
+      output: { scorable: result.scorable, hits: result.hits, context: result.context },
+    });
+    if (result.scorable) {
+      scorableMatches.push(m);
+    } else {
+      gatedRows.push({
+        action_uid: m.action_uid,
+        bill_id: String(m.bill_id ?? ''),
+        bill_number: m.bill_number,
+        title: String(m.title ?? ''),
+        gate: String(result.hit!.gate),
+        verdict: String(result.hit!.verdict),
+        reason: result.hit!.reason,
+        source_url: m.source_url || undefined,
+      });
+    }
+  }
+  session.gates = gates;
+  session.gated = gatedRows;
+
 
   // ---- FULFILLMENT LEG --------------------------------------------------
   // bill_effect is decided by gpt-5.4-mini running WF10A's 32,507-char prompt,
@@ -1476,7 +1491,9 @@ async function evaluateEffectsTool(
       'Where your own effect judgement differed from the evaluator, the evaluator governs. ' +
       'Where an evidence row has text_version with status SELECTED, the action was judged against ' +
       'that version of the bill, not its current title: describe the bill as that version, and if ' +
-      'later_became is set, say plainly that the bill was later rewritten.',
+      'later_became is set, say plainly that the bill was later rewritten. Where a row carries the ' +
+      'vote flag TEXT_AT_ACTION_UNAVAILABLE, say that the text in effect when the senator acted is not ' +
+      'available and the reading is low confidence; never state the finding about that row as certain.',
   });
 }
 

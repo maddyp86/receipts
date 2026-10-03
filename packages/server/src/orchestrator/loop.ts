@@ -771,6 +771,23 @@ export function buildAuditEvents(session: QuerySession, queryId: string): AuditE
     });
   }
 
+  // ---- TEXT AT THE TIME OF THE ACTION. Same shape as contract 3, and for the
+  // same reason applied inside scoreMatches: an accusation whose every action
+  // was judged against a later version of the bill than the one in effect.
+  if (session.scored?.nd_reason === 'WITHHELD_TEXT_UNAVAILABLE') {
+    events.push({
+      query_id: queryId,
+      seq: seq++,
+      stage: 'WITHHOLDING',
+      rule: 'TEXT_AT_ACTION_UNAVAILABLE',
+      disposition: 'WITHHELD',
+      verdict_before: 'BROKE',
+      verdict_after: 'NOT_DETERMINABLE',
+      reason:
+        'Every action behind the accusation was judged without the bill text in effect when the senator acted.',
+    });
+  }
+
   // ---- THE JUDGE.
   if (session.judge) {
     const { verdict, disposition } = session.judge;
