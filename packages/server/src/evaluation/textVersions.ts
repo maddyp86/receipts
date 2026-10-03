@@ -103,6 +103,14 @@ export interface TextVersionSelection {
   disclosure: TextVersionDisclosure;
   /** The version substituted into the evaluator input. Null unless SELECTED. */
   version: TextVersion | null;
+  /**
+   * The version in effect, usable or not. Set for SELECTED and
+   * TEXT_UNAVAILABLE. The gates read its title even when its summary cannot be
+   * used — whether a bill is an appropriations vehicle is a fact about the text
+   * in effect, and a version without a usable summary can still have a heading
+   * read from it.
+   */
+  inEffect: TextVersion | null;
 }
 
 /** What `governingActOf` needs: the votes, their dates, and the sponsorship. */
@@ -338,13 +346,13 @@ export function selectTextVersion(
 
   // No real date for the act: placing it in the bill's history would be a
   // guess, and the Congress-start proxy would always guess "introduced".
-  if (!act?.date) return { disclosure: disclose('NO_ACTION_DATE', null), version: null };
+  if (!act?.date) return { disclosure: disclose('NO_ACTION_DATE', null), version: null, inEffect: null };
 
   const onOrBefore = versions.filter((v) => v.date !== null && v.date <= act.date!);
   if (!onOrBefore.length) {
     // The act predates every version on file — typically because the earliest
     // version failed generation. The latest summary is used, and said so.
-    return { disclosure: disclose('BEFORE_FIRST_VERSION', null), version: null };
+    return { disclosure: disclose('BEFORE_FIRST_VERSION', null), version: null, inEffect: null };
   }
 
   const inEffectDate = onOrBefore[onOrBefore.length - 1]!.date;
@@ -356,9 +364,9 @@ export function selectTextVersion(
   const inEffect = sameDay[0]!;
 
   if (!usable(inEffect)) {
-    return { disclosure: disclose('TEXT_UNAVAILABLE', inEffect), version: null };
+    return { disclosure: disclose('TEXT_UNAVAILABLE', inEffect), version: null, inEffect };
   }
-  return { disclosure: disclose('SELECTED', inEffect), version: inEffect };
+  return { disclosure: disclose('SELECTED', inEffect), version: inEffect, inEffect };
 }
 
 // ---------------------------------------------------------------------------
@@ -402,4 +410,49 @@ export function applyTextVersion(
     target_source: version.target_source ?? undefined,
     target_effect: version.target_effect ?? undefined,
   };
+}
+
+// ---------------------------------------------------------------------------
+// The gates' view
+// ---------------------------------------------------------------------------
+
+/** What the pre-evaluator gates read about the bill's text. */
+export interface GateText {
+  bill_title: string;
+  stakeholder_groups: string[];
+}
+
+/**
+ * The title and stakeholders the pre-evaluator gates classify the bill by.
+ *
+ * G4 closes an action on a BROAD_VEHICLE — an appropriations or authorization
+ * package — when the statement is specific, and the test is a pattern on the
+ * title. Read off the latest title, a March 2025 cosponsorship of s1071-119 was
+ * classed as a vote on the FY2026 NDAA: the headline case this whole track
+ * exists to fix. So the gates read the version in effect too.
+ *
+ * The title is taken from the version in effect only when it was read from that
+ * version's own text (TEXT) and the row is not a Version Mismatch. Engrossed
+ * amendments carry amendment text and no heading, so their titles are MODEL —
+ * junk like "H.R. 2872 Engrossed Amendment Senate (EAS)" — and those fall back
+ * to the current title. That fallback is right in practice: an engrossed
+ * amendment is where a gut-and-amend substitution lands, so the current title
+ * is the one describing it.
+ *
+ * Stakeholders come from the version only when it was SELECTED; an unusable
+ * row's impact analysis is no more trustworthy than its summary.
+ */
+export function gateTextOf(
+  selection: TextVersionSelection | null | undefined,
+  latest: GateText,
+): GateText {
+  // No versions, or an act that could not be placed: the gates see exactly
+  // what they saw before versions existed — the same object.
+  if (!selection?.inEffect) return latest;
+  const v = selection.inEffect;
+  const title = !v.version_mismatch && v.title_source === 'TEXT' && v.title ? v.title : latest.bill_title;
+  const groups = selection.version
+    ? selection.version.stakeholders.map((g) => S(g.stakeholder_group)).filter(Boolean)
+    : latest.stakeholder_groups;
+  return { bill_title: title, stakeholder_groups: groups };
 }
