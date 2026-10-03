@@ -1,6 +1,7 @@
 import pg from 'pg';
 import { config } from '../config.js';
 import { FLOOR_LEADERS_FALLBACK, normaliseClotureResult, type GateRefs } from './preEvaluatorGates.js';
+import type { VersionMirrorRow } from './textVersions.js';
 
 // ===========================================================================
 // ENRICHMENT — the reference data the gates need, from the Supabase mirror.
@@ -135,6 +136,11 @@ export interface EnrichmentSource {
   forActions(actionUids: string[]): Promise<Map<string, ActionEnrichment>>;
   /** Per-bill progress, keyed by bill_id. */
   forBills(billIds: string[]): Promise<Map<string, BillEnrichment>>;
+  /**
+   * Every per-version impact statement for these bills, keyed by bill_id.
+   * A bill with none is simply absent from the map — the normal case.
+   */
+  forVersions(billIds: string[]): Promise<Map<string, VersionMirrorRow[]>>;
   close?(): Promise<void>;
 }
 
@@ -159,6 +165,9 @@ export const nullEnrichmentSource: EnrichmentSource = {
     return new Map();
   },
   async forBills() {
+    return new Map();
+  },
+  async forVersions() {
     return new Map();
   },
 };
@@ -342,6 +351,38 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
       // Same posture as every other reader here: a missing table or a renamed
       // column costs the narrative its progress clause, never the verdict.
       console.error('[enrichment] bill progress unavailable:', describe(err));
+    }
+    return out;
+  }
+
+  /**
+   * Per-version impact statements, batched by bill_id.
+   *
+   * Returns the rows as stored. Choosing among them — and refusing a
+   * `Version Mismatch` row — is `selectTextVersion`'s job, so the rule lives in
+   * one tested place rather than half in SQL.
+   */
+  async forVersions(billIds: string[]): Promise<Map<string, VersionMirrorRow[]>> {
+    const ids = [...new Set(billIds.map((b) => S(b)).filter(Boolean))];
+    if (!ids.length) return new Map();
+
+    const out = new Map<string, VersionMirrorRow[]>();
+    try {
+      const { rows } = await this.pool.query<VersionMirrorRow>(
+        `select impact_version_uid, bill_id, text_version_code, text_version_date, row
+           from mirror.mirror_impact_statement_versions
+          where bill_id = any($1::text[])`,
+        [ids],
+      );
+      for (const r of rows) {
+        const id = S(r.bill_id);
+        if (!out.has(id)) out.set(id, []);
+        out.get(id)!.push(r);
+      }
+    } catch (err) {
+      // A missing or unreadable table means every bill is evaluated against
+      // its latest summary — today's behaviour — rather than failing the query.
+      console.error('[enrichment] text versions unavailable — using latest summaries:', describe(err));
     }
     return out;
   }
