@@ -410,6 +410,15 @@ export interface DirectedAction extends MatchedAction {
    * became something else.
    */
   text_version?: TextVersionDisclosure;
+
+  /**
+   * What the senator did on the bill and what became of it, in one or a few
+   * sentences built from the pipeline's columns — "Co-sponsored the bill as
+   * the 34th of 41 co-sponsors, about 3 months after introduction …". Never
+   * model-written; every clause is citable. Absent when the mirror holds
+   * nothing about the action.
+   */
+  record?: string;
 }
 
 /** The act whose date picked the text: the same act that governs the verdict. */

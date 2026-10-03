@@ -145,6 +145,11 @@ export function EvidenceCard({ action, connector, senatorName }: Props) {
 
       {when ? <p className="when">{when}</p> : null}
 
+      {/* The record: how and when the senator's name went on the bill, the
+          committee path, and what became of it. Built server-side from the
+          pipeline's columns, never by a model, so it is rendered as written. */}
+      {action.record ? <p className="record">{action.record}</p> : null}
+
       {/* Which vote decided, in plain language. The raw `vote_governing` string
           is analyst vocabulary — one of its values contains "threshold", a
           banned Level-1 term — so the reader gets a sentence and the trace gets

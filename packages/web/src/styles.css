@@ -754,6 +754,15 @@ textarea.promise::placeholder {
   color: var(--ink-soft);
 }
 
+/* The record of the senator's sponsorship and the bill's path. Same register
+   as the When line: a fact about the action, read after the behaviour. */
+.record {
+  margin: 0.4rem 0 0;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
 .connector {
   margin: 0.4rem 0 0.6rem;
   color: var(--ink-soft);

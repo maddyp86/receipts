@@ -26,6 +26,7 @@ import {
 import { liveResponsesFetcher } from '../evaluation/responsesFetcher.js';
 import { preEvaluatorGates, type GateResult } from '../evaluation/preEvaluatorGates.js';
 import { enrichmentSource, type ActionEnrichment } from '../evaluation/enrichment.js';
+import { recordSentence } from '../scoring/recordSentence.js';
 import {
   applyTextVersion,
   gateTextOf,
@@ -881,16 +882,21 @@ async function evaluateEffectsTool(
   // routing them through the alignment table would ask "which way does this
   // cut" about an action we have already established cannot cut either way.
   const refs = await enrichmentSource.refs();
-  const enrichment = await enrichmentSource.forActions(matches.map((m) => m.action_uid));
+  // Bill progress is read beside the per-action rows: the record sentence
+  // needs both, and both are batched to the 2–4 admitted candidates.
+  const [enrichment, bills] = await Promise.all([
+    enrichmentSource.forActions(matches.map((m) => m.action_uid)),
+    enrichmentSource.forBills(matches.map((m) => String(m.bill_id ?? ''))),
+  ]);
   session.enrichmentKind = enrichmentSource.kind;
   traceStep({
     stage: 'ENRICHMENT', kind: 'io',
     status: enrichmentSource.kind === 'null' ? 'skipped' : 'ok',
     label: enrichmentSource.kind === 'mirror'
-      ? `mirror · ${enrichment.size} of ${matches.length} actions enriched (vote dates, whip votes, roles)`
+      ? `mirror · ${enrichment.size} of ${matches.length} actions enriched (vote dates, whip votes, roles) · ${bills.size} bill(s) with progress`
       : 'no enrichment source — scope and leader gates fail OPEN',
     input: { actions: matches.map((m) => m.action_uid) },
-    output: { kind: enrichmentSource.kind, enriched: Object.fromEntries(enrichment) },
+    output: { kind: enrichmentSource.kind, enriched: Object.fromEntries(enrichment), bills: Object.fromEntries(bills) },
   });
 
   // ---- WHICH TEXT EACH ACTION WAS TAKEN ON ------------------------------
@@ -1105,6 +1111,18 @@ async function evaluateEffectsTool(
 
   const disagreements: string[] = [];
 
+  const recordFor = (m: MatchedAction): { record?: string } => {
+    const r = recordSentence({
+      bill_id: String(m.bill_id ?? ''),
+      is_sponsor: m.is_sponsor,
+      is_cosponsor: m.is_cosponsor,
+      sponsorship: enrichment.get(m.action_uid) ?? null,
+      bill: bills.get(String(m.bill_id ?? '')) ?? null,
+      text_version: textVersions[m.action_uid]?.disclosure ?? null,
+    });
+    return r ? { record: r.sentence } : {};
+  };
+
   const scorable: ScorableMatch[] = scorableMatches.map((m) => {
     const judged = byUid.get(m.action_uid);
     const evalResult = authoritative.get(m.action_uid);
@@ -1144,6 +1162,10 @@ async function evaluateEffectsTool(
       // Which text this was judged against. Set only for bills with version
       // rows, so every other evidence row is unchanged.
       ...(textVersions[m.action_uid] ? { text_version: textVersions[m.action_uid]!.disclosure } : {}),
+      // What the senator did on the bill and what became of it, assembled from
+      // the pipeline's columns — never written by a model. Set only when the
+      // mirror holds something to say, so other evidence rows are unchanged.
+      ...recordFor(m),
       // When it happened, for the card. The gates already resolved the action
       // date (and flagged a stand-in); the roll-call dates come straight from
       // the mirror. Null, never '', when absent.
@@ -1446,6 +1468,9 @@ async function evaluateEffectsTool(
       is_cosponsor: e.is_cosponsor,
       bill_keywords: e.bill_keywords,
       scoring_flags: e.scoring_flags,
+      // The checked record of the senator's sponsorship and the bill's path,
+      // built from the pipeline's columns. Quoted or omitted, never paraphrased.
+      record: e.record,
       // Which version of the bill's text the action was judged against, when
       // the bill has more than one. `title` above is the bill's CURRENT title.
       // Titles only when read from the version's own text. The rest are mostly
@@ -1499,7 +1524,10 @@ async function evaluateEffectsTool(
       'that version of the bill, not its current title: describe the bill as that version, and if ' +
       'later_became is set, say plainly that the bill was later rewritten. Where a row carries the ' +
       'vote flag TEXT_AT_ACTION_UNAVAILABLE, say that the text in effect when the senator acted is not ' +
-      'available and the reading is low confidence; never state the finding about that row as certain.',
+      'available and the reading is low confidence; never state the finding about that row as certain. ' +
+      'Where an evidence row has record, it is the checked record of what the senator did on the bill ' +
+      'and what became of it: quote it as written or leave it out. Never turn it into a claim about ' +
+      'effort or intent — not "fought for", "pushed", "championed", "abandoned" or "gave up".',
   });
 }
 
