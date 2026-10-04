@@ -754,6 +754,21 @@ textarea.promise::placeholder {
   color: var(--ink-soft);
 }
 
+/* Which version of a rewritten bill's text was judged. Set apart with a rule
+   because it changes how the whole card should be read. */
+.text-version {
+  margin: 0.55rem 0 0;
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--rule-strong);
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.text-version p {
+  margin: 0 0 0.25rem;
+}
+
 /* The record of the senator's sponsorship and the bill's path. Same register
    as the When line: a fact about the action, read after the behaviour. */
 .record {
