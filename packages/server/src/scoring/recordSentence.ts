@@ -1,4 +1,4 @@
-import { ordinal, type TextVersionDisclosure } from '@receipts/shared';
+import { longDate, ordinal, type TextVersionDisclosure } from '@receipts/shared';
 import type { BillEnrichment, SponsorshipEnrichment } from '../evaluation/enrichment.js';
 import committeeData from './committees.json' with { type: 'json' };
 
@@ -73,14 +73,8 @@ export interface RecordSentence {
 // Formatting
 // ---------------------------------------------------------------------------
 
-/** 'YYYY-MM-DD' -> 'March 14, 2025'. Null when it is not a date. */
-export function longDate(iso: string | null | undefined): string | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(S(iso));
-  if (!m) return null;
-  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
-}
+/** Re-exported: the one date formatter lives in shared, beside the disclosure copy. */
+export { longDate };
 
 /** Days after introduction, as a reader would say it. Exact under 60 days. */
 export function afterIntroduction(days: number): string {

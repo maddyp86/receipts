@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   STRENGTH_PHRASE,
   VOTE_FLAG_COPY,
+  textVersionLines,
   congressLabel,
   congressOfBillId,
   governingVoteSentence,
@@ -89,6 +90,9 @@ function whenLine(e: DirectedAction, congress: number | null): string | null {
   const hasRollCall = Boolean(formatDate(e.cloture_vote_date) || formatDate(e.passage_vote_date));
   if (hasRollCall) return null; // the sentence above already carries the date
   const real = !proxy ? formatDate(e.action_date) : null;
+  // The record sentence already dates a sponsorship ("… introducing it on
+  // March 14, 2025"); saying it again on the next line is noise.
+  if (real && e.record?.includes(real)) return null;
   if (real) return `When: ${real}.`;
   if (congress) return `When: during the ${congressLabel(congress)} — the exact date is not in our record.`;
   return null;
@@ -106,6 +110,7 @@ export function EvidenceCard({ action, connector, senatorName }: Props) {
   const governing = governingVoteSentence(action.vote_governing);
   const congress = action.congress ?? congressOfBillId(action.bill_id);
   const when = whenLine(action, congress);
+  const versionLines = textVersionLines(action.text_version);
   const disclosures = (action.vote_flags ?? [])
     .map((flag) => ({ flag, copy: VOTE_FLAG_COPY[flag] }))
     // The proxy-date flag is now said in the "When" line, in context. Keeping
@@ -149,6 +154,17 @@ export function EvidenceCard({ action, connector, senatorName }: Props) {
           committee path, and what became of it. Built server-side from the
           pipeline's columns, never by a model, so it is rendered as written. */}
       {action.record ? <p className="record">{action.record}</p> : null}
+
+      {/* Which version of the bill's text this was judged against, and what
+          the bill became. Only bills whose text changed carry text_version;
+          for every other bill this renders nothing. */}
+      {versionLines.length ? (
+        <div className="text-version">
+          {versionLines.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+        </div>
+      ) : null}
 
       {/* Which vote decided, in plain language. The raw `vote_governing` string
           is analyst vocabulary — one of its values contains "threshold", a
