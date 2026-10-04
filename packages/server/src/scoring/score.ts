@@ -66,6 +66,8 @@ export type ScorableMatch = MatchedAction & {
    * the senator's effort, and nothing else on this field is read.
    */
   text_version?: import('@receipts/shared').TextVersionDisclosure;
+  /** The record sentence. Passed through untouched; never read for scoring. */
+  record?: string;
   /**
    * Disclosure flags already established upstream — `FLOOR_LEADER` and
    * `ACTION_DATE_PROXY` come from the pre-evaluator gates, which know the

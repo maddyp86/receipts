@@ -298,6 +298,24 @@ export function taxonomyDivergence(versions: TextVersion[]): {
   return { divergent: true, detail };
 }
 
+/** A title as compared: lowercase, punctuation and spacing collapsed. */
+const titleKey = (t: string): string => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/**
+ * Do the titles READ FROM THE TEXT of these versions say different things?
+ *
+ * Only TEXT titles count. MODEL titles are mostly document headers and
+ * CANONICAL is the bill's current title on every row, so neither can show a
+ * change. With fewer than two TEXT titles the answer is no — not "unknown
+ * treated as yes".
+ */
+export function textTitlesDiffer(versions: TextVersion[]): boolean {
+  const keys = new Set(
+    versions.filter((v) => v.title_source === 'TEXT' && v.title).map((v) => titleKey(v.title!)),
+  );
+  return keys.size >= 2;
+}
+
 // ---------------------------------------------------------------------------
 // Selection
 // ---------------------------------------------------------------------------
@@ -319,7 +337,10 @@ export function selectTextVersion(
 
   const versions = rows.map(parseVersionRow).sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
   const latest = versions[versions.length - 1]!;
-  const divergence = taxonomyDivergence(versions);
+  // Disclosed only when the titles read from the text differ too: issue pairs
+  // alone drift on identical text, and showing that would mislead.
+  const pairs = taxonomyDivergence(versions);
+  const divergence = pairs.divergent && textTitlesDiffer(versions) ? pairs : { divergent: false, detail: null };
 
   const disclose = (
     status: TextVersionDisclosure['status'],
@@ -338,7 +359,14 @@ export function selectTextVersion(
     latest:
       inEffect && inEffect.uid === latest.uid
         ? null
-        : { code: latest.code, type: latest.type, date: latest.date, title: latest.title },
+        : {
+            code: latest.code,
+            type: latest.type,
+            date: latest.date,
+            title: latest.title,
+            title_source: latest.title_source,
+          },
+    rewritten: Boolean(inEffect && inEffect.uid !== latest.uid && textTitlesDiffer([inEffect, latest])),
     taxonomy_divergent: divergence.divergent,
     taxonomy_divergence_detail: divergence.detail,
     version_count: versions.length,

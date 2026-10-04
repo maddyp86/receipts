@@ -410,6 +410,15 @@ export interface DirectedAction extends MatchedAction {
    * became something else.
    */
   text_version?: TextVersionDisclosure;
+
+  /**
+   * What the senator did on the bill and what became of it, in one or a few
+   * sentences built from the pipeline's columns — "Co-sponsored the bill as
+   * the 34th of 41 co-sponsors, about 3 months after introduction …". Never
+   * model-written; every clause is citable. Absent when the mirror holds
+   * nothing about the action.
+   */
+  record?: string;
 }
 
 /** The act whose date picked the text: the same act that governs the verdict. */
@@ -440,9 +449,30 @@ export interface TextVersionDisclosure {
   /** TEXT · MODEL · CANONICAL. Only a TEXT title is the version's own heading. */
   title_source: string | null;
   flagged_for_review: boolean;
-  /** The bill's last version, when it is not the one evaluated. Undated = enrolled. */
-  latest: { code: string; type: string | null; date: string | null; title: string | null } | null;
-  /** Versions of this bill were classified under different issue pairs. Disclosed, never acted on. */
+  /**
+   * The bill's last version, when it is not the one evaluated. Undated =
+   * enrolled. Show `title` only when `title_source` is TEXT — the others are
+   * mostly document headers like "H.R. 2872 Engrossed Amendment Senate (EAS)".
+   */
+  latest: {
+    code: string;
+    type: string | null;
+    date: string | null;
+    title: string | null;
+    title_source: string | null;
+  } | null;
+  /**
+   * The bill was rewritten under the same number: the titles read from the
+   * text of the version evaluated and of the latest version differ. False when
+   * either title was not read from the text — then we cannot tell.
+   */
+  rewritten: boolean;
+  /**
+   * Versions of this bill were classified under different issue pairs AND
+   * their titles, read from the text, differ. Disclosed, never acted on. The
+   * pairs alone drift on identical text (49 of 64 divergent bills, 2026-10-02),
+   * so a divergence the titles do not support is not shown.
+   */
   taxonomy_divergent: boolean;
   taxonomy_divergence_detail: string | null;
   version_count: number;
@@ -647,7 +677,7 @@ const congressSpan = (list: number[]): string =>
     ? `the ${ordinal(list[0]!)} Congress`
     : `the ${list.slice(0, -1).map(ordinal).join(', ')} and ${ordinal(list[list.length - 1]!)} Congress`;
 
-const ordinal = (n: number): string => {
+export const ordinal = (n: number): string => {
   const rem100 = n % 100;
   if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
   return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'}`;
