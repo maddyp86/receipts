@@ -376,14 +376,27 @@ describe('selectTextVersion — edge cases', () => {
     expect(selectTextVersion(rows, passage('2025-06-01'))!.version?.code).toBe('rs');
   });
 
-  // Flagged is a preference, not an exclusion: the flag covers bad keywords and
-  // the like, which say nothing about whether the summary is right.
-  it('still uses a flagged version when it is the one in effect', () => {
-    const rows = [row({ code: 'is', date: '2025-01-10' }), row({ code: 'rs', date: '2025-06-01', flagged: true })];
+  // THE LIVE DEFECT. WF5 does not write an empty summary when a version's text
+  // was never published as HTML: 16 of 21 flagged rows on the live mirror
+  // (2026-10-02) carry a non-empty summary like this one. Read as usable, it
+  // would hand the evaluator a sentence about missing data as the bill summary.
+  it('treats a flagged row as unusable, even when its summary is not empty', () => {
+    const rows = [
+      row({ code: 'is', date: '2025-01-10' }),
+      row({
+        code: 'rs',
+        date: '2025-06-01',
+        flagged: true,
+        summary: 'The bill summary text was unavailable, so the specific provisions of the selected version could not be summarized.',
+      }),
+    ];
     const s = selectTextVersion(rows, passage('2025-07-01'))!;
-    expect(s.disclosure.status).toBe('SELECTED');
+    expect(s.disclosure.status).toBe('TEXT_UNAVAILABLE');
     expect(s.disclosure.code).toBe('rs');
     expect(s.disclosure.flagged_for_review).toBe(true);
+    expect(s.version).toBeNull();
+    // Nor does the earlier, unflagged version stand in for it.
+    expect(applyTextVersion(candidate('x1-119'), s.version).bill_summary).toBe(LATEST);
   });
 
   it('counts a version dated the same day as the act as in effect', () => {

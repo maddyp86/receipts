@@ -32,11 +32,18 @@ import type { FulfillmentCandidate } from './fulfillment.js';
 //      is NEVER selected. Enrollment follows the last floor vote, so it is
 //      never the text a senator voted on or signed. It sorts last and is
 //      carried only to disclose what the bill became.
-//   4. If the version in effect is unusable — `Version Mismatch`, or no text
-//      (congress.gov published only a PDF and WF5 flagged it with an empty
-//      summary) — nothing is substituted and the disclosure says so. Falling
-//      back to an EARLIER version would judge the senator against text that was
-//      no longer in effect, and present it as the right one.
+//   4. If the version in effect is unusable — `Version Mismatch`, `Flagged For
+//      Review`, or an empty summary — nothing is substituted and the disclosure
+//      says so. Falling back to an EARLIER version would judge the senator
+//      against text that was no longer in effect, and present it as the right
+//      one. The scorer then refuses to present the verdict as confident.
+//
+//      A FLAGGED row is unusable, not merely dispreferred. Measured 2026-10-02:
+//      16 of the 21 flagged rows are versions whose text congress.gov never
+//      published as HTML, and WF5 wrote them with a NON-EMPTY summary that
+//      reads "The bill summary text was unavailable, so …". Nothing but the
+//      flag separates those from a real summary, so the flag has to decide —
+//      at the cost of blocking 5 flagged rows whose summaries are sound.
 //   5. No version rows for the bill → null, and the caller behaves exactly as
 //      it did before this module existed.
 // ===========================================================================
@@ -96,6 +103,14 @@ export interface TextVersionSelection {
   disclosure: TextVersionDisclosure;
   /** The version substituted into the evaluator input. Null unless SELECTED. */
   version: TextVersion | null;
+  /**
+   * The version in effect, usable or not. Set for SELECTED and
+   * TEXT_UNAVAILABLE. The gates read its title even when its summary cannot be
+   * used — whether a bill is an appropriations vehicle is a fact about the text
+   * in effect, and a version without a usable summary can still have a heading
+   * read from it.
+   */
+  inEffect: TextVersion | null;
 }
 
 /** What `governingActOf` needs: the votes, their dates, and the sponsorship. */
@@ -207,8 +222,9 @@ export function parseVersionRow(r: VersionMirrorRow): TextVersion {
   };
 }
 
-/** A version whose text can stand in for the latest summary. */
-const usable = (v: TextVersion): boolean => !v.version_mismatch && v.summary.length > 0;
+/** A version whose text can stand in for the latest summary. See rule 4. */
+const usable = (v: TextVersion): boolean =>
+  !v.version_mismatch && !v.flagged_for_review && v.summary.length > 0;
 
 // ---------------------------------------------------------------------------
 // The governing act
@@ -330,33 +346,27 @@ export function selectTextVersion(
 
   // No real date for the act: placing it in the bill's history would be a
   // guess, and the Congress-start proxy would always guess "introduced".
-  if (!act?.date) return { disclosure: disclose('NO_ACTION_DATE', null), version: null };
+  if (!act?.date) return { disclosure: disclose('NO_ACTION_DATE', null), version: null, inEffect: null };
 
   const onOrBefore = versions.filter((v) => v.date !== null && v.date <= act.date!);
   if (!onOrBefore.length) {
     // The act predates every version on file — typically because the earliest
     // version failed generation. The latest summary is used, and said so.
-    return { disclosure: disclose('BEFORE_FIRST_VERSION', null), version: null };
+    return { disclosure: disclose('BEFORE_FIRST_VERSION', null), version: null, inEffect: null };
   }
 
   const inEffectDate = onOrBefore[onOrBefore.length - 1]!.date;
   // Two versions on the same day (rs and rh, say): a usable one beats an
-  // unusable one, then an unflagged one beats a flagged one, then code order so
-  // the choice is stable.
+  // unusable one, then code order so the choice is stable.
   const sameDay = onOrBefore
     .filter((v) => v.date === inEffectDate)
-    .sort(
-      (a, b) =>
-        Number(usable(b)) - Number(usable(a)) ||
-        Number(a.flagged_for_review) - Number(b.flagged_for_review) ||
-        a.code.localeCompare(b.code),
-    );
+    .sort((a, b) => Number(usable(b)) - Number(usable(a)) || a.code.localeCompare(b.code));
   const inEffect = sameDay[0]!;
 
   if (!usable(inEffect)) {
-    return { disclosure: disclose('TEXT_UNAVAILABLE', inEffect), version: null };
+    return { disclosure: disclose('TEXT_UNAVAILABLE', inEffect), version: null, inEffect };
   }
-  return { disclosure: disclose('SELECTED', inEffect), version: inEffect };
+  return { disclosure: disclose('SELECTED', inEffect), version: inEffect, inEffect };
 }
 
 // ---------------------------------------------------------------------------
@@ -400,4 +410,49 @@ export function applyTextVersion(
     target_source: version.target_source ?? undefined,
     target_effect: version.target_effect ?? undefined,
   };
+}
+
+// ---------------------------------------------------------------------------
+// The gates' view
+// ---------------------------------------------------------------------------
+
+/** What the pre-evaluator gates read about the bill's text. */
+export interface GateText {
+  bill_title: string;
+  stakeholder_groups: string[];
+}
+
+/**
+ * The title and stakeholders the pre-evaluator gates classify the bill by.
+ *
+ * G4 closes an action on a BROAD_VEHICLE — an appropriations or authorization
+ * package — when the statement is specific, and the test is a pattern on the
+ * title. Read off the latest title, a March 2025 cosponsorship of s1071-119 was
+ * classed as a vote on the FY2026 NDAA: the headline case this whole track
+ * exists to fix. So the gates read the version in effect too.
+ *
+ * The title is taken from the version in effect only when it was read from that
+ * version's own text (TEXT) and the row is not a Version Mismatch. Engrossed
+ * amendments carry amendment text and no heading, so their titles are MODEL —
+ * junk like "H.R. 2872 Engrossed Amendment Senate (EAS)" — and those fall back
+ * to the current title. That fallback is right in practice: an engrossed
+ * amendment is where a gut-and-amend substitution lands, so the current title
+ * is the one describing it.
+ *
+ * Stakeholders come from the version only when it was SELECTED; an unusable
+ * row's impact analysis is no more trustworthy than its summary.
+ */
+export function gateTextOf(
+  selection: TextVersionSelection | null | undefined,
+  latest: GateText,
+): GateText {
+  // No versions, or an act that could not be placed: the gates see exactly
+  // what they saw before versions existed — the same object.
+  if (!selection?.inEffect) return latest;
+  const v = selection.inEffect;
+  const title = !v.version_mismatch && v.title_source === 'TEXT' && v.title ? v.title : latest.bill_title;
+  const groups = selection.version
+    ? selection.version.stakeholders.map((g) => S(g.stakeholder_group)).filter(Boolean)
+    : latest.stakeholder_groups;
+  return { bill_title: title, stakeholder_groups: groups };
 }

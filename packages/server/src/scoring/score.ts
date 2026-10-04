@@ -14,7 +14,7 @@ import type {
   StatementType,
   Verdict,
 } from '@receipts/shared';
-import { toVerdict } from '@receipts/shared';
+import { TEXT_AT_ACTION_UNAVAILABLE, toVerdict } from '@receipts/shared';
 import {
   EVIDENCE_TYPE_FACTOR,
   HIGH_AVG_STRENGTH,
@@ -59,6 +59,13 @@ export type ScorableMatch = MatchedAction & {
   passage_vote_date?: string | null;
   /** Optional whip comparison; only affects tier selection for abstentions. */
   party_alignment?: string;
+  /**
+   * Which version of the bill's text the evaluator read. Set only for bills
+   * with per-version impact statements. A TEXT_UNAVAILABLE status lowers the
+   * band and can withhold an accusation — it is the evidence's validity, not
+   * the senator's effort, and nothing else on this field is read.
+   */
+  text_version?: import('@receipts/shared').TextVersionDisclosure;
   /**
    * Disclosure flags already established upstream — `FLOOR_LEADER` and
    * `ACTION_DATE_PROXY` come from the pre-evaluator gates, which know the
@@ -171,6 +178,33 @@ function bandFor(subset: DirectedAction[]): { band: ConfidenceBand; why: string 
   return {
     band: 'Medium',
     why: `${subset.length} aligned matches with mixed strength or evidence type (average ${round(avg, 3)})`,
+  };
+}
+
+/** The action was judged without the text in effect when it happened. */
+const textUnavailable = (e: DirectedAction): boolean =>
+  (e.vote_flags ?? []).includes(TEXT_AT_ACTION_UNAVAILABLE);
+
+/**
+ * The band, lowered to Low when any action behind it was judged against a
+ * later version of the bill than the one the senator acted on.
+ *
+ * Not a weight and not a score: the verdict's DIRECTION is untouched, and an
+ * action with its text available counts exactly as before. What changes is how
+ * sure we say we are, because on a gut-and-amend bill the later version can be
+ * different legislation. Conservative by design — one such action among
+ * several sound ones still lowers the band, because a reader cannot tell from
+ * a "High" which of the actions behind it carried the doubt.
+ */
+function bandWithText(subset: DirectedAction[]): { band: ConfidenceBand; why: string } {
+  const dial = bandFor(subset);
+  const n = subset.filter(textUnavailable).length;
+  if (!n) return dial;
+  return {
+    band: 'Low',
+    why:
+      `${dial.why}; lowered to Low because ${n} of ${subset.length} action(s) were judged without ` +
+      `the bill text in effect when the senator acted`,
   };
 }
 
@@ -308,6 +342,12 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
     // sides and must not be listed twice.
     const voteFlags: string[] = [...(m.vote_flags ?? [])];
     if (derived.split && !voteFlags.includes('SPLIT_VOTE')) voteFlags.push('SPLIT_VOTE');
+    // The evaluator read a LATER version of this bill than the one the senator
+    // acted on, because the one in effect was unusable. Disclosed on the row,
+    // and read below by the band dial and by the withholding step.
+    if (m.text_version?.status === 'TEXT_UNAVAILABLE' && !voteFlags.includes(TEXT_AT_ACTION_UNAVAILABLE)) {
+      voteFlags.push(TEXT_AT_ACTION_UNAVAILABLE);
+    }
 
     // Contract 2. Applied in code because it must hold even when the evaluator
     // ignores the instruction to cap itself.
@@ -402,7 +442,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
     const dominantSet = dominantIsKeep ? keeps : breaks;
     const dissentSet = dominantIsKeep ? breaks : keeps;
 
-    const dominantBand = bandFor(dominantSet);
+    const dominantBand = bandWithText(dominantSet);
     // Never claim High on a contested record.
     const cappedBand: ConfidenceBand = dominantBand.band === 'High' ? 'Medium' : dominantBand.band;
 
@@ -427,7 +467,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
       },
       {
         verdict: dominantIsKeep ? 'BROKE' : 'KEPT',
-        band: bandFor(dissentSet).band,
+        band: bandWithText(dissentSet).band,
         weight: dominantIsKeep ? breakWeight : keepWeight,
         evidence_uids: dissentSet.map((e) => e.action_uid),
       },
@@ -448,7 +488,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
 
   // ---- Clean direction: dials set the band --------------------------------
   const verdict: Verdict = keeps.length > 0 ? 'KEPT' : 'BROKE';
-  const { band, why } = bandFor(directed);
+  const { band, why } = bandWithText(directed);
   trace.push(`G2 passed: direction is unanimous (${verdict}).`);
   trace.push(`Band ${band} — ${why}.`);
 
