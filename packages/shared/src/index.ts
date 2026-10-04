@@ -536,6 +536,17 @@ export type NotDeterminableReason =
    */
   | 'WITHHELD_TEXT_UNAVAILABLE'
   /**
+   * The check could not be completed: the evaluator that reads each bill
+   * against the statement returned no usable judgement (a failed call, an
+   * unparseable or unrecognised response) for an action that judgement would
+   * have decided, and nothing else on the record carried a direction.
+   *
+   * NOT a finding about the senator, in either direction. Distinct from
+   * ALL_NEUTRAL above all: that one says the bills were read and do not move
+   * the goal, and an evaluator failure must never be reported as that.
+   */
+  | 'EVALUATION_FAILED'
+  /**
    * A pre-evaluator gate closed every candidate before the evaluator ran: the
    * statement's window had passed, its precondition no longer held, or the
    * vehicle could not bear on it. Each gated action carries its own reason.
@@ -1082,6 +1093,10 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   // record we have, which says nothing about which way he acted.
   WITHHELD_TEXT_UNAVAILABLE:
     "This bill was rewritten after the senator acted on it, and the version of the text in effect at the time isn't available to us. We won't call the promise broken on the strength of a different version. The bills and votes are below — read them and judge for yourself.",
+  // Neither exculpatory nor accusatory, and not "no effect": we did not
+  // finish reading the bills, so we say that and nothing more.
+  EVALUATION_FAILED:
+    "We couldn't finish checking this: the step that reads each bill against this statement failed for some or all of the bills we found. That says nothing about the senator either way. The bills and votes are below, and trying again may complete the check.",
   GATED:
     "The legislation we found can't settle this statement — the window it applied to had closed, or the bills were too broad to say anything about it specifically. Each item below says which.",
 };
