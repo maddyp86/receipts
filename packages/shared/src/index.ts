@@ -1181,6 +1181,13 @@ export function governingVoteSentence(voteGoverning: string | null | undefined):
 export const TEXT_AT_ACTION_UNAVAILABLE = 'TEXT_AT_ACTION_UNAVAILABLE';
 
 /**
+ * Disclosure flag: the bill behind a vote or sponsorship could not be read
+ * against the statement (the evaluator failed), so the row counts for nothing.
+ * Set by the scorer; read by the band dial and by withholding — see score.ts.
+ */
+export const EFFECT_UNREAD = 'EFFECT_UNREAD';
+
+/**
  * Reader-facing copy for the disclosure flags travelling on a row.
  *
  * These are a separate channel from `scoring_flags`: they are shown beside the
@@ -1201,6 +1208,9 @@ export const VOTE_FLAG_COPY: Record<string, string> = {
   // Said wherever it applies, because without it the reader assumes the bill
   // described on the card is the one the senator acted on. On a gut-and-amend
   // bill it may not be.
+  // A failed read, not a finding: says the row counts for nothing, and why.
+  [EFFECT_UNREAD]:
+    "We couldn't read this bill against the statement — the step that does it failed — so it isn't counted either way, and this reading is low confidence.",
   [TEXT_AT_ACTION_UNAVAILABLE]:
     'This bill was rewritten over time, and the version of its text in effect when the senator acted is not available to us. It was judged against a later version, so this reading is low confidence.',
 };

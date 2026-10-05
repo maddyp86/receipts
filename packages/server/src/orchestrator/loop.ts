@@ -788,6 +788,25 @@ export function buildAuditEvents(session: QuerySession, queryId: string): AuditE
     });
   }
 
+  // ---- UNREAD EVIDENCE THAT COULD OVERTURN AN ACCUSATION. EVALUATION_FAILED
+  // also arises in G1b, where nothing was directed at all; only the withholding
+  // path has a breaking row left on the result, so that is what tells them apart.
+  if (
+    session.scored?.nd_reason === 'EVALUATION_FAILED' &&
+    session.scored.evidence.some((e) => e.direction === 'breaks')
+  ) {
+    events.push({
+      query_id: queryId,
+      seq: seq++,
+      stage: 'WITHHOLDING',
+      rule: 'UNREAD_COULD_OVERTURN',
+      disposition: 'WITHHELD',
+      verdict_before: 'BROKE',
+      verdict_after: 'NOT_DETERMINABLE',
+      reason: 'Bills behind votes or sponsorships could not be read, and could have overturned the accusation.',
+    });
+  }
+
   // ---- THE JUDGE.
   if (session.judge) {
     const { verdict, disposition } = session.judge;

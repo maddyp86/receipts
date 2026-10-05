@@ -84,13 +84,13 @@ describe('what does not change', () => {
     expect(r.nd_reason).toBe('PROCEDURAL_SWITCH');
   });
 
-  // Out of this change's scope, pinned so it is not mistaken for intended: a
-  // verdict reached from the rows that WERE read stands, with the failed rows
-  // flagged on the card. Whether a partly-failed read should lower the band
-  // is a separate decision.
-  it('a verdict from the rows that were read stands; failed rows are flagged', () => {
+  // A verdict reached from the rows that WERE read stands — but at Low, with
+  // the unread rows flagged for the reader (decided after #28; see
+  // partlyUnread.test.ts for the band and the withheld accusation).
+  it('a verdict from the rows that were read stands, at Low; failed rows are flagged', () => {
     const r = run([row({ bill_effect: 'ADVANCE' }), row(), row()]);
     expect(r.verdict).toBe('KEPT');
+    expect(r.band).toBe('Low');
     expect(r.evidence.filter((e) => e.scoring_flags.includes('BILL_EFFECT_ERROR'))).toHaveLength(2);
   });
 
