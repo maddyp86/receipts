@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import {
-  HISTORY_UNAVAILABLE_COPY,
   STRENGTH_PHRASE,
   VOTE_FLAG_COPY,
   textVersionLines,
   congressLabel,
   congressOfBillId,
   governingVoteSentence,
+  HISTORY_UNAVAILABLE_COPY,
   type DirectedAction,
 } from '@receipts/shared';
 
