@@ -1176,7 +1176,7 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   // Neither exculpatory nor accusatory, and not "no effect": we did not
   // finish reading the bills, so we say that and nothing more.
   EVALUATION_FAILED:
-    "We couldn't finish checking this: the step that reads each bill against this statement failed for some or all of the bills we found. That says nothing about the senator either way. The bills and votes are below, and trying again may complete the check.",
+    "We couldn't finish checking this: a step failed for this answer — either reading the bills against this statement, or reading the part of the record we check them against. That says nothing about the senator either way. The bills and votes are below, and trying again may complete the check.",
   // The record, and only the record. A missed vote has reasons the data can't
   // tell apart, so this sentence names none and implies none — and it is not
   // "no effect", which is a claim about the bills.

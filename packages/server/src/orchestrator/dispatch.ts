@@ -3,6 +3,7 @@ import {
   BANNED_MOTIVE_TERMS,
   fail,
   ok,
+  type EnrichmentGap,
   type Envelope,
   type Explanation,
   type Interpretation,
@@ -26,6 +27,7 @@ import {
 import { liveResponsesFetcher } from '../evaluation/responsesFetcher.js';
 import { preEvaluatorGates, type GateResult } from '../evaluation/preEvaluatorGates.js';
 import {
+  ENRICHMENT_GAP_OF,
   enrichmentSource,
   type ActionEnrichment,
   type EnrichmentPart,
@@ -50,6 +52,7 @@ import {
 import { classifyPromise, type ClassifyFetcher } from '../evaluation/classify.js';
 import type { CorrectionDelta, Corrections } from '@receipts/shared';
 import { scoreMatches, type ScorableMatch } from '../scoring/score.js';
+import { withholdForUnreadRecord } from '../scoring/withholding.js';
 import { config, namespaceFor } from '../config.js';
 import { traceStep, type TraceUsage } from '../trace/Trace.js';
 import type { ResponsesEnvelope } from '../evaluation/relevance.js';
@@ -1217,6 +1220,8 @@ async function evaluateEffectsTool(
     // Without this the scorer cannot tell "retrieval found nothing" from "the
     // gates closed everything retrieval found" — `scorable` is empty either way.
     gated_count: gatedRows.length,
+    // A failed record read lowers the band and can withhold an accusation.
+    enrichment_gaps: [...new Set((session.enrichmentFailures ?? []).map((f) => ENRICHMENT_GAP_OF[f.part]))],
   });
   session.scored = scored;
 
@@ -1282,15 +1287,32 @@ async function evaluateEffectsTool(
       .sort((a, b) => (b.alignment_confidence ?? 0) - (a.alignment_confidence ?? 0));
     const lead = breaking[0];
 
-    if (lead) {
+    // The judge's own read reports into the same run: a judge shown no vote
+    // dates is reviewing with less than the evaluator had.
+    const judgeReadFailed: EnrichmentGap[] = [];
+    const enriched = lead
+      ? ((await enrichmentSource.forActions([lead.action_uid], (part, message) => {
+          session.enrichmentFailures = [...(session.enrichmentFailures ?? []), { part, message }];
+          judgeReadFailed.push(ENRICHMENT_GAP_OF[part]);
+        })).get(lead.action_uid) ?? {})
+      : {};
+    // The judge's gates need the dates and roll-call context the scorer had.
+    // Read failed, they would run without them and fail open — the incomplete
+    // check the scorer withholds for — so the accusation is withheld here too
+    // and the judge is not asked to review it.
+    const unreadRecord = withholdForUnreadRecord(scored, judgeReadFailed);
+
+    if (lead && unreadRecord.withheld) {
+      session.scored = unreadRecord.result;
+      traceStep({
+        stage: 'JUDGE', kind: 'deterministic', subject: lead.action_uid, status: 'error',
+        label: `skipped — the judge's record read failed · BROKE → NOT_DETERMINABLE (withheld)`,
+        input: { lead_action: lead.action_uid, failed: judgeReadFailed },
+        output: { withheld_reason: unreadRecord.reason, verdict_after: 'NOT_DETERMINABLE' },
+      });
+    } else if (lead) {
       const gate = session.gates?.[lead.action_uid];
       const f = session.fulfillment?.[lead.action_uid];
-      // The judge's own read reports into the same run: a judge shown no vote
-      // dates is reviewing with less than the evaluator had.
-      const enriched =
-        (await enrichmentSource.forActions([lead.action_uid], (part, message) => {
-          session.enrichmentFailures = [...(session.enrichmentFailures ?? []), { part, message }];
-        })).get(lead.action_uid) ?? {};
       const scoredBefore = scored.verdict;
       // The judge reviews the evaluator's reading, so it must read the same
       // text. Shown the enrolled NDAA while the evaluator read the introduced

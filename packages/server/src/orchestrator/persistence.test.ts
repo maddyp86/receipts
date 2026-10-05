@@ -290,6 +290,29 @@ describe('buildAuditEvents', () => {
     expect(e!.verdict_after).toBe('NOT_DETERMINABLE');
   });
 
+  // Both arrive as EVALUATION_FAILED with a breaking row left on the result;
+  // the receipt flag is what tells a failed record read from unread bills.
+  const withheldFailed = (scoring_flags: string[]) =>
+    ({
+      politicianId: 'S000148',
+      promiseText: 'x',
+      scored: {
+        nd_reason: 'EVALUATION_FAILED',
+        evidence: [{ direction: 'breaks' }],
+        receipt: { scoring_flags },
+      },
+    }) as unknown as QuerySession;
+
+  it('records a withholding for a failed record read under its own rule', () => {
+    const rules = buildAuditEvents(withheldFailed(['RECORD_UNREAD']), 'q-1').map((e) => e.rule);
+    expect(rules).toEqual(['RECORD_UNREAD']);
+  });
+
+  it('records unread bills that could overturn under theirs', () => {
+    const rules = buildAuditEvents(withheldFailed([]), 'q-1').map((e) => e.rule);
+    expect(rules).toEqual(['UNREAD_COULD_OVERTURN']);
+  });
+
   const judged = (over: Record<string, unknown>): QuerySession =>
     ({
       politicianId: 'S000148',

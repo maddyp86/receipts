@@ -1,7 +1,9 @@
 import {
   EFFECT_UNREAD,
   TEXT_AT_ACTION_UNAVAILABLE,
+  ENRICHMENT_GAP_PHRASE,
   type DirectedAction,
+  type EnrichmentGap,
   type ScoredResult,
 } from '@receipts/shared';
 import { EVIDENCE_TYPE_FACTOR } from './config.js';
@@ -72,6 +74,54 @@ function unreadWeight(e: DirectedAction): number {
 }
 
 /**
+ * The parts of the record whose failed read can change what is published.
+ *
+ * Each feeds the text selection or a gate: vote and sponsorship dates pick the
+ * version of the text in effect (and date G1a); roll-call context is the
+ * cloture result, the whip's vote and the senator's role (G2, G3); the text
+ * versions are the text itself. Without them the tool may have judged the
+ * wrong text of a gut-and-amend bill, or let a gate that should have closed
+ * stay open. Bill progress is absent on purpose: tier, stage and committee are
+ * presentation only and never reach a verdict.
+ */
+export const DECISIVE_ENRICHMENT_GAPS: readonly EnrichmentGap[] = ['vote_records', 'roll_call_context', 'text_versions'];
+
+/** Marks a result withheld for a failed record read, for the audit log. */
+export const RECORD_UNREAD = 'RECORD_UNREAD';
+
+/**
+ * Withhold an accusation reached while a decisive part of the record could
+ * not be read. KEPT and NOT_DETERMINABLE pass through: a favourable reading is
+ * shown at Low (the band dial does that), as the asymmetry has it.
+ */
+export function withholdForUnreadRecord(result: ScoredResult, gaps: readonly EnrichmentGap[] = []): WithholdingOutcome {
+  if (result.verdict !== 'BROKE') return { result, withheld: false, reason: '' };
+  const decisive = [...new Set(gaps)].filter((g) => DECISIVE_ENRICHMENT_GAPS.includes(g));
+  if (!decisive.length) return { result, withheld: false, reason: '' };
+  const reason =
+    `This reading would say the senator broke the promise, but part of the record the checks depend on ` +
+    `could not be read for this answer (${decisive.map((g) => ENRICHMENT_GAP_PHRASE[g]).join('; ')}). ` +
+    `Without it we may have judged the wrong version of a bill's text, or let a check that should have ` +
+    `applied go unapplied. An accusation is not published on an incomplete check.`;
+  return {
+    withheld: true,
+    reason,
+    result: {
+      ...result,
+      verdict: 'NOT_DETERMINABLE',
+      band: null,
+      mode: 'not_determinable',
+      nd_reason: 'EVALUATION_FAILED',
+      receipt: {
+        ...result.receipt,
+        scoring_flags: [...result.receipt.scoring_flags, RECORD_UNREAD],
+        trace: [...(result.receipt.trace ?? []), `Withheld: ${reason}`],
+      },
+    },
+  };
+}
+
+/**
  * Apply contract 3.
  *
  * `counterargumentPresent` is a caller-supplied assertion that the senator's
@@ -88,7 +138,7 @@ function unreadWeight(e: DirectedAction): number {
  */
 export function applyWithholding(
   result: ScoredResult,
-  opts: { counterargumentPresent?: boolean } = {},
+  opts: { counterargumentPresent?: boolean; enrichmentGaps?: readonly EnrichmentGap[] } = {},
 ): WithholdingOutcome {
   // Only accusations. KEPT and NOT_DETERMINABLE pass through untouched.
   if (result.verdict !== 'BROKE') {
@@ -154,6 +204,12 @@ export function applyWithholding(
       };
     }
   }
+
+  // THIRD, also ahead of the counterargument: a read of the record the checks
+  // depend on failed. Every check that needed it ran without it and failed
+  // open, so the accusation may rest on the wrong text or a skipped gate.
+  const unreadRecord = withholdForUnreadRecord(result, opts.enrichmentGaps);
+  if (unreadRecord.withheld) return unreadRecord;
 
   if (opts.counterargumentPresent) {
     return { result, withheld: false, reason: '' };

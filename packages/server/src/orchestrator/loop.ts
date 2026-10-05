@@ -18,6 +18,7 @@ import { classifyScope, haltForScope } from '../scope/classifyScope.js';
 import { describeCoverage } from '../scoring/coverage.js';
 import { cacheKey, isCacheable, resultCache } from '../data/ResultCache.js';
 import { ENRICHMENT_GAP_OF } from '../evaluation/enrichment.js';
+import { RECORD_UNREAD } from '../scoring/withholding.js';
 import type { Corrections } from '@receipts/shared';
 import { systemPrompt, EXPLANATION_CONSTRAINTS } from './prompts.js';
 import { TOOL_DEFINITIONS } from './toolDefs.js';
@@ -797,9 +798,12 @@ export function buildAuditEvents(session: QuerySession, queryId: string): AuditE
   // ---- UNREAD EVIDENCE THAT COULD OVERTURN AN ACCUSATION. EVALUATION_FAILED
   // also arises in G1b, where nothing was directed at all; only the withholding
   // path has a breaking row left on the result, so that is what tells them apart.
+  // A failed record read marks itself on the receipt; it gets its own rule.
+  const recordUnread = session.scored?.receipt?.scoring_flags?.includes(RECORD_UNREAD) ?? false;
   if (
     session.scored?.nd_reason === 'EVALUATION_FAILED' &&
-    session.scored.evidence.some((e) => e.direction === 'breaks')
+    session.scored.evidence.some((e) => e.direction === 'breaks') &&
+    !recordUnread
   ) {
     events.push({
       query_id: queryId,
@@ -810,6 +814,22 @@ export function buildAuditEvents(session: QuerySession, queryId: string): AuditE
       verdict_before: 'BROKE',
       verdict_after: 'NOT_DETERMINABLE',
       reason: 'Bills behind votes or sponsorships could not be read, and could have overturned the accusation.',
+    });
+  }
+
+  // ---- A FAILED READ OF THE RECORD THE CHECKS DEPEND ON. Vote dates pick
+  // the text a gut-and-amend bill is judged against; roll-call context opens
+  // and closes gates. Without them the accusation rests on an incomplete check.
+  if (session.scored?.nd_reason === 'EVALUATION_FAILED' && recordUnread) {
+    events.push({
+      query_id: queryId,
+      seq: seq++,
+      stage: 'WITHHOLDING',
+      rule: 'RECORD_UNREAD',
+      disposition: 'WITHHELD',
+      verdict_before: 'BROKE',
+      verdict_after: 'NOT_DETERMINABLE',
+      reason: 'Part of the record the text selection or a gate depends on could not be read.',
     });
   }
 
