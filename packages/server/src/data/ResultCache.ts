@@ -170,9 +170,16 @@ export class ResultCache {
  *
  * A halt IS cacheable: it is a complete answer, and re-deciding it costs a
  * model call to reach the same conclusion.
+ *
+ * A result whose evaluation FAILED is the first exclusion arriving in a
+ * different shape: the run completed, but the evaluator calls behind it did
+ * not, and the result says so (EVALUATION_FAILED) and tells the reader that
+ * trying again may complete the check. Cached, the retry would replay the
+ * failure.
  */
 export function isCacheable(events: StreamEvent[]): boolean {
   if (events.some((e) => e.type === 'error')) return false;
+  if (events.some((e) => e.type === 'result' && e.result?.scored?.nd_reason === 'EVALUATION_FAILED')) return false;
   return events.some((e) => e.type === 'result' || e.type === 'halt');
 }
 

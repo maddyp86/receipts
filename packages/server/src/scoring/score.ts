@@ -24,6 +24,7 @@ import {
 import {
   capSplitConfidence,
   deriveAlignment,
+  effectiveVote,
   isSponsored,
   type AlignmentInput,
 } from './deriveAlignment.js';
@@ -419,9 +420,24 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
       e.action_tier === 'ABSTAIN',
     );
 
+    // An evaluator ERROR on an action its judgement would have DECIDED — a
+    // sponsorship or a directional vote. deriveAlignment returns ERROR before
+    // it looks at the action at all, so an errored row with no deciding action
+    // (an abstention, or nothing) is excluded: "no action to judge" is true of
+    // it whatever the evaluator said. For the rest, the bill was never read, so
+    // ALL_NEUTRAL — "the bills don't move the goal" — would be a finding
+    // nobody made. Any one such row is enough: with nothing else directed, the
+    // unread rows are the ones that might have decided it.
+    const evaluationFailed = evidence.some((e) => {
+      if (e.outcome !== 'ERROR') return false;
+      const input = { bill_effect: e.bill_effect, vote: e.vote, cloture_vote: e.cloture_vote, passage_vote: e.passage_vote, is_sponsor: e.is_sponsor, is_cosponsor: e.is_cosponsor };
+      return isSponsored(input) || effectiveVote(input) !== null;
+    });
+
     let reason: NotDeterminableReason;
     if (allProcedural) reason = 'PROCEDURAL_SWITCH';
     else if (input.promise_type === 'non_legislative' && !anyAction) reason = 'NON_LEGISLATIVE';
+    else if (evaluationFailed) reason = 'EVALUATION_FAILED';
     else if (anyMissing) reason = 'UNDIRECTABLE_METADATA';
     else if (!anyAction) reason = 'NO_ACTION';
     else reason = 'ALL_NEUTRAL';
