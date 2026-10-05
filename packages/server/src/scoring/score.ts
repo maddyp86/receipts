@@ -434,12 +434,27 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
       return isSponsored(input) || effectiveVote(input) !== null;
     });
 
+    // An abstention on a bill that was NOT read as having no effect: read as
+    // advancing or hindering the goal, or not read at all (an errored row whose
+    // only action is the abstention — EVALUATION_FAILED above takes the rest).
+    // A recorded "Not Voting" has no direction, so it is why nothing could be
+    // judged, and ALL_NEUTRAL — "the bills don't move the goal" — would
+    // misstate the evaluator's reading. An abstention on a bill read as NEUTRAL
+    // or CONTESTED stays ALL_NEUTRAL: a yes or no vote would not have decided
+    // it either, so the reading is the reason, and that sentence is true.
+    const abstainedOnUnsettledBill = evidence.some((e) => {
+      if (e.action_tier !== 'ABSTAIN') return false;
+      const effect = String(e.bill_effect ?? '').toUpperCase();
+      return effect !== 'NEUTRAL' && effect !== 'CONTESTED';
+    });
+
     let reason: NotDeterminableReason;
     if (allProcedural) reason = 'PROCEDURAL_SWITCH';
     else if (input.promise_type === 'non_legislative' && !anyAction) reason = 'NON_LEGISLATIVE';
     else if (evaluationFailed) reason = 'EVALUATION_FAILED';
     else if (anyMissing) reason = 'UNDIRECTABLE_METADATA';
     else if (!anyAction) reason = 'NO_ACTION';
+    else if (abstainedOnUnsettledBill) reason = 'ABSTAINED';
     else reason = 'ALL_NEUTRAL';
 
     trace.push(

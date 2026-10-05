@@ -547,6 +547,18 @@ export type NotDeterminableReason =
    */
   | 'EVALUATION_FAILED'
   /**
+   * The senator's only actions on the bills that could bear on the statement
+   * were recorded "Not Voting": no yes or no vote, no sponsorship, so there is
+   * no direction to read. The bills were read as advancing or hindering the
+   * goal, or not read at all — never as having no effect.
+   *
+   * A statement of the record, not of motive: a missed vote has explanations
+   * the data cannot tell apart (BANNED_MOTIVE_TERMS). Distinct from
+   * ALL_NEUTRAL, which says the bills do not move the goal; an abstention on a
+   * bill read that way is still ALL_NEUTRAL.
+   */
+  | 'ABSTAINED'
+  /**
    * A pre-evaluator gate closed every candidate before the evaluator ran: the
    * statement's window had passed, its precondition no longer held, or the
    * vehicle could not bear on it. Each gated action carries its own reason.
@@ -1097,6 +1109,11 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   // finish reading the bills, so we say that and nothing more.
   EVALUATION_FAILED:
     "We couldn't finish checking this: the step that reads each bill against this statement failed for some or all of the bills we found. That says nothing about the senator either way. The bills and votes are below, and trying again may complete the check.",
+  // The record, and only the record. A missed vote has reasons the data can't
+  // tell apart, so this sentence names none and implies none — and it is not
+  // "no effect", which is a claim about the bills.
+  ABSTAINED:
+    "We found legislation that could bear on this promise, but this senator was recorded as not voting on it and didn't put their name to it, so there's no yes or no to judge. The record doesn't say why.",
   GATED:
     "The legislation we found can't settle this statement — the window it applied to had closed, or the bills were too broad to say anything about it specifically. Each item below says which.",
 };
