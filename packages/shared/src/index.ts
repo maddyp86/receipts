@@ -1173,6 +1173,126 @@ export const VOTE_FLAG_COPY: Record<string, string> = {
     'This bill was rewritten over time, and the version of its text in effect when the senator acted is not available to us. It was judged against a later version, so this reading is low confidence.',
 };
 
+/** 'YYYY-MM-DD' -> 'March 14, 2025', in UTC so it never drifts a day. Null when not a date. */
+export function longDate(iso: string | null | undefined): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso ?? '').trim());
+  if (!m) return null;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+}
+
+/**
+ * A congress.gov text-version code as a reader would say it, completing "the
+ * version …". "Engrossed Amendment House" means nothing to a voter; "the
+ * version as amended by the House" does. Worded for bills and resolutions
+ * alike. Every code on the live corpus (2026-10-03) is here — `rfs` is
+ * REFERRED in the Senate and `rds` RECEIVED; they are easy to swap.
+ * Unknown codes fall back to the version type, quoted.
+ */
+export const TEXT_VERSION_PHRASE: Record<string, string> = {
+  is: 'as introduced',
+  ih: 'as introduced',
+  rs: 'as reported by committee',
+  rh: 'as reported by committee',
+  rfs: 'as referred to a Senate committee',
+  rfh: 'as referred to a House committee',
+  rds: 'as received in the Senate',
+  rdh: 'as received in the House',
+  pcs: 'as placed on the Senate calendar',
+  pch: 'as placed on the House calendar',
+  hds: 'as held at the desk in the Senate',
+  hdh: 'as held at the desk in the House',
+  es: 'as passed by the Senate',
+  eh: 'as passed by the House',
+  cps: 'as considered and passed by the Senate',
+  cph: 'as considered and passed by the House',
+  eas: 'as amended by the Senate',
+  eah: 'as amended by the House',
+  ats: 'as agreed to by the Senate',
+  ath: 'as agreed to by the House',
+  pap: 'as printed after passage',
+  enr: 'as enrolled — the final text agreed by both chambers',
+};
+
+const versionPhrase = (code: string | null, type: string | null): string => {
+  const known = code ? TEXT_VERSION_PHRASE[code.toLowerCase()] : undefined;
+  if (known) return `the version ${known}`;
+  return type ? `the version marked “${type}”` : 'an earlier version of the text';
+};
+
+/** A title in quotes, without its own trailing period — the sentence supplies one. */
+const quoteTitle = (raw: string): string => {
+  const t = raw.trim().replace(/[.\s]+$/, '');
+  return `“${t.length > 160 ? `${t.slice(0, 157).trimEnd()}…` : t}”`;
+};
+
+/**
+ * Reader-facing lines saying which version of a bill's text an action was
+ * judged against, and what became of the bill after (brief 3, Task 5).
+ *
+ * Rules carried from review:
+ * - A version title is shown only when it was read from that version's own
+ *   text (TEXT). Others are mostly document headers.
+ * - "Rewritten" is said only when the two TEXT titles differ; otherwise a
+ *   later version is mentioned neutrally, because a later version is not
+ *   necessarily different legislation.
+ * - Taxonomy divergence arrives already gated on differing titles; it is said
+ *   as a fact about the bill, without naming the per-version labels.
+ *
+ * Returns [] when there is nothing to disclose — a bill with no versions has
+ * no `text_version` at all, and the card shows what it did before.
+ */
+export function textVersionLines(d: TextVersionDisclosure | null | undefined): string[] {
+  if (!d) return [];
+  const lines: string[] = [];
+  const date = longDate(d.date);
+  const phrase = versionPhrase(d.code, d.type);
+  const own = d.title && d.title_source === 'TEXT' ? `, titled ${quoteTitle(d.title)}` : '';
+
+  if (d.status === 'SELECTED') {
+    lines.push(`Judged against the text in effect when the senator acted: ${phrase}${date ? ` (${date})` : ''}${own}.`);
+  } else if (d.status === 'TEXT_UNAVAILABLE') {
+    lines.push(
+      `The text in effect when the senator acted — ${phrase}${date ? ` (${date})` : ''} — isn't available to us, so a later version was used.`,
+    );
+  } else if (d.status === 'NO_ACTION_DATE') {
+    lines.push(
+      "This bill's text changed over time, and the record doesn't date this action precisely enough to say which version was in effect, so the latest version was used.",
+    );
+  } else {
+    lines.push(
+      'This action predates the earliest version of the text we have, so the latest version was used.',
+    );
+  }
+
+  // What the bill became, when the version judged was not the last.
+  if (d.latest && (d.status === 'SELECTED' || d.status === 'TEXT_UNAVAILABLE')) {
+    const later = d.latest.title && d.latest.title_source === 'TEXT' ? quoteTitle(d.latest.title) : null;
+    if (d.rewritten) {
+      // With the final title, the title itself shows what the bill became, and
+      // the record sentence beside it already says "rewritten" — so this line
+      // names the final text rather than repeating that sentence.
+      lines.push(
+        later
+          ? `Under the same number, its final text is titled ${later}.`
+          : 'The bill was later rewritten under the same number.',
+      );
+    } else {
+      lines.push(`A later version of the text exists: ${versionPhrase(d.latest.code, d.latest.type)}.`);
+    }
+  }
+
+  // Said WITHOUT the labels. The divergence is real (it is gated on the text
+  // titles differing), but the label on any single version is not reliable:
+  // s1071-119's VA-disinterment version is classified "Budget & Economy /
+  // Finance & Banking". Printing it would put a wrong fact in front of a voter.
+  if (d.taxonomy_divergent) {
+    lines.push('Versions of this bill were classified under different policy areas as its text changed.');
+  }
+  return lines;
+}
+
 /**
  * How a per-action confidence is written in the ANALYST TRACE.
  *

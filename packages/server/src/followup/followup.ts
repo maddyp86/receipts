@@ -169,6 +169,25 @@ export function buildFollowupContext(record: TraceRecord): string {
     lines.push('');
   }
 
+  // Which version of a rewritten bill's text each action was judged against.
+  // Without this the assistant cannot answer "which text was this judged
+  // against?" — the one question the version track most invites.
+  const versions = stepsOf(record, 'TEXT_VERSION');
+  if (versions.length) {
+    lines.push(`# Text version — bills whose text changed under the same number, judged against the version in effect when the senator acted`);
+    for (const s of versions) {
+      const d = out(s) as Record<string, unknown>;
+      const latest = (d.latest ?? null) as Record<string, unknown> | null;
+      lines.push(
+        `- ${s.label}. Status ${S(d.status)}; version ${S(d.code)} (${S(d.type)}, ${S(d.date) || 'undated'})` +
+          `${d.title_source === 'TEXT' && d.title ? `, titled "${S(d.title)}"` : ''}` +
+          `${latest ? `; the bill's latest version is ${S(latest.code)}${latest.title_source === 'TEXT' && latest.title ? `, titled "${S(latest.title)}"` : ''}` : ''}` +
+          `${d.rewritten ? '; the bill was rewritten under the same number' : ''}.`,
+      );
+    }
+    lines.push('');
+  }
+
   const fulfillment = stepsOf(record, 'FULFILLMENT');
   if (fulfillment.length) {
     lines.push(`# Bill effect — which way does each bill push the goal? (one evaluator call per bill; the verdict follows from this plus the senator's action)`);
