@@ -80,16 +80,26 @@ describe('the reproduction', () => {
   });
 });
 
-describe('where ALL_NEUTRAL is still the honest reason', () => {
-  it('directional votes on bills read as having no effect', () => {
-    expect(run([row({ bill_effect: 'NEUTRAL', ...VOTED }), row({ bill_effect: 'CONTESTED', ...VOTED })]).nd_reason)
+describe('where the bill\'s reading is the honest reason', () => {
+  it('directional votes on bills read as having no effect are ALL_NEUTRAL', () => {
+    expect(run([row({ bill_effect: 'NEUTRAL', ...VOTED }), row({ bill_effect: 'NEUTRAL', ...VOTED })]).nd_reason)
       .toBe('ALL_NEUTRAL');
   });
 
-  // The decision this change makes: the bill's reading, not the missed vote,
-  // is why nothing could be judged.
-  it.each(['NEUTRAL', 'CONTESTED'] as const)('an abstention on a bill read as %s', (bill_effect) => {
-    expect(run([row({ bill_effect })]).nd_reason).toBe('ALL_NEUTRAL');
+  // A contested bill was read both ways, not as having no effect (honesty
+  // sweep): any one makes it CONTESTED_READING.
+  it('a contested bill beside a no-effect one is CONTESTED_READING', () => {
+    expect(run([row({ bill_effect: 'NEUTRAL', ...VOTED }), row({ bill_effect: 'CONTESTED', ...VOTED })]).nd_reason)
+      .toBe('CONTESTED_READING');
+  });
+
+  // The decision #29 made: the bill's reading, not the missed vote, is why
+  // nothing could be judged.
+  it.each([
+    ['NEUTRAL', 'ALL_NEUTRAL'],
+    ['CONTESTED', 'CONTESTED_READING'],
+  ] as const)('an abstention on a bill read as %s is %s', (bill_effect, reason) => {
+    expect(run([row({ bill_effect })]).nd_reason).toBe(reason);
   });
 });
 

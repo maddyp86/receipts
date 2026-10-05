@@ -200,7 +200,7 @@ export function HaltState({
       <h2>
         {halt.reason === 'STATEMENT_DATE_REQUIRED'
           ? 'When was this said?'
-          : 'This isn’t something a vote can settle'}
+          : 'This doesn’t look like something a vote can settle'}
       </h2>
       <p>{halt.message}</p>
 

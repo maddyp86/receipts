@@ -87,23 +87,38 @@ export function HowWeGotHere({ result }: { result: QueryResult }) {
     });
   }
 
-  // 5. Direction on the goal.
+  // 5. Direction on the goal — of each BILL, as the evaluator read it.
+  //
+  // Counted from each row's bill_effect, never from direction_split. Direction
+  // is the senator's alignment (a no vote on a bill that sets the goal back
+  // "keeps"), so reading it here said a bill moved the goal forward when the
+  // evaluator read it as setting it back. And every undirected row — an
+  // unread bill, an abstention, a contested reading — was described as "about
+  // something else", contradicting the reason given in step 7.
   if (scored.verdict !== 'NOT_DETERMINABLE' || receipt.match_count > 0) {
-    const { keeps, breaks, neutral } = receipt.direction_split;
+    const count = (effect: string) =>
+      scored.evidence.filter((e) => String(e.bill_effect ?? '').toUpperCase() === effect).length;
+    const advance = count('ADVANCE');
+    const hinder = count('HINDER');
+    const neutral = count('NEUTRAL');
+    const contested = count('CONTESTED');
+    const unread = scored.evidence.length - advance - hinder - neutral - contested;
     const parts: string[] = [];
-    if (keeps) parts.push(`${keeps} would move your goal forward`);
-    if (breaks) parts.push(`${breaks} would set it back`);
-    if (neutral) {
+    if (advance) parts.push(`${advance} would move your goal forward`);
+    if (hinder) parts.push(`${hinder} would set it back`);
+    if (neutral) parts.push(`${neutral} ${neutral === 1 ? 'does' : 'do'} not move it either way`);
+    if (contested) {
       parts.push(
-        `${neutral} turned out to be about something else — the same subject, a different thing — and ${neutral === 1 ? 'does' : 'do'} not count either way`,
+        `${contested} could reasonably be read either way, so ${contested === 1 ? 'it is' : 'they are'} not counted in either direction`,
       );
     }
+    if (unread) parts.push(`${unread} could not be read against your statement`);
     const belowFloor = search ? search.admitted - receipt.match_count : 0;
     steps.push({
       title: 'Which way each bill pushes your goal',
       body:
         `For each bill that counted, we asked whether passing it would move the goal in your statement forward or set it back. ` +
-        (parts.length ? `${parts.join('; ')}.` : 'None carried a direction.') +
+        (parts.length ? `As we read them: ${parts.join('; ')}.` : 'None carried a direction.') +
         (belowFloor > 0
           ? ` ${plural(belowFloor, 'bill')} ${belowFloor === 1 ? 'was' : 'were'} related but not close enough to weigh.`
           : ''),
@@ -143,11 +158,18 @@ export function HowWeGotHere({ result }: { result: QueryResult }) {
 
   // 8. The second look.
   const judgeSentence = judgeDispositionSentence(judge?.disposition);
+  // An accusation withheld by a rule before review is still an accusation that
+  // was reached; "this reading does not accuse" would be false of it. The
+  // breaking rows stay on the result, so they are what tells.
+  const withheldBeforeReview =
+    scored.verdict === 'NOT_DETERMINABLE' && scored.evidence.some((e) => e.direction === 'breaks');
   steps.push({
     title: 'A second look',
     body: judge
       ? (judgeSentence ?? 'A second, adversarial review was attempted on this reading.')
-      : 'A second, adversarial review runs only when a reading accuses the senator of going against what they said. This reading does not, so none ran.',
+      : withheldBeforeReview
+        ? 'A second, adversarial review runs when a reading accuses the senator of going against what they said. This one was withheld by the rule above before it got that far, so none ran.'
+        : 'A second, adversarial review runs only when a reading accuses the senator of going against what they said. This reading does not, so none ran.',
   });
 
   return (

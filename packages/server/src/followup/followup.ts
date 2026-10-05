@@ -35,7 +35,7 @@ import { QueryTrace, anthropicUsage, type TraceSink } from '../trace/Trace.js';
 // ===========================================================================
 
 export const FOLLOWUP_MAX_TOKENS = 1500;
-export const FOLLOWUP_PROMPT_VERSION = 'followup-v1';
+export const FOLLOWUP_PROMPT_VERSION = 'followup-v2';
 
 export const FOLLOWUP_SYSTEM_PROMPT = `You are answering a follow-up question from a person who is looking at a finished result from Receipts, a tool that checks a senator's legislative record against a statement the person typed.
 
@@ -44,6 +44,7 @@ You are given the record of how that result was reached: what the person asked, 
 ## WHAT YOU DO
 - Explain the result. Point at the specific bill, vote, gate or rule the answer turns on, and quote the reasoning the record holds for it.
 - Say plainly when the record does not contain the answer. "The record does not say" is a good answer.
+- Say a reading as a reading. Which way a bill pushes the goal is the evaluator's reading of its text, not a fact about the bill: "it was read as setting the goal back". A bill read as CONTESTED was read both ways, not as having no effect; a bill whose effect is ERROR was never read.
 - If the question would need a new search, a different senator, a different statement, or a re-scoring — say that it is a new question and that the person should run it as one. Do not guess.
 
 ## WHAT YOU NEVER DO

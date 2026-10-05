@@ -273,7 +273,7 @@ export function preEvaluatorGates(
           `Bounded statement (${meta.anchor || 'window'}) valid until ${iso(meta.validUntil)}; ` +
           `this action is dated ${iso(actionDate)}` +
           `${actionDateIsProxy ? ' (Congress start used as proxy — no vote date on row)' : ''}. ` +
-          `The statement had already closed.`,
+          `The statement's window, as we read it, had already closed.`,
       });
     } else if (!meta.validUntil && S(meta.validUntilRaw) === 'UNKNOWN') {
       hits.push({
@@ -323,7 +323,7 @@ export function preEvaluatorGates(
       verdict: 'NOT_APPLICABLE_EXPIRED',
       reason:
         `Relevance step classified the statement as pointing at a specific closed vehicle ` +
-        `(${S(row.anchor_vehicle) || 'see Anchor Vehicle'}); this bill is a different one.`,
+        `(${S(row.anchor_vehicle) || 'see Anchor Vehicle'}); this bill appears to be a different one.`,
     });
   }
 

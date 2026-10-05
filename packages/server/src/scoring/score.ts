@@ -466,13 +466,19 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
     // A recorded "Not Voting" has no direction, so it is why nothing could be
     // judged, and ALL_NEUTRAL — "the bills don't move the goal" — would
     // misstate the evaluator's reading. An abstention on a bill read as NEUTRAL
-    // or CONTESTED stays ALL_NEUTRAL: a yes or no vote would not have decided
-    // it either, so the reading is the reason, and that sentence is true.
+    // stays ALL_NEUTRAL, and on one read as CONTESTED is CONTESTED_READING: a
+    // yes or no vote would not have decided it either, so the reading is the
+    // reason.
     const abstainedOnUnsettledBill = evidence.some((e) => {
       if (e.action_tier !== 'ABSTAIN') return false;
       const effect = String(e.bill_effect ?? '').toUpperCase();
       return effect !== 'NEUTRAL' && effect !== 'CONTESTED';
     });
+
+    // A bill read as CONTESTED was read both ways, not as having no effect.
+    // ALL_NEUTRAL's sentence — the bills "don't move the goal" — would
+    // overstate it, so any one such bill gets the contested sentence.
+    const readBothWays = evidence.some((e) => String(e.bill_effect ?? '').toUpperCase() === 'CONTESTED');
 
     let reason: NotDeterminableReason;
     if (allProcedural) reason = 'PROCEDURAL_SWITCH';
@@ -481,6 +487,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
     else if (anyMissing) reason = 'UNDIRECTABLE_METADATA';
     else if (!anyAction) reason = 'NO_ACTION';
     else if (abstainedOnUnsettledBill) reason = 'ABSTAINED';
+    else if (readBothWays) reason = 'CONTESTED_READING';
     else reason = 'ALL_NEUTRAL';
 
     trace.push(

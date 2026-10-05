@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  EFFECT_UNREAD,
   STRENGTH_PHRASE,
   VOTE_FLAG_COPY,
   textVersionLines,
@@ -58,9 +59,22 @@ function describeBehaviour(e: DirectedAction): string {
   return parts.length ? parts.join(' and ') : 'took no recorded action on this bill';
 }
 
+/**
+ * The bill's effect on the goal, as the evaluator read it. A reading, so it is
+ * said as one. An unread bill is said only when no disclosure flag already
+ * says it (EFFECT_UNREAD).
+ */
 function describeEffect(e: DirectedAction): string | null {
-  if (e.bill_effect === 'ADVANCE') return 'This bill moves that goal forward.';
-  if (e.bill_effect === 'HINDER') return 'This bill sets that goal back.';
+  const effect = String(e.bill_effect ?? '').toUpperCase();
+  if (effect === 'ADVANCE') return 'As we read it, this bill moves that goal forward.';
+  if (effect === 'HINDER') return 'As we read it, this bill sets that goal back.';
+  if (effect === 'NEUTRAL') return 'As we read it, this bill doesn’t move that goal either way.';
+  if (effect === 'CONTESTED') {
+    return 'This bill can reasonably be read as moving that goal either way, so it isn’t counted in either direction.';
+  }
+  if (effect === 'ERROR' && !(e.vote_flags ?? []).includes(EFFECT_UNREAD)) {
+    return 'We couldn’t read this bill against the statement, so it isn’t counted either way.';
+  }
   return null;
 }
 
