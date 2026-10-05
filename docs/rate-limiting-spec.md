@@ -1,7 +1,13 @@
-# Rate limiting — spec (NOT WIRED)
+# Rate limiting — spec
 
-Status: **proposal**. Nothing is installed or wired. This is for review before
-implementation.
+Status (2026-10-04): **built.** The per-IP limits below shipped in #10
+(`packages/server/src/rateLimit.ts`); the global spend cap proposed at the end
+shipped in #33 (`globalDailyCap`, counted in `app.app_usage_daily`, migration
+011). Two departures from this spec, both in `rateLimit.ts`: the browser gets
+the limit as an SSE error event (EventSource cannot read a 429 body), and the
+per-IP daily cap says when it lifts rather than "a few minutes". The cost
+table below was an estimate; measured traces put a query at ~24 model calls
+and ~$0.24 (see #33). The text below is the original proposal.
 
 `/api/query` is an unauthenticated endpoint that spends money at two vendors on
 every call. Today there is **no rate limiting anywhere** — no middleware, no
