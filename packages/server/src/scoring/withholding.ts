@@ -1,4 +1,11 @@
-import { TEXT_AT_ACTION_UNAVAILABLE, type DirectedAction, type ScoredResult } from '@receipts/shared';
+import {
+  EFFECT_UNREAD,
+  TEXT_AT_ACTION_UNAVAILABLE,
+  type DirectedAction,
+  type ScoredResult,
+} from '@receipts/shared';
+import { EVIDENCE_TYPE_FACTOR } from './config.js';
+import { effectiveVote } from './deriveAlignment.js';
 
 // ===========================================================================
 // BEHAVIOURAL CONTRACT 3 (handoff v2 §10).
@@ -55,6 +62,16 @@ function accusationConfidence(evidence: DirectedAction[]): number | null {
 }
 
 /**
+ * The weight an unread row would carry had the evaluator read it as directed:
+ * its match score times the factor for its kind of hard evidence — a vote when
+ * it carries a directional one, otherwise a sponsorship. Factors come from
+ * config, so this moves with them.
+ */
+function unreadWeight(e: DirectedAction): number {
+  return e.score * EVIDENCE_TYPE_FACTOR[effectiveVote(e) ? 'vote' : 'sponsorship'];
+}
+
+/**
  * Apply contract 3.
  *
  * `counterargumentPresent` is a caller-supplied assertion that the senator's
@@ -103,6 +120,39 @@ export function applyWithholding(
         receipt: { ...result.receipt, trace: [...(result.receipt.trace ?? []), `Withheld: ${reason}`] },
       },
     };
+  }
+
+  // SECOND, also ahead of the counterargument: an accusation that bills the
+  // evaluator never read could overturn. Each unread row is a vote or a
+  // sponsorship whose direction is unknown; if every one of them had pointed
+  // the other way, would keeping have outweighed breaking? That is the same
+  // comparison the scorer uses to pick the dominant side (keeps >= breaks), so
+  // "could overturn" means exactly "could have changed what we publish". If
+  // so, the accusation is not published. A favourable reading is not withheld
+  // on the same grounds — it shows at Low, as contract 3's asymmetry has it.
+  const unread = result.evidence.filter((e) => (e.vote_flags ?? []).includes(EFFECT_UNREAD));
+  if (unread.length) {
+    const potential = unread.reduce((sum, e) => sum + unreadWeight(e), 0);
+    const { keeps, breaks } = result.receipt.weight_split;
+    if (keeps + potential >= breaks) {
+      const reason =
+        `This reading would say the senator broke the promise, but ${unread.length} bill(s) behind a ` +
+        `vote or sponsorship could not be read against the statement, and together they carry enough ` +
+        `weight to overturn it. An accusation is not published while the evidence that could reverse ` +
+        `it is unread.`;
+      return {
+        withheld: true,
+        reason,
+        result: {
+          ...result,
+          verdict: 'NOT_DETERMINABLE',
+          band: null,
+          mode: 'not_determinable',
+          nd_reason: 'EVALUATION_FAILED',
+          receipt: { ...result.receipt, trace: [...(result.receipt.trace ?? []), `Withheld: ${reason}`] },
+        },
+      };
+    }
   }
 
   if (opts.counterargumentPresent) {

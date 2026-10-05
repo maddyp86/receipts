@@ -92,6 +92,12 @@ export interface ActionEnrichment extends SponsorshipEnrichment {
   passage_vote_date?: string | null;
   action_date?: string | null;
   party_whip_vote?: string | null;
+  /**
+   * The roll call's own description of the cloture vote — "Motion to Invoke
+   * Cloture on the Motion to Proceed to H.R. 5334". Read so the text selector
+   * can tell cloture on taking up a bill from cloture on the bill itself.
+   */
+  cloture_vote_question?: string | null;
   stakeholder_groups?: string[];
   intended_effects?: string | null;
   mechanisms?: string | null;
@@ -128,19 +134,50 @@ export interface BillEnrichment {
   enacted_via?: string | null;
 }
 
+/** The reader-facing grouping of each read, for the notice on the result. */
+export const ENRICHMENT_GAP_OF: Record<EnrichmentPart, import('@receipts/shared').EnrichmentGap> = {
+  actions: 'vote_records',
+  roles: 'roll_call_context',
+  cloture_results: 'roll_call_context',
+  whip_votes: 'roll_call_context',
+  cloture_questions: 'roll_call_context',
+  bill_progress: 'bill_progress',
+  text_versions: 'text_versions',
+};
+
+/** One read the reader makes. Each fails independently and fails open. */
+export type EnrichmentPart =
+  | 'roles'
+  | 'cloture_results'
+  | 'actions'
+  | 'whip_votes'
+  | 'cloture_questions'
+  | 'bill_progress'
+  | 'text_versions';
+
+/**
+ * Told about a read that failed, for THIS request.
+ *
+ * A callback rather than state on the reader, because the reader is one
+ * shared instance serving concurrent requests: a failure recorded on it would
+ * be reported on whichever request asked next. Every read still fails open —
+ * this only makes the failure visible to the run that suffered it.
+ */
+export type EnrichmentReport = (part: EnrichmentPart, message: string) => void;
+
 export interface EnrichmentSource {
   readonly kind: 'mirror' | 'null';
   /** Reference lookups for the gates. */
-  refs(): Promise<GateRefs>;
+  refs(report?: EnrichmentReport): Promise<GateRefs>;
   /** Per-action enrichment, keyed by action_uid. */
-  forActions(actionUids: string[]): Promise<Map<string, ActionEnrichment>>;
+  forActions(actionUids: string[], report?: EnrichmentReport): Promise<Map<string, ActionEnrichment>>;
   /** Per-bill progress, keyed by bill_id. */
-  forBills(billIds: string[]): Promise<Map<string, BillEnrichment>>;
+  forBills(billIds: string[], report?: EnrichmentReport): Promise<Map<string, BillEnrichment>>;
   /**
    * Every per-version impact statement for these bills, keyed by bill_id.
    * A bill with none is simply absent from the map — the normal case.
    */
-  forVersions(billIds: string[]): Promise<Map<string, VersionMirrorRow[]>>;
+  forVersions(billIds: string[], report?: EnrichmentReport): Promise<Map<string, VersionMirrorRow[]>>;
   close?(): Promise<void>;
 }
 
@@ -200,11 +237,11 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
     });
   }
 
-  async refs(): Promise<GateRefs> {
+  async refs(report?: EnrichmentReport): Promise<GateRefs> {
     // Roles and cloture results are small (538 and 220 rows) and every
     // candidate needs them, so they are loaded once per request rather than
     // per row.
-    const [roles, results] = await Promise.all([this.loadRoles(), this.loadClotureResults()]);
+    const [roles, results] = await Promise.all([this.loadRoles(report), this.loadClotureResults(report)]);
 
     return {
       roleAt: (politicianId, congress) => {
@@ -226,7 +263,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
   }
 
   /** politician_id -> the raw Role cell. */
-  private async loadRoles(): Promise<Map<string, string>> {
+  private async loadRoles(report?: EnrichmentReport): Promise<Map<string, string>> {
     try {
       const { rows } = await this.pool.query<{ politician_id: string; role: string | null }>(
         `select politician_id, row->>'Role' as role from mirror.mirror_politicians`,
@@ -238,12 +275,13 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
       // Fails open to the hardcoded table. Logged, because a silent fallback
       // would make G1c and G3 quietly stop distinguishing leaders.
       console.error('[enrichment] roles unavailable, using fallback table:', describe(err));
+      report?.('roles', describe(err));
       return new Map();
     }
   }
 
   /** vote_id -> normalised cloture outcome. */
-  private async loadClotureResults(): Promise<Map<string, string>> {
+  private async loadClotureResults(report?: EnrichmentReport): Promise<Map<string, string>> {
     try {
       const { rows } = await this.pool.query<{ vote_id: string; result: string | null }>(
         `select vote_id,
@@ -258,11 +296,12 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
       return out;
     } catch (err) {
       console.error('[enrichment] cloture results unavailable:', describe(err));
+      report?.('cloture_results', describe(err));
       return new Map();
     }
   }
 
-  async forActions(actionUids: string[]): Promise<Map<string, ActionEnrichment>> {
+  async forActions(actionUids: string[], report?: EnrichmentReport): Promise<Map<string, ActionEnrichment>> {
     const uids = actionUids.map((u) => S(u)).filter(Boolean);
     if (!uids.length) return new Map();
 
@@ -295,6 +334,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
       }
     } catch (err) {
       console.error('[enrichment] bill actions unavailable:', describe(err));
+      report?.('actions', describe(err));
     }
 
     // The whip's vote lives in the 'Vote' column of Party Vote Positions —
@@ -317,6 +357,28 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
         }
       } catch (err) {
         console.error('[enrichment] whip votes unavailable — G3 will fail open:', describe(err));
+        report?.('whip_votes', describe(err));
+      }
+
+      // What each cloture vote was ON. Question first; the Result string says
+      // "Cloture on the Motion to Proceed Agreed to" too, so it stands in when
+      // the question is blank.
+      try {
+        const { rows } = await this.pool.query<{ vote_id: string; question: string | null }>(
+          `select vote_id, coalesce(nullif(row->>'Question', ''), row->>'Result') as question
+             from mirror.mirror_roll_call_votes
+            where vote_id = any($1::text[])`,
+          [clotureIds],
+        );
+        const questions = new Map<string, string>();
+        for (const r of rows) if (S(r.question)) questions.set(S(r.vote_id), S(r.question));
+        for (const [uid, e] of out) {
+          const q = questions.get(S(e.cloture_vote_id));
+          if (q) out.set(uid, { ...e, cloture_vote_question: q });
+        }
+      } catch (err) {
+        console.error('[enrichment] cloture vote questions unavailable — text dated by cloture:', describe(err));
+        report?.('cloture_questions', describe(err));
       }
     }
 
@@ -331,7 +393,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
    * A bill with no row here returns nothing, and every consumer treats that as
    * "we do not know how far it got" rather than "it went nowhere".
    */
-  async forBills(billIds: string[]): Promise<Map<string, BillEnrichment>> {
+  async forBills(billIds: string[], report?: EnrichmentReport): Promise<Map<string, BillEnrichment>> {
     const ids = [...new Set(billIds.map((b) => S(b)).filter(Boolean))];
     if (!ids.length) return new Map();
 
@@ -351,6 +413,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
       // Same posture as every other reader here: a missing table or a renamed
       // column costs the narrative its progress clause, never the verdict.
       console.error('[enrichment] bill progress unavailable:', describe(err));
+      report?.('bill_progress', describe(err));
     }
     return out;
   }
@@ -362,7 +425,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
    * `Version Mismatch` row — is `selectTextVersion`'s job, so the rule lives in
    * one tested place rather than half in SQL.
    */
-  async forVersions(billIds: string[]): Promise<Map<string, VersionMirrorRow[]>> {
+  async forVersions(billIds: string[], report?: EnrichmentReport): Promise<Map<string, VersionMirrorRow[]>> {
     const ids = [...new Set(billIds.map((b) => S(b)).filter(Boolean))];
     if (!ids.length) return new Map();
 
@@ -383,6 +446,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
       // A missing or unreadable table means every bill is evaluated against
       // its latest summary — today's behaviour — rather than failing the query.
       console.error('[enrichment] text versions unavailable — using latest summaries:', describe(err));
+      report?.('text_versions', describe(err));
     }
     return out;
   }

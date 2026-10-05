@@ -17,6 +17,7 @@ import { derivePartialSubtype, describeExclusions } from '../evaluation/evidence
 import { classifyScope, haltForScope } from '../scope/classifyScope.js';
 import { describeCoverage } from '../scoring/coverage.js';
 import { cacheKey, isCacheable, resultCache } from '../data/ResultCache.js';
+import { ENRICHMENT_GAP_OF } from '../evaluation/enrichment.js';
 import type { Corrections } from '@receipts/shared';
 import { systemPrompt, EXPLANATION_CONSTRAINTS } from './prompts.js';
 import { TOOL_DEFINITIONS } from './toolDefs.js';
@@ -161,6 +162,11 @@ export function finish(session: QuerySession, emit: Emit): boolean {
     // the question is what the SEARCH covered, and a row the gates later closed
     // was still inside the window that was searched.
     coverage: describeCoverage(session.matches ?? []),
+    // Reads that failed on this run, grouped as a reader would recognise them.
+    // Set only when something failed, so every clean result is unchanged.
+    ...(session.enrichmentFailures?.length
+      ? { enrichment_gaps: [...new Set(session.enrichmentFailures.map((f) => ENRICHMENT_GAP_OF[f.part]))] }
+      : {}),
     // Gated rows are REPORTED, not hidden. They were already being handed to
     // the model and persisted with full detail, and dropped on the floor
     // between there and the browser — so the one audience that cannot look
@@ -785,6 +791,25 @@ export function buildAuditEvents(session: QuerySession, queryId: string): AuditE
       verdict_after: 'NOT_DETERMINABLE',
       reason:
         'Every action behind the accusation was judged without the bill text in effect when the senator acted.',
+    });
+  }
+
+  // ---- UNREAD EVIDENCE THAT COULD OVERTURN AN ACCUSATION. EVALUATION_FAILED
+  // also arises in G1b, where nothing was directed at all; only the withholding
+  // path has a breaking row left on the result, so that is what tells them apart.
+  if (
+    session.scored?.nd_reason === 'EVALUATION_FAILED' &&
+    session.scored.evidence.some((e) => e.direction === 'breaks')
+  ) {
+    events.push({
+      query_id: queryId,
+      seq: seq++,
+      stage: 'WITHHOLDING',
+      rule: 'UNREAD_COULD_OVERTURN',
+      disposition: 'WITHHELD',
+      verdict_before: 'BROKE',
+      verdict_after: 'NOT_DETERMINABLE',
+      reason: 'Bills behind votes or sponsorships could not be read, and could have overturned the accusation.',
     });
   }
 

@@ -14,7 +14,7 @@ import type {
   StatementType,
   Verdict,
 } from '@receipts/shared';
-import { TEXT_AT_ACTION_UNAVAILABLE, toVerdict } from '@receipts/shared';
+import { EFFECT_UNREAD, TEXT_AT_ACTION_UNAVAILABLE, toVerdict } from '@receipts/shared';
 import {
   EVIDENCE_TYPE_FACTOR,
   HIGH_AVG_STRENGTH,
@@ -185,6 +185,25 @@ function bandFor(subset: DirectedAction[]): { band: ConfidenceBand; why: string 
 }
 
 /** The action was judged without the text in effect when it happened. */
+/**
+ * An action the evaluator's judgement would have DECIDED, whose bill it never
+ * read: bill_effect ERROR on a sponsorship or a directional vote.
+ *
+ * deriveAlignment returns ERROR before it looks at the action at all, so an
+ * errored row with no deciding action — an abstention, or nothing — is not
+ * one: no reading of the bill could have given it a direction. The one test
+ * for "an unread bill that might have decided this", shared by the G1b reason,
+ * the band, and withholding (#28, and its follow-up).
+ */
+export function unreadDecisive(e: DirectedAction | ScorableMatch & { outcome?: string }): boolean {
+  if (e.outcome !== 'ERROR') return false;
+  const input = {
+    bill_effect: e.bill_effect, vote: e.vote, cloture_vote: e.cloture_vote, passage_vote: e.passage_vote,
+    is_sponsor: e.is_sponsor, is_cosponsor: e.is_cosponsor,
+  };
+  return isSponsored(input) || effectiveVote(input) !== null;
+}
+
 const textUnavailable = (e: DirectedAction): boolean =>
   (e.vote_flags ?? []).includes(TEXT_AT_ACTION_UNAVAILABLE);
 
@@ -199,16 +218,21 @@ const textUnavailable = (e: DirectedAction): boolean =>
  * several sound ones still lowers the band, because a reader cannot tell from
  * a "High" which of the actions behind it carried the doubt.
  */
-function bandWithText(subset: DirectedAction[]): { band: ConfidenceBand; why: string } {
+function bandWithText(subset: DirectedAction[], unread = 0): { band: ConfidenceBand; why: string } {
   const dial = bandFor(subset);
   const n = subset.filter(textUnavailable).length;
-  if (!n) return dial;
-  return {
-    band: 'Low',
-    why:
-      `${dial.why}; lowered to Low because ${n} of ${subset.length} action(s) were judged without ` +
-      `the bill text in effect when the senator acted`,
-  };
+  const reasons: string[] = [];
+  if (n) {
+    reasons.push(`${n} of ${subset.length} action(s) were judged without the bill text in effect when the senator acted`);
+  }
+  // Errored rows are never directed, so they are not in `subset`; the count is
+  // over the whole result. An unread bill could point either way, so a band
+  // computed without it is not one we can stand behind — the #24 principle.
+  if (unread) {
+    reasons.push(`${unread} bill(s) behind a vote or sponsorship could not be read against the statement`);
+  }
+  if (!reasons.length) return dial;
+  return { band: 'Low', why: `${dial.why}; lowered to Low because ${reasons.join(' and ')}` };
 }
 
 function emptyReceipt(overrides: Partial<FactorReceipt> = {}): FactorReceipt {
@@ -351,6 +375,11 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
     if (m.text_version?.status === 'TEXT_UNAVAILABLE' && !voteFlags.includes(TEXT_AT_ACTION_UNAVAILABLE)) {
       voteFlags.push(TEXT_AT_ACTION_UNAVAILABLE);
     }
+    // The bill was never read against the statement, on an action that reading
+    // would have decided. BILL_EFFECT_ERROR (scoring_flags) is the analyst's
+    // view; this is the reader's, so the card says why the row counts for
+    // nothing and why the band beside it is Low.
+    if (unreadDecisive({ ...m, outcome }) && !voteFlags.includes(EFFECT_UNREAD)) voteFlags.push(EFFECT_UNREAD);
 
     // Contract 2. Applied in code because it must hold even when the evaluator
     // ignores the instruction to cap itself.
@@ -376,6 +405,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
 
   for (const e of evidence) flags.push(...e.scoring_flags);
 
+  const unreadCount = evidence.filter(unreadDecisive).length;
   const keeps = evidence.filter((e) => e.direction === 'keeps');
   const breaks = evidence.filter((e) => e.direction === 'breaks');
   const directed = [...keeps, ...breaks];
@@ -428,11 +458,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
     // ALL_NEUTRAL — "the bills don't move the goal" — would be a finding
     // nobody made. Any one such row is enough: with nothing else directed, the
     // unread rows are the ones that might have decided it.
-    const evaluationFailed = evidence.some((e) => {
-      if (e.outcome !== 'ERROR') return false;
-      const input = { bill_effect: e.bill_effect, vote: e.vote, cloture_vote: e.cloture_vote, passage_vote: e.passage_vote, is_sponsor: e.is_sponsor, is_cosponsor: e.is_cosponsor };
-      return isSponsored(input) || effectiveVote(input) !== null;
-    });
+    const evaluationFailed = evidence.some(unreadDecisive);
 
     // An abstention on a bill that was NOT read as having no effect: read as
     // advancing or hindering the goal, or not read at all (an errored row whose
@@ -475,7 +501,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
     const dominantSet = dominantIsKeep ? keeps : breaks;
     const dissentSet = dominantIsKeep ? breaks : keeps;
 
-    const dominantBand = bandWithText(dominantSet);
+    const dominantBand = bandWithText(dominantSet, unreadCount);
     // Never claim High on a contested record.
     const cappedBand: ConfidenceBand = dominantBand.band === 'High' ? 'Medium' : dominantBand.band;
 
@@ -500,7 +526,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
       },
       {
         verdict: dominantIsKeep ? 'BROKE' : 'KEPT',
-        band: bandWithText(dissentSet).band,
+        band: bandWithText(dissentSet, unreadCount).band,
         weight: dominantIsKeep ? breakWeight : keepWeight,
         evidence_uids: dissentSet.map((e) => e.action_uid),
       },
@@ -521,7 +547,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
 
   // ---- Clean direction: dials set the band --------------------------------
   const verdict: Verdict = keeps.length > 0 ? 'KEPT' : 'BROKE';
-  const { band, why } = bandWithText(directed);
+  const { band, why } = bandWithText(directed, unreadCount);
   trace.push(`G2 passed: direction is unanimous (${verdict}).`);
   trace.push(`Band ${band} — ${why}.`);
 

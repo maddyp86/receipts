@@ -56,7 +56,7 @@ describe('s1071-119 — the live run (a December 2025 cloture vote)', () => {
 });
 
 const d = (over: Partial<TextVersionDisclosure>): TextVersionDisclosure => ({
-  status: 'SELECTED', governed_by: 'PASSAGE', action_date: '2025-06-02', code: 'rs', type: 'Reported in Senate',
+  status: 'SELECTED', governed_by: 'PASSAGE', action_date: '2025-06-02', dated_by: 'PASSAGE', dating_reason: null, code: 'rs', type: 'Reported in Senate',
   date: '2025-06-01', title: 'A bill to do one thing', title_source: 'TEXT', flagged_for_review: false,
   latest: null, rewritten: false, taxonomy_divergent: false, taxonomy_divergence_detail: null, version_count: 2,
   ...over,

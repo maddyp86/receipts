@@ -3,9 +3,9 @@ import {
   BAND_PHRASE,
   ND_NO_REASON_COPY,
   ND_REASON_COPY,
-  VERDICT_PHRASE,
   confidenceTraceLabel,
   judgeDispositionSentence,
+  notDeterminableHeadline,
   outcomeHeadline,
   verdictWord,
   type QueryResult,
@@ -13,7 +13,7 @@ import {
 import { EvidenceCard } from './EvidenceCard.js';
 import { GatedActions } from './GatedActions.js';
 import { HowWeGotHere } from './HowWeGotHere.js';
-import { CoverageNote } from './States.js';
+import { CoverageNote, EnrichmentGapNote } from './States.js';
 
 // ===========================================================================
 // The two-level receipt.
@@ -51,7 +51,9 @@ const ICON: Record<string, string> = {
  */
 function headline(result: QueryResult): string {
   const { verdict, band, mode } = result.scored;
-  if (verdict === 'NOT_DETERMINABLE') return VERDICT_PHRASE.NOT_DETERMINABLE;
+  // By reason: a failed check is headlined as a fact about the tool, not as
+  // "we couldn't find enough", which reads as a fact about the record.
+  if (verdict === 'NOT_DETERMINABLE') return notDeterminableHeadline(result.scored.nd_reason);
   const { statement_type, provenance } = result.interpretation;
   const suffix = band ? ` — ${BAND_PHRASE[band]}` : '';
   return `${outcomeHeadline(verdict, statement_type, provenance)}${suffix}${mode === 'ranked' ? ', but it’s mixed' : ''}`;
@@ -240,6 +242,11 @@ export function Verdict({ result }: { result: QueryResult }) {
             a KEPT drawn from two 118th-Congress bills is scoped by the same
             window as a no-match, and the reader is owed it either way. */}
         <CoverageNote coverage={result.coverage} />
+
+        {/* Reads that failed for this answer. Beside the coverage boundary
+            because it is the same kind of fact — a limit on what this answer
+            rests on — but louder, because it is a limit we did not intend. */}
+        <EnrichmentGapNote gaps={result.enrichment_gaps} />
 
         {/* A published accusation that went through review says so, and shows
             the senator's counterargument beside it. Handoff v2 §5 makes a PASS

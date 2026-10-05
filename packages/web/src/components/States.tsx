@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import {
   coverageSentence,
+  enrichmentGapSentence,
   type CoverageWindow,
+  type EnrichmentGap,
   type QueryHalt,
   type Senator,
   type ToolError,
@@ -77,6 +79,25 @@ export function CoverageNote({ coverage }: { coverage?: CoverageWindow }) {
   return (
     <p className="coverage-note" data-unknown={coverage.unknown ? 'true' : undefined}>
       {coverageSentence(coverage)}
+    </p>
+  );
+}
+
+/**
+ * Said when part of the evidence layer could not be read for this answer.
+ *
+ * Every check that needs those reads fails open — a timing check with no vote
+ * date does not fire — so the verdict above was reached with less scrutiny
+ * than usual. That used to be visible only in the server log; it is a fact
+ * about this answer, so it is on the answer. Renders nothing when every read
+ * succeeded, or for an older result that predates the field.
+ */
+export function EnrichmentGapNote({ gaps }: { gaps?: EnrichmentGap[] }) {
+  const sentence = enrichmentGapSentence(gaps);
+  if (!sentence) return null;
+  return (
+    <p className="degraded-note" role="note">
+      {sentence}
     </p>
   );
 }

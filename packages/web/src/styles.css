@@ -450,6 +450,17 @@ textarea.promise::placeholder {
   font-style: italic;
 }
 
+/* Part of the evidence layer could not be read for this answer. Louder than
+   the coverage note: that boundary is by design, this one is not. */
+.degraded-note {
+  margin: 0.6rem 0 0;
+  padding: 0.55rem 0.7rem;
+  border-left: 3px solid var(--rule-strong);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
 /* ---------- gated actions ------------------------------------------------
    Rows a gate closed before the evaluator ran. Styled as a deliberate set-aside
    rather than as weak evidence: no verdict colour, no direction, a dashed rule

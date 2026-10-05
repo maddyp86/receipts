@@ -30,6 +30,8 @@ const disclosure = (status: TextVersionDisclosure['status']): TextVersionDisclos
   status,
   governed_by: 'SPONSORSHIP',
   action_date: '2025-09-20',
+  dated_by: 'SPONSORSHIP',
+  dating_reason: null,
   code: 'ih',
   type: 'Introduced in House',
   date: '2025-09-11',

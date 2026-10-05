@@ -424,6 +424,13 @@ export interface DirectedAction extends MatchedAction {
 /** The act whose date picked the text: the same act that governs the verdict. */
 export type TextVersionGoverningAct = 'CLOTURE' | 'PASSAGE' | 'VOTE' | 'SPONSORSHIP';
 
+/**
+ * Why the text was dated by a different act than the one governing the
+ * verdict. One rule so far: cloture on a motion to proceed, with a later
+ * passage vote, is dated by passage — see governingActOf.
+ */
+export type TextVersionDatingReason = 'CLOTURE_ON_MOTION_TO_PROCEED';
+
 export interface TextVersionDisclosure {
   /**
    * SELECTED              evaluated against this version's own impact statement.
@@ -439,8 +446,15 @@ export interface TextVersionDisclosure {
    */
   status: 'SELECTED' | 'TEXT_UNAVAILABLE' | 'NO_ACTION_DATE' | 'BEFORE_FIRST_VERSION';
   governed_by: TextVersionGoverningAct | null;
-  /** YYYY-MM-DD of the governing act. */
+  /** YYYY-MM-DD the text was dated by — see `dated_by`. */
   action_date: string | null;
+  /**
+   * Whose date `action_date` is: the governing act's own, or — for cloture on
+   * a motion to proceed with a later passage vote — passage. Recorded so the
+   * evidence row says which date picked the text, and `dating_reason` why.
+   */
+  dated_by: TextVersionGoverningAct | null;
+  dating_reason: TextVersionDatingReason | null;
   /** The version in effect: congress.gov code (is, eh, eas, …), type, date, and its own title. */
   code: string | null;
   type: string | null;
@@ -653,6 +667,35 @@ export interface CoverageWindow {
  * `observed` must come from the retrieved candidates rather than from anything
  * the browser could assert.
  */
+/**
+ * A part of the record the evidence layer reads beside the vector match. Each
+ * groups one or more reads by what a reader would recognise.
+ */
+export type EnrichmentGap = 'vote_records' | 'roll_call_context' | 'bill_progress' | 'text_versions';
+
+export const ENRICHMENT_GAP_PHRASE: Record<EnrichmentGap, string> = {
+  vote_records: "the dates of the senator's votes and sponsorships",
+  roll_call_context: 'roll-call results, party whip votes and leadership roles',
+  bill_progress: 'how far each bill got',
+  text_versions: "which version of each bill's text was in effect",
+};
+
+/**
+ * Said on the result when a read failed. The checks that need these fail
+ * open — a timing check with no vote date does not fire — so the verdict was
+ * reached with less scrutiny than usual, and the reader is told so.
+ */
+export function enrichmentGapSentence(gaps: EnrichmentGap[] | null | undefined): string | null {
+  const known = [...new Set(gaps ?? [])].filter((g) => ENRICHMENT_GAP_PHRASE[g]);
+  if (!known.length) return null;
+  const parts = known.map((g) => ENRICHMENT_GAP_PHRASE[g]);
+  const list = parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join('; ')}; and ${parts[parts.length - 1]}`;
+  return (
+    `Part of the record we check against couldn't be read for this answer: ${list}. ` +
+    'The checks that depend on it ran without it, so treat this result with extra caution — trying again may complete it.'
+  );
+}
+
 export function coverageSentence(coverage: CoverageWindow): string {
   if (coverage.unknown) {
     return 'We could not establish which legislative record was searched, so treat an empty result as inconclusive rather than as an absence of action.';
@@ -849,6 +892,14 @@ export interface QueryResult {
   fixture_mode: boolean;
   /** What record was searched. Must be rendered alongside any verdict. */
   coverage?: CoverageWindow;
+  /**
+   * Parts of the record the evidence layer could not read for THIS answer —
+   * the reads failed and every check that needed them ran without them
+   * (failing open, as they are designed to). Absent when every read succeeded.
+   * A result carrying gaps is degraded and is said to be on screen, not only
+   * in the server log.
+   */
+  enrichment_gaps?: EnrichmentGap[];
   /**
    * Actions closed by a gate before evaluation. Rendered with their reasons.
    *
@@ -1071,6 +1122,23 @@ export const VERDICT_PHRASE: Record<Verdict, string> = {
 };
 
 /**
+ * Headlines for the NOT_DETERMINABLE reasons that must not share the default.
+ *
+ * "We couldn't find enough to say" reads as a statement about the senator's
+ * record — there wasn't enough of it. When the check itself failed that is
+ * false: it is a statement about the tool. Every other reason keeps the
+ * shared headline; add one here only when the default would misstate it.
+ */
+export const ND_HEADLINE: Partial<Record<NotDeterminableReason, string>> = {
+  EVALUATION_FAILED: "We couldn't complete this check",
+};
+
+/** The headline for a NOT_DETERMINABLE result, by its reason. */
+export function notDeterminableHeadline(reason: NotDeterminableReason | null | undefined): string {
+  return (reason && ND_HEADLINE[reason]) || VERDICT_PHRASE.NOT_DETERMINABLE;
+}
+
+/**
  * Plain-language reasons for each NOT_DETERMINABLE cause. A thin result is
  * designed with as much care as a strong one, so each cause gets its own
  * sentence rather than a shared shrug.
@@ -1181,6 +1249,13 @@ export function governingVoteSentence(voteGoverning: string | null | undefined):
 export const TEXT_AT_ACTION_UNAVAILABLE = 'TEXT_AT_ACTION_UNAVAILABLE';
 
 /**
+ * Disclosure flag: the bill behind a vote or sponsorship could not be read
+ * against the statement (the evaluator failed), so the row counts for nothing.
+ * Set by the scorer; read by the band dial and by withholding — see score.ts.
+ */
+export const EFFECT_UNREAD = 'EFFECT_UNREAD';
+
+/**
  * Reader-facing copy for the disclosure flags travelling on a row.
  *
  * These are a separate channel from `scoring_flags`: they are shown beside the
@@ -1201,6 +1276,9 @@ export const VOTE_FLAG_COPY: Record<string, string> = {
   // Said wherever it applies, because without it the reader assumes the bill
   // described on the card is the one the senator acted on. On a gut-and-amend
   // bill it may not be.
+  // A failed read, not a finding: says the row counts for nothing, and why.
+  [EFFECT_UNREAD]:
+    "We couldn't read this bill against the statement — the step that does it failed — so it isn't counted either way, and this reading is low confidence.",
   [TEXT_AT_ACTION_UNAVAILABLE]:
     'This bill was rewritten over time, and the version of its text in effect when the senator acted is not available to us. It was judged against a later version, so this reading is low confidence.',
 };
@@ -1282,11 +1360,23 @@ export function textVersionLines(d: TextVersionDisclosure | null | undefined): s
   const phrase = versionPhrase(d.code, d.type);
   const own = d.title && d.title_source === 'TEXT' ? `, titled ${quoteTitle(d.title)}` : '';
 
+  // Said first, because it explains which moment "in effect" refers to. The
+  // verdict still follows the cloture vote; only the text was dated by passage.
+  if (d.dating_reason === 'CLOTURE_ON_MOTION_TO_PROCEED') {
+    const passage = longDate(d.action_date);
+    lines.push(
+      `The deciding cloture vote was on a motion to begin debating the bill, so the text is taken from the later vote on passage${passage ? ` (${passage})` : ''}.`,
+    );
+  }
+
+  // "When the senator acted" is the cloture vote; once the text is dated by
+  // passage instead, the moment is that vote, and the line says so.
+  const moment = d.dating_reason ? 'at that vote' : 'when the senator acted';
   if (d.status === 'SELECTED') {
-    lines.push(`Judged against the text in effect when the senator acted: ${phrase}${date ? ` (${date})` : ''}${own}.`);
+    lines.push(`Judged against the text in effect ${moment}: ${phrase}${date ? ` (${date})` : ''}${own}.`);
   } else if (d.status === 'TEXT_UNAVAILABLE') {
     lines.push(
-      `The text in effect when the senator acted — ${phrase}${date ? ` (${date})` : ''} — isn't available to us, so a later version was used.`,
+      `The text in effect ${moment} — ${phrase}${date ? ` (${date})` : ''} — isn't available to us, so a later version was used.`,
     );
   } else if (d.status === 'NO_ACTION_DATE') {
     lines.push(

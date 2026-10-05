@@ -176,10 +176,15 @@ export class ResultCache {
  * not, and the result says so (EVALUATION_FAILED) and tells the reader that
  * trying again may complete the check. Cached, the retry would replay the
  * failure.
+ *
+ * The same holds for a result reached while part of the evidence layer could
+ * not be read (`enrichment_gaps`): its checks ran without their inputs, the
+ * result says so, and a retry may read them.
  */
 export function isCacheable(events: StreamEvent[]): boolean {
   if (events.some((e) => e.type === 'error')) return false;
   if (events.some((e) => e.type === 'result' && e.result?.scored?.nd_reason === 'EVALUATION_FAILED')) return false;
+  if (events.some((e) => e.type === 'result' && (e.result?.enrichment_gaps?.length ?? 0) > 0)) return false;
   return events.some((e) => e.type === 'result' || e.type === 'halt');
 }
 
