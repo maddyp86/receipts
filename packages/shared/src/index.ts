@@ -424,6 +424,13 @@ export interface DirectedAction extends MatchedAction {
 /** The act whose date picked the text: the same act that governs the verdict. */
 export type TextVersionGoverningAct = 'CLOTURE' | 'PASSAGE' | 'VOTE' | 'SPONSORSHIP';
 
+/**
+ * Why the text was dated by a different act than the one governing the
+ * verdict. One rule so far: cloture on a motion to proceed, with a later
+ * passage vote, is dated by passage — see governingActOf.
+ */
+export type TextVersionDatingReason = 'CLOTURE_ON_MOTION_TO_PROCEED';
+
 export interface TextVersionDisclosure {
   /**
    * SELECTED              evaluated against this version's own impact statement.
@@ -439,8 +446,15 @@ export interface TextVersionDisclosure {
    */
   status: 'SELECTED' | 'TEXT_UNAVAILABLE' | 'NO_ACTION_DATE' | 'BEFORE_FIRST_VERSION';
   governed_by: TextVersionGoverningAct | null;
-  /** YYYY-MM-DD of the governing act. */
+  /** YYYY-MM-DD the text was dated by — see `dated_by`. */
   action_date: string | null;
+  /**
+   * Whose date `action_date` is: the governing act's own, or — for cloture on
+   * a motion to proceed with a later passage vote — passage. Recorded so the
+   * evidence row says which date picked the text, and `dating_reason` why.
+   */
+  dated_by: TextVersionGoverningAct | null;
+  dating_reason: TextVersionDatingReason | null;
   /** The version in effect: congress.gov code (is, eh, eas, …), type, date, and its own title. */
   code: string | null;
   type: string | null;
@@ -1309,11 +1323,23 @@ export function textVersionLines(d: TextVersionDisclosure | null | undefined): s
   const phrase = versionPhrase(d.code, d.type);
   const own = d.title && d.title_source === 'TEXT' ? `, titled ${quoteTitle(d.title)}` : '';
 
+  // Said first, because it explains which moment "in effect" refers to. The
+  // verdict still follows the cloture vote; only the text was dated by passage.
+  if (d.dating_reason === 'CLOTURE_ON_MOTION_TO_PROCEED') {
+    const passage = longDate(d.action_date);
+    lines.push(
+      `The deciding cloture vote was on a motion to begin debating the bill, so the text is taken from the later vote on passage${passage ? ` (${passage})` : ''}.`,
+    );
+  }
+
+  // "When the senator acted" is the cloture vote; once the text is dated by
+  // passage instead, the moment is that vote, and the line says so.
+  const moment = d.dating_reason ? 'at that vote' : 'when the senator acted';
   if (d.status === 'SELECTED') {
-    lines.push(`Judged against the text in effect when the senator acted: ${phrase}${date ? ` (${date})` : ''}${own}.`);
+    lines.push(`Judged against the text in effect ${moment}: ${phrase}${date ? ` (${date})` : ''}${own}.`);
   } else if (d.status === 'TEXT_UNAVAILABLE') {
     lines.push(
-      `The text in effect when the senator acted — ${phrase}${date ? ` (${date})` : ''} — isn't available to us, so a later version was used.`,
+      `The text in effect ${moment} — ${phrase}${date ? ` (${date})` : ''} — isn't available to us, so a later version was used.`,
     );
   } else if (d.status === 'NO_ACTION_DATE') {
     lines.push(

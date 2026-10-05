@@ -92,6 +92,12 @@ export interface ActionEnrichment extends SponsorshipEnrichment {
   passage_vote_date?: string | null;
   action_date?: string | null;
   party_whip_vote?: string | null;
+  /**
+   * The roll call's own description of the cloture vote — "Motion to Invoke
+   * Cloture on the Motion to Proceed to H.R. 5334". Read so the text selector
+   * can tell cloture on taking up a bill from cloture on the bill itself.
+   */
+  cloture_vote_question?: string | null;
   stakeholder_groups?: string[];
   intended_effects?: string | null;
   mechanisms?: string | null;
@@ -317,6 +323,26 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
         }
       } catch (err) {
         console.error('[enrichment] whip votes unavailable — G3 will fail open:', describe(err));
+      }
+
+      // What each cloture vote was ON. Question first; the Result string says
+      // "Cloture on the Motion to Proceed Agreed to" too, so it stands in when
+      // the question is blank.
+      try {
+        const { rows } = await this.pool.query<{ vote_id: string; question: string | null }>(
+          `select vote_id, coalesce(nullif(row->>'Question', ''), row->>'Result') as question
+             from mirror.mirror_roll_call_votes
+            where vote_id = any($1::text[])`,
+          [clotureIds],
+        );
+        const questions = new Map<string, string>();
+        for (const r of rows) if (S(r.question)) questions.set(S(r.vote_id), S(r.question));
+        for (const [uid, e] of out) {
+          const q = questions.get(S(e.cloture_vote_id));
+          if (q) out.set(uid, { ...e, cloture_vote_question: q });
+        }
+      } catch (err) {
+        console.error('[enrichment] cloture vote questions unavailable — text dated by cloture:', describe(err));
       }
     }
 

@@ -182,7 +182,8 @@ export function buildFollowupContext(record: TraceRecord): string {
         `- ${s.label}. Status ${S(d.status)}; version ${S(d.code)} (${S(d.type)}, ${S(d.date) || 'undated'})` +
           `${d.title_source === 'TEXT' && d.title ? `, titled "${S(d.title)}"` : ''}` +
           `${latest ? `; the bill's latest version is ${S(latest.code)}${latest.title_source === 'TEXT' && latest.title ? `, titled "${S(latest.title)}"` : ''}` : ''}` +
-          `${d.rewritten ? '; the bill was rewritten under the same number' : ''}.`,
+          `${d.rewritten ? '; the bill was rewritten under the same number' : ''}` +
+          `${d.dating_reason === 'CLOTURE_ON_MOTION_TO_PROCEED' ? `; the deciding cloture vote was on the motion to proceed, so the text was dated by the passage vote (${S(d.action_date)})` : ''}.`,
       );
     }
     lines.push('');

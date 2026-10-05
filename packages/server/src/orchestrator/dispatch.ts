@@ -928,6 +928,7 @@ async function evaluateEffectsTool(
       is_sponsor: m.is_sponsor,
       is_cosponsor: m.is_cosponsor,
       cosponsored_at: e.cosponsored_at,
+      cloture_vote_question: e.cloture_vote_question,
     });
     const selection = selectTextVersion(rows, act);
     if (!selection) continue;
@@ -940,7 +941,10 @@ async function evaluateEffectsTool(
       stage: 'TEXT_VERSION', kind: 'deterministic', subject: m.action_uid,
       status: d.status === 'SELECTED' ? 'ok' : 'skipped',
       label:
-        `${String(m.bill_id ?? '')} · ${d.governed_by ?? 'no act'} ${d.action_date ?? '(undated)'} → ` +
+        `${String(m.bill_id ?? '')} · ${d.governed_by ?? 'no act'}` +
+        (d.dating_reason === 'CLOTURE_ON_MOTION_TO_PROCEED'
+          ? ` on the motion to proceed, text dated by ${d.dated_by} ${d.action_date ?? '(undated)'} → `
+          : ` ${d.action_date ?? '(undated)'} → `) +
         (d.status === 'SELECTED'
           ? `${d.code} (${d.date})`
           : d.status === 'TEXT_UNAVAILABLE'

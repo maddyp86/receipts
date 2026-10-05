@@ -1,4 +1,8 @@
-import type { TextVersionDisclosure, TextVersionGoverningAct } from '@receipts/shared';
+import type {
+  TextVersionDatingReason,
+  TextVersionDisclosure,
+  TextVersionGoverningAct,
+} from '@receipts/shared';
 import { truthy, voteOf } from '../scoring/deriveAlignment.js';
 import type { FulfillmentCandidate } from './fulfillment.js';
 
@@ -95,8 +99,15 @@ export interface TextVersion {
 /** The act that governs the verdict, and the date that places it in time. */
 export interface GoverningAct {
   kind: TextVersionGoverningAct;
-  /** YYYY-MM-DD, or null when the record has no date for that act. */
+  /** YYYY-MM-DD the text is dated by, or null when the record has no date for it. */
   date: string | null;
+  /**
+   * Whose date `date` is. The governing act's own, unless a rule moved it:
+   * cloture on a MOTION TO PROCEED is dated by the later passage vote.
+   * Absent means the governing act's own.
+   */
+  dated_by?: TextVersionGoverningAct;
+  dating_reason?: TextVersionDatingReason | null;
 }
 
 export interface TextVersionSelection {
@@ -123,6 +134,18 @@ export interface GoverningActInput {
   is_sponsor?: boolean | string | null;
   is_cosponsor?: boolean | string | null;
   cosponsored_at?: string | null;
+  /** The roll call's description of the cloture vote. See isMotionToProceed. */
+  cloture_vote_question?: string | null;
+}
+
+/**
+ * Was this cloture vote on a motion to PROCEED — on whether to take the bill
+ * up — rather than on the bill or an amendment? The roll call says so:
+ * "Motion to Invoke Cloture on the Motion to Proceed to H.R. 5334", or a result
+ * of "Cloture on the Motion to Proceed Agreed to".
+ */
+export function isMotionToProceed(question: string | null | undefined): boolean {
+  return /motion to proceed/i.test(S(question));
 }
 
 // ---------------------------------------------------------------------------
@@ -244,7 +267,23 @@ const usable = (v: TextVersion): boolean =>
  * change from the cloture vote that decided the verdict.
  */
 export function governingActOf(input: GoverningActInput): GoverningAct | null {
-  if (voteOf(input.cloture_vote)) return { kind: 'CLOTURE', date: isoDate(input.cloture_vote_date) };
+  if (voteOf(input.cloture_vote)) {
+    const cloture = isoDate(input.cloture_vote_date);
+    const passage = isoDate(input.passage_vote_date);
+    // Cloture on a MOTION TO PROCEED is a vote to take the bill up, and on a
+    // gut-and-amend bill the text it takes up is replaced on the floor after
+    // it. hr5334-119: cloture 2026-07-28 on the motion to proceed, while the
+    // text was still an educator tax deduction; the sanctions substitute passed
+    // 2026-08-07. Dated by cloture, a sanctions statement is read against the
+    // deduction. So when a LATER passage vote exists, the text is dated by it.
+    // The verdict is still governed by the cloture vote — only the date that
+    // picks the text moves, and the disclosure records which date and why.
+    // With no later passage vote, the cloture date stands.
+    if (isMotionToProceed(input.cloture_vote_question) && cloture && passage && passage > cloture) {
+      return { kind: 'CLOTURE', date: passage, dated_by: 'PASSAGE', dating_reason: 'CLOTURE_ON_MOTION_TO_PROCEED' };
+    }
+    return { kind: 'CLOTURE', date: cloture };
+  }
   if (voteOf(input.passage_vote)) return { kind: 'PASSAGE', date: isoDate(input.passage_vote_date) };
   if (voteOf(input.vote)) {
     // An untyped vote has no date of its own. When exactly one typed date
@@ -349,6 +388,8 @@ export function selectTextVersion(
     status,
     governed_by: act?.kind ?? null,
     action_date: act?.date ?? null,
+    dated_by: act ? (act.dated_by ?? act.kind) : null,
+    dating_reason: act?.dating_reason ?? null,
     code: inEffect?.code ?? null,
     type: inEffect?.type ?? null,
     date: inEffect?.date ?? null,

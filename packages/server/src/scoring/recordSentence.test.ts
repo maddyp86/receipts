@@ -189,7 +189,7 @@ describe('what became of the bill', () => {
 
 describe('a bill rewritten under the same number', () => {
   const rewritten: TextVersionDisclosure = {
-    status: 'SELECTED', governed_by: 'SPONSORSHIP', action_date: '2025-03-20', code: 'is', type: 'Introduced in Senate',
+    status: 'SELECTED', governed_by: 'SPONSORSHIP', action_date: '2025-03-20', dated_by: 'SPONSORSHIP', dating_reason: null, code: 'is', type: 'Introduced in Senate',
     date: '2025-03-14', title: 'To require the Secretary of Veterans Affairs to disinter …', title_source: 'TEXT',
     flagged_for_review: false,
     latest: { code: 'enr', type: 'Enrolled Bill', date: null, title: 'To authorize appropriations for fiscal year 2026 …', title_source: 'TEXT' },
