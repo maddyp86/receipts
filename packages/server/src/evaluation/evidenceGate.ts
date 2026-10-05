@@ -217,33 +217,36 @@ export function applyEvidenceGate(
 export function describeExclusions(dropped: Record<string, number>): string[] {
   const lines: string[] = [];
   const n = (k: string) => dropped[k] || 0;
+  // Reader-facing (the walkthrough's step 3): counted nouns, not "bill(s)",
+  // and no analyst vocabulary ("pairing", "confidence floor").
+  const bills = (k: number) => `${k} ${k === 1 ? 'bill' : 'bills'}`;
+  const was = (k: number) => (k === 1 ? 'was' : 'were');
+  const it = (k: number) => (k === 1 ? 'it' : 'them');
 
   if (n('FALSE_POSITIVE')) {
-    lines.push(
-      `${n('FALSE_POSITIVE')} retrieved bill(s) were judged to be about a different subject.`
-    );
+    const k = n('FALSE_POSITIVE');
+    lines.push(`${bills(k)} we found ${was(k)} read as being about a different subject.`);
   }
   if (n('PARTIAL/DIRECTIONAL')) {
+    const k = n('PARTIAL/DIRECTIONAL');
     lines.push(
-      `${n('PARTIAL/DIRECTIONAL')} bill(s) were on this subject, but the senator's action on ` +
-        `them was judged not to be evidence about this position either way.`
+      `${bills(k)} ${was(k)} on this subject, but we read the senator's action on ${it(k)} as ` +
+        `not bearing on this statement either way.`,
     );
   }
   if (n('PARTIAL/AMBIGUOUS')) {
-    lines.push(
-      `${n('PARTIAL/AMBIGUOUS')} pairing(s) fell below the confidence floor and were set aside ` +
-        `rather than scored.`
-    );
+    const k = n('PARTIAL/AMBIGUOUS');
+    lines.push(`${bills(k)} ${was(k)} too uncertain a match to weigh, so we set ${it(k)} aside.`);
   }
   if (n('PARTIAL/UNCLASSIFIED')) {
-    lines.push(
-      `${n('PARTIAL/UNCLASSIFIED')} pairing(s) could not be categorised and were excluded.`
-    );
+    const k = n('PARTIAL/UNCLASSIFIED');
+    lines.push(`We couldn't tell how ${bills(k)} related to this statement, so we left ${it(k)} out.`);
   }
   if (n('ERROR')) {
+    const k = n('ERROR');
     lines.push(
-      `${n('ERROR')} evaluation(s) failed to complete. This is a tool failure, not a finding ` +
-        `about the senator.`
+      `Our check of ${bills(k)} failed to complete — a failure of the tool, not a finding about ` +
+        `the senator.`,
     );
   }
   return lines;

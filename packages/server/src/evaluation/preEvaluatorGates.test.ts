@@ -74,7 +74,10 @@ describe('G1a — bounded window', () => {
       refs(),
     );
     expect(r.hit?.verdict).toBe('NOT_APPLICABLE_EXPIRED');
-    expect(r.hit?.reason).toContain('2025-01-20');
+    expect(r.hit?.reason).toBe(
+      'We read this statement as applying only until January 20, 2025 (tied to President Biden). ' +
+        "This action came after that, on March 1, 2026, so we didn't count it toward the statement.",
+    );
   });
 
   it('lets an action inside the window through', () => {
@@ -104,7 +107,7 @@ describe('G1a — bounded window', () => {
       meta({ scope: 'BOUNDED', validUntil: new Date('2024-01-01') }),
       refs(),
     );
-    expect(r.hit?.reason).toContain('proxy');
+    expect(r.hit?.reason).toMatch(/We don't have this action's exact date, but the Congress it belongs to began after that, on January 3, 2025, so/);
     expect(r.context.vote_flags).toContain('ACTION_DATE_PROXY');
   });
 });
@@ -117,7 +120,7 @@ describe('G1b — administration anchor', () => {
       refs(),
     );
     expect(r.hit?.verdict).toBe('NOT_APPLICABLE_EXPIRED');
-    expect(r.hit?.reason).toContain('BIDEN');
+    expect(r.hit?.reason).toMatch(/about the Biden administration, but this bill is from the 119th Congress, during the Trump administration/);
   });
 
   it('leaves a matching administration alone', () => {
@@ -185,7 +188,7 @@ describe('G3 — floor leader reconsideration switch', () => {
       refs({ roleAt: () => 'MAJORITY_LEADER', clotureResult: () => '', rollCallHasResult: false }),
     );
     expect(r.hit?.verdict).toBe('PROCEDURAL_SWITCH');
-    expect(r.hit?.reason).toContain('unverified');
+    expect(r.hit?.reason).toMatch(/our record doesn't say whether the motion failed/);
   });
 
   it('does not fire when cloture was agreed — no motion to preserve', () => {
@@ -301,5 +304,52 @@ describe('split-vote disclosure travels with the row', () => {
       refs(),
     );
     expect(r.context.vote_flags).not.toContain('SPLIT_VOTE');
+  });
+});
+
+// ===========================================================================
+// Every reason a reader can see is plain English.
+//
+// The reason is rendered verbatim on a "Found, but not evaluated" card. It used
+// to read like a debug log — "Role Condition = MAJORITY_LEADER", "Speech Act is
+// RHETORIC", "voted NAY on cloture (s1-119)". Every gate is triggered here and
+// its reason checked for analyst vocabulary and for motive.
+// ===========================================================================
+
+describe('gate reasons read as plain English', () => {
+  const leaderNay = row({ cloture_vote: 'NAY', party_whip_vote: 'YEA', cloture_vote_id: 's1-119' });
+  const cases: Array<[string, () => ReturnType<typeof preEvaluatorGates>]> = [
+    ['G1d speech act', () => preEvaluatorGates(row(), meta({ speechAct: 'RHETORIC' }), refs())],
+    ['G1a window closed', () => preEvaluatorGates(row({ passage_vote_date: '2026-03-01' }), meta({ scope: 'BOUNDED', validUntil: new Date('2025-01-20'), anchor: 'President Biden' }), refs())],
+    ['G1a window closed, proxy date', () => preEvaluatorGates(row({ bill_id: 'hr1-119' }), meta({ scope: 'BOUNDED', validUntil: new Date('2024-01-01') }), refs())],
+    ['G1a window unknown', () => preEvaluatorGates(row(), meta({ scope: 'BOUNDED', validUntilRaw: 'UNKNOWN' }), refs())],
+    ['G1b administration', () => preEvaluatorGates(row({ promise_text: "I will oppose President Biden's judicial nominees.", bill_id: 'hr1-119' }), meta(), refs())],
+    ['G1c role precondition', () => preEvaluatorGates(row(), meta({ roleCondition: 'MAJORITY_LEADER' }), refs({ roleAt: () => 'MINORITY_LEADER' }))],
+    ['G4b dated vehicle', () => preEvaluatorGates(row({ partial_subtype: 'DATED_VEHICLE', anchor_vehicle: 'the 2023 debt ceiling deal' } as Partial<GateRow>), meta(), refs())],
+    ['G2 vote pairing', () => preEvaluatorGates(row({ cloture_vote_date: '2025-06-01', passage_vote_date: '2025-05-01' }), meta(), refs())],
+    ['G3 leader switch, rejected', () => preEvaluatorGates(leaderNay, meta(), refs({ roleAt: () => 'MAJORITY_LEADER', clotureResult: () => 'Cloture Motion Rejected' }))],
+    ['G3 leader switch, unknown', () => preEvaluatorGates(leaderNay, meta(), refs({ roleAt: () => 'MAJORITY_LEADER', clotureResult: () => '', rollCallHasResult: false }))],
+    ['G4 broad vehicle', () => preEvaluatorGates(row({ bill_title: 'Consolidated Appropriations Act, 2024', stakeholder_groups: ['Federal agencies'] }), meta(), refs())],
+  ];
+
+  // Field names, enum values, roll-call ids, ISO dates and analyst nouns.
+  // "Rule XIII" is a citation a reader can look up, not an enum.
+  const JARGON =
+    /[A-Z]{2,}_[A-Z]|(?!XIII)[A-Z]{4,}|=|Valid Until|Role Condition|Speech Act|\bvehicle\b|\bcloture\b|\bNAY\b|\bYEA\b|\bproxy\b|stakeholder|pairing|\(s\)|\d{4}-\d{2}-\d{2}|s1-119|precondition|Relevance step/;
+
+  it.each(cases)('%s', (_name, fire) => {
+    const r = fire();
+    expect(r.hit, 'the gate should fire').not.toBeNull();
+    const reason = r.hit!.reason;
+    expect(reason).not.toMatch(JARGON);
+    expect(reason).toMatch(/^[A-Z“]/);
+    expect(reason).toMatch(/\.$/);
+    // Says what the rule did, never why the senator acted.
+    expect(reason).not.toMatch(/\b(preserving|strategic|avoid|dodg|deliberate|intend)/i);
+  });
+
+  it('names the role in words', () => {
+    const r = preEvaluatorGates(row(), meta({ roleCondition: 'MAJORITY_LEADER' }), refs({ roleAt: () => 'MINORITY_LEADER' }));
+    expect(r.hit!.reason).toMatch(/During that Congress they were minority leader/);
   });
 });

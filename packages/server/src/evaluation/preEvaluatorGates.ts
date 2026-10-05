@@ -90,6 +90,42 @@ const REVERSAL_RE = /disapproval|disapproving|terminating|to repeal/i;
 
 const NON_SCORABLE_SPEECH = new Set(['OPERATIONAL', 'CREDIT_CLAIM', 'RHETORIC']);
 
+// ---- Reader-facing words for the gate reasons ------------------------------
+//
+// Every `reason` below is rendered verbatim on a "Found, but not evaluated"
+// card. It is written for a voter, not an analyst: no field names, no enum
+// values, no roll-call ids. The gate id and raw inputs stay in the trace.
+// Each one says what the rule did and why, as a rule — never that the bill is
+// incapable of bearing on the statement, and never why the senator acted.
+
+const SPEECH_ACT_PHRASE: Record<string, string> = {
+  OPERATIONAL: 'a statement about scheduling or process',
+  CREDIT_CLAIM: 'a claim of credit for something already done',
+  RHETORIC: 'a rhetorical statement',
+};
+
+const ROLE_PHRASE: Record<string, string> = {
+  MAJORITY_LEADER: 'majority leader',
+  MINORITY_LEADER: 'minority leader',
+  MAJORITY_WHIP: 'majority whip',
+  MINORITY_WHIP: 'minority whip',
+  NONE: 'not in party leadership',
+};
+const rolePhrase = (role: string): string => ROLE_PHRASE[role] ?? role.replace(/_/g, ' ').toLowerCase();
+
+const titleCase = (s: string): string => s.charAt(0) + s.slice(1).toLowerCase();
+
+/** "January 20, 2025", in UTC. */
+const longDay = (d: Date | null | undefined): string =>
+  d ? d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) : 'an unknown date';
+
+const ordinalOf = (n: string): string => {
+  const v = Number(n);
+  const rem = v % 100;
+  if (rem >= 11 && rem <= 13) return `${n}th`;
+  return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[v % 10] ?? 'th'}`;
+};
+
 // ---- Types ----------------------------------------------------------------
 
 export type GateId =
@@ -258,8 +294,8 @@ export function preEvaluatorGates(
       gate: 'G1_scope',
       verdict: 'NOT_APPLICABLE',
       reason:
-        `Speech Act is ${speechAct}. Scheduling, credit-claiming and rhetorical statements ` +
-        `have no deliverable a vote or sponsorship can fulfil or break.`,
+        `We read this statement as ${SPEECH_ACT_PHRASE[speechAct] ?? 'something other than a policy commitment'}. ` +
+        `A statement like that doesn't commit to anything a vote or a sponsorship could carry out or go against.`,
     });
   }
 
@@ -270,18 +306,21 @@ export function preEvaluatorGates(
         gate: 'G1_scope',
         verdict: 'NOT_APPLICABLE_EXPIRED',
         reason:
-          `Bounded statement (${meta.anchor || 'window'}) valid until ${iso(meta.validUntil)}; ` +
-          `this action is dated ${iso(actionDate)}` +
-          `${actionDateIsProxy ? ' (Congress start used as proxy — no vote date on row)' : ''}. ` +
-          `The statement's window, as we read it, had already closed.`,
+          `We read this statement as applying only until ${longDay(meta.validUntil)}` +
+          `${meta.anchor ? ` (tied to ${meta.anchor})` : ''}. ` +
+          (actionDateIsProxy
+            ? `We don't have this action's exact date, but the Congress it belongs to began after ` +
+              `that, on ${longDay(actionDate)}`
+            : `This action came after that, on ${longDay(actionDate)}`) +
+          `, so we didn't count it toward the statement.`,
       });
     } else if (!meta.validUntil && S(meta.validUntilRaw) === 'UNKNOWN') {
       hits.push({
         gate: 'G1_scope',
         verdict: 'NOT_DETERMINABLE',
         reason:
-          `Bounded statement with no resolvable window (Valid Until = UNKNOWN, statement date ` +
-          `${iso(meta.date ?? null)}). Cannot establish whether this action falls inside it.`,
+          `We read this statement as applying to a limited period, but couldn't work out when that ` +
+          `period ended, so we can't tell whether this action falls inside it.`,
       });
     }
   }
@@ -297,8 +336,9 @@ export function preEvaluatorGates(
         gate: 'G1_scope',
         verdict: 'NOT_APPLICABLE_EXPIRED',
         reason:
-          `Statement is about the ${named} administration; the bill is from the ${congress}th ` +
-          `Congress (${PRESIDENT_BY_CONGRESS[congress]} administration). Different object.`,
+          `This statement is about the ${titleCase(named)} administration, but this bill is from the ` +
+          `${ordinalOf(congress)} Congress, during the ${titleCase(PRESIDENT_BY_CONGRESS[congress]!)} ` +
+          `administration, so we didn't count it toward the statement.`,
       });
     }
   }
@@ -309,10 +349,9 @@ export function preEvaluatorGates(
       gate: 'G1_scope',
       verdict: 'NOT_APPLICABLE_EXPIRED',
       reason:
-        `Statement presupposes control of the floor (Role Condition = MAJORITY_LEADER); at the ` +
-        `time of this action the senator was ` +
-        `${senatorRole === 'NONE' ? 'not in leadership' : senatorRole}. The precondition no ` +
-        `longer held.`,
+        `This statement assumes the senator controls what reaches the Senate floor, as majority ` +
+        `leader. During that Congress they were ${rolePhrase(senatorRole)}, so that condition ` +
+        `didn't hold and we didn't count this action toward the statement.`,
     });
   }
 
@@ -322,8 +361,9 @@ export function preEvaluatorGates(
       gate: 'G4_vehicle',
       verdict: 'NOT_APPLICABLE_EXPIRED',
       reason:
-        `Relevance step classified the statement as pointing at a specific closed vehicle ` +
-        `(${S(row.anchor_vehicle) || 'see Anchor Vehicle'}); this bill appears to be a different one.`,
+        `We read this statement as being about one specific bill` +
+        `${S(row.anchor_vehicle) ? ` (${S(row.anchor_vehicle)})` : ''}, and this appears to be a ` +
+        `different one, so we didn't count it toward the statement.`,
     });
   }
 
@@ -333,8 +373,9 @@ export function preEvaluatorGates(
       gate: 'G2_split_vote',
       verdict: 'NOT_DETERMINABLE',
       reason:
-        `Cloture (${iso(clotureDate)}) is dated after passage (${iso(passageDate)}): the two ` +
-        `votes are on different versions of the vehicle. Cannot pair them into one action.`,
+        `The vote to end debate (${longDay(clotureDate)}) is dated after the vote to pass the ` +
+        `bill (${longDay(passageDate)}), so the two were probably on different versions of it. ` +
+        `We can't read them together as one action, so we didn't weigh this one.`,
     });
   }
 
@@ -351,17 +392,21 @@ export function preEvaluatorGates(
       hits.push({
         gate: 'G3_leader_switch',
         verdict: 'PROCEDURAL_SWITCH',
+        // No motive: the rule says what a no vote in this position MAY be
+        // for, and the gate declines to read it — it does not say what the
+        // senator intended.
         reason:
-          `${senatorRole.replace('_', ' ').toLowerCase()} voted NAY on cloture (${clotureId || 'id unknown'}) ` +
-          `while the party whip voted YEA` +
+          `As ${rolePhrase(senatorRole)}, the senator voted no on ending debate while their party's ` +
+          `whip voted yes` +
           (resultKnown
-            ? ' and cloture was rejected'
+            ? ', and the motion failed'
             : refs.rollCallHasResult === false
-              ? '; the roll-call source has no result column, so the outcome is unverified'
-              : '; cloture result not found for this roll call') +
-          `. Under Senate Rule XIII only a member on the prevailing side may move to reconsider, ` +
-          `so a leader switching to NAY on a failing cloture is preserving that motion, not ` +
-          `opposing the bill.`,
+              ? ' — our record doesn\'t say whether the motion failed'
+              : ' — we couldn\'t find whether the motion failed') +
+          `. Senate rules (Rule XIII) let only a senator who voted on the winning side move to ` +
+          `reconsider a vote, so a party leader may vote no on a failing motion to keep that ` +
+          `option open. A no vote in that position isn't clear evidence either way, so we didn't ` +
+          `read it as support or opposition.`,
       });
     }
   }
@@ -372,10 +417,11 @@ export function preEvaluatorGates(
       gate: 'G4_vehicle',
       verdict: 'NOT_DETERMINABLE',
       reason:
-        `Bill is a broad vehicle ("${title.slice(0, 80)}") and the impact analysis names only ` +
-        `generic stakeholders (${groups.filter(Boolean).join('; ') || 'none'}). A vote on a ` +
-        `vehicle that funds or authorizes everything is not evidence about one statement unless ` +
-        `the promised item is named.`,
+        `This is a broad bill that funds or authorizes many things at once ` +
+        `(“${title.length > 80 ? `${title.slice(0, 80).trimEnd()}…` : title}”), and our analysis of it ` +
+        `doesn't name anything specific to this statement. A vote on a bill like that isn't ` +
+        `evidence about one statement unless the bill names what the statement is about, so we ` +
+        `didn't weigh it.`,
     });
   }
 
