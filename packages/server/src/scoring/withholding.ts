@@ -1,6 +1,7 @@
 import {
   EFFECT_UNREAD,
   TEXT_AT_ACTION_UNAVAILABLE,
+  DECISIVE_ENRICHMENT_GAPS,
   ENRICHMENT_GAP_PHRASE,
   type DirectedAction,
   type EnrichmentGap,
@@ -73,18 +74,9 @@ function unreadWeight(e: DirectedAction): number {
   return e.score * EVIDENCE_TYPE_FACTOR[effectiveVote(e) ? 'vote' : 'sponsorship'];
 }
 
-/**
- * The parts of the record whose failed read can change what is published.
- *
- * Each feeds the text selection or a gate: vote and sponsorship dates pick the
- * version of the text in effect (and date G1a); roll-call context is the
- * cloture result, the whip's vote and the senator's role (G2, G3); the text
- * versions are the text itself. Without them the tool may have judged the
- * wrong text of a gut-and-amend bill, or let a gate that should have closed
- * stay open. Bill progress is absent on purpose: tier, stage and committee are
- * presentation only and never reach a verdict.
- */
-export const DECISIVE_ENRICHMENT_GAPS: readonly EnrichmentGap[] = ['vote_records', 'roll_call_context', 'text_versions'];
+// Which failed reads decide the text or a gate lives in shared, beside the
+// sentence that tells the reader; re-exported for the scorer's callers.
+export { DECISIVE_ENRICHMENT_GAPS };
 
 /** Marks a result withheld for a failed record read, for the audit log. */
 export const RECORD_UNREAD = 'RECORD_UNREAD';

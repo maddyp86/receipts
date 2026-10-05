@@ -15,7 +15,7 @@ import type {
   StatementType,
   Verdict,
 } from '@receipts/shared';
-import { EFFECT_UNREAD, TEXT_AT_ACTION_UNAVAILABLE, toVerdict } from '@receipts/shared';
+import { DECISIVE_ENRICHMENT_GAPS, EFFECT_UNREAD, TEXT_AT_ACTION_UNAVAILABLE, toVerdict } from '@receipts/shared';
 import {
   EVIDENCE_TYPE_FACTOR,
   HIGH_AVG_STRENGTH,
@@ -70,6 +70,8 @@ export type ScorableMatch = MatchedAction & {
   text_version?: import('@receipts/shared').TextVersionDisclosure;
   /** The record sentence. Passed through untouched; never read for scoring. */
   record?: string;
+  /** The bill's history could not be read. Passed through; never read for scoring. */
+  history_unavailable?: boolean;
   /**
    * Disclosure flags already established upstream — `FLOOR_LEADER` and
    * `ACTION_DATE_PROXY` come from the pre-evaluator gates, which know the
@@ -118,10 +120,10 @@ export interface ScoreInput {
    */
   gated_count?: number;
   /**
-   * Parts of the record whose read failed for this run. Any gap lowers the
-   * band to Low; a gap in a part that decides the text or a gate also
-   * withholds an accusation (see DECISIVE_ENRICHMENT_GAPS). Never moves a
-   * weight or a direction. Defaults to none.
+   * Parts of the record whose read failed for this run. A gap in a part that
+   * decides the text or a gate (DECISIVE_ENRICHMENT_GAPS) lowers the band to
+   * Low and withholds an accusation. Bill progress is display only and
+   * changes neither. Never moves a weight or a direction. Defaults to none.
    */
   enrichment_gaps?: EnrichmentGap[];
 }
@@ -423,7 +425,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
   for (const e of evidence) flags.push(...e.scoring_flags);
 
   const unreadCount = evidence.filter(unreadDecisive).length;
-  const gaps = input.enrichment_gaps ?? [];
+  const gaps = (input.enrichment_gaps ?? []).filter((g) => DECISIVE_ENRICHMENT_GAPS.includes(g));
   const keeps = evidence.filter((e) => e.direction === 'keeps');
   const breaks = evidence.filter((e) => e.direction === 'breaks');
   const directed = [...keeps, ...breaks];

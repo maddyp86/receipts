@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  HISTORY_UNAVAILABLE_COPY,
   STRENGTH_PHRASE,
   VOTE_FLAG_COPY,
   textVersionLines,
@@ -154,6 +155,9 @@ export function EvidenceCard({ action, connector, senatorName }: Props) {
           committee path, and what became of it. Built server-side from the
           pipeline's columns, never by a model, so it is rendered as written. */}
       {action.record ? <p className="record">{action.record}</p> : null}
+      {/* Said where the history would have been, so a missing "reported by
+          committee" is not read as "never reported". */}
+      {action.history_unavailable ? <p className="record degraded-note">{HISTORY_UNAVAILABLE_COPY}</p> : null}
 
       {/* Which version of the bill's text this was judged against, and what
           the bill became. Only bills whose text changed carry text_version;

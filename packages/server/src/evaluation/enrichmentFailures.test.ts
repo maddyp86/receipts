@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   ENRICHMENT_GAP_PHRASE,
+  HISTORY_UNAVAILABLE_COPY,
   enrichmentGapSentence,
   type EnrichmentGap,
   type StreamEvent,
@@ -99,10 +100,23 @@ describe('what the reader is told', () => {
   });
 
   it('says which part, that the checks ran without it, and to try again', () => {
-    expect(enrichmentGapSentence(['vote_records', 'bill_progress'])).toBe(
-      "Part of the record we check against couldn't be read for this answer: the dates of the senator's votes and sponsorships; and how far each bill got. " +
+    expect(enrichmentGapSentence(['vote_records', 'text_versions'])).toBe(
+      "Part of the record we check against couldn't be read for this answer: the dates of the senator's votes and sponsorships; and which version of each bill's text was in effect. " +
         'The checks that depend on it ran without it, so treat this result with extra caution — trying again may complete it.',
     );
+  });
+
+  // No check depends on bill progress; the cards say it instead. Saying "the
+  // checks ran without it" would be false.
+  it('does not list bill history, which no check depends on', () => {
+    expect(enrichmentGapSentence(['bill_progress'])).toBeNull();
+    expect(enrichmentGapSentence(['vote_records', 'bill_progress'])).not.toMatch(/how far each bill got/);
+  });
+
+  it('the card line says the history is missing and the reading does not depend on it', () => {
+    expect(HISTORY_UNAVAILABLE_COPY).toMatch(/couldn't load this bill's history/);
+    expect(HISTORY_UNAVAILABLE_COPY).toMatch(/doesn't depend on it/);
+    expect(HISTORY_UNAVAILABLE_COPY).not.toMatch(/\bkept\b|\bbroke\b|abandon|stall/i);
   });
 
   it('says nothing when every read succeeded', () => {

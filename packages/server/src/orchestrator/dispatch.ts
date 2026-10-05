@@ -1140,7 +1140,11 @@ async function evaluateEffectsTool(
 
   const disagreements: string[] = [];
 
-  const recordFor = (m: MatchedAction): { record?: string } => {
+  // A failed bill-progress read leaves the record sentence without its
+  // outcome and committee clauses. The card says so, so that the absence is
+  // not read as "never advanced".
+  const historyUnavailable = enrichmentFailures.some((f) => f.part === 'bill_progress');
+  const recordFor = (m: MatchedAction): { record?: string; history_unavailable?: boolean } => {
     const r = recordSentence({
       bill_id: String(m.bill_id ?? ''),
       is_sponsor: m.is_sponsor,
@@ -1149,7 +1153,10 @@ async function evaluateEffectsTool(
       bill: bills.get(String(m.bill_id ?? '')) ?? null,
       text_version: textVersions[m.action_uid]?.disclosure ?? null,
     });
-    return r ? { record: r.sentence } : {};
+    return {
+      ...(r ? { record: r.sentence } : {}),
+      ...(historyUnavailable ? { history_unavailable: true } : {}),
+    };
   };
 
   const scorable: ScorableMatch[] = scorableMatches.map((m) => {
@@ -1524,6 +1531,8 @@ async function evaluateEffectsTool(
       // The checked record of the senator's sponsorship and the bill's path,
       // built from the pipeline's columns. Quoted or omitted, never paraphrased.
       record: e.record,
+      // The bill's progress could not be read: say nothing about how far it got.
+      history_unavailable: e.history_unavailable || undefined,
       // Which version of the bill's text the action was judged against, when
       // the bill has more than one. `title` above is the bill's CURRENT title.
       // Titles only when read from the version's own text. The rest are mostly
@@ -1584,7 +1593,9 @@ async function evaluateEffectsTool(
       'vote flag TEXT_AT_ACTION_UNAVAILABLE, say that the text in effect when the senator acted is not ' +
       'available and the reading is low confidence; never state the finding about that row as certain. ' +
       'Where an evidence row has record, it is the checked record of what the senator did on the bill ' +
-      'and what became of it: quote it as written or leave it out. Never turn it into a claim about ' +
+      'and what became of it: quote it as written or leave it out. Where a row has history_unavailable, ' +
+      'the bill\'s progress could not be read: say nothing about how far it got or whether a committee acted. ' +
+      'Never turn the record into a claim about ' +
       'effort or intent — not "fought for", "pushed", "championed", "abandoned" or "gave up".',
   });
 }

@@ -19,8 +19,9 @@ import {
 //     action is judged against; roll-call context (cloture result, whip vote,
 //     role) opens and closes G2/G3; the versions are the text itself;
 //   - a KEPT shows, at Low — contract 3's asymmetry;
-//   - bill progress is presentation only, so its failure lowers the band but
-//     never withholds.
+//   - bill progress is display only (it feeds the record sentence), so its
+//     failure changes neither the band nor the verdict — the card says the
+//     history couldn't be loaded instead (amended in review of #31).
 // ===========================================================================
 
 let uid = 0;
@@ -40,11 +41,11 @@ const breaking = (over: Partial<ScorableMatch> = {}) => row({ passage_vote: 'Nay
 const run = (matches: ScorableMatch[], enrichment_gaps?: EnrichmentGap[]) =>
   scoreMatches({ promise_type: 'policy', statement_type: 'Campaign Promise', matches, enrichment_gaps });
 
-const ALL: EnrichmentGap[] = ['vote_records', 'roll_call_context', 'bill_progress', 'text_versions'];
+const DECISIVE: EnrichmentGap[] = ['vote_records', 'roll_call_context', 'text_versions'];
 
 describe('the band', () => {
   // Two strong hard rows are High on their own.
-  it.each(ALL)('a failed %s read lowers a High to Low', (gap) => {
+  it.each(DECISIVE)('a failed %s read lowers a High to Low', (gap) => {
     expect(run([row(), row()]).band).toBe('High');
     const r = run([row(), row()], [gap]);
     expect(r.verdict).toBe('KEPT');
@@ -68,6 +69,13 @@ describe('the band', () => {
   it('no gap, no change', () => {
     expect(run([row(), row()], []).band).toBe('High');
   });
+
+  // Display only: the confidence stays where the evidence puts it.
+  it('a failed bill-progress read leaves the band alone', () => {
+    const r = run([row(), row()], ['bill_progress']);
+    expect(r.band).toBe('High');
+    expect(r.receipt.trace.join(' ')).not.toMatch(/could not be read \(bill_progress\)/);
+  });
 });
 
 describe('an accusation', () => {
@@ -87,10 +95,10 @@ describe('an accusation', () => {
 
   // Tier, stage and committee never reach a verdict, so their absence cannot
   // have changed one.
-  it('stands, at Low, when only bill progress failed', () => {
+  it('stands, at its own band, when only bill progress failed', () => {
     const r = run([breaking(), breaking()], ['bill_progress']);
     expect(r.verdict).toBe('BROKE');
-    expect(r.band).toBe('Low');
+    expect(r.band).toBe(run([breaking(), breaking()]).band);
   });
 
   it('a dominant accusation on a contested record is withheld', () => {
@@ -109,7 +117,7 @@ describe('an accusation', () => {
 });
 
 describe('a favourable reading', () => {
-  it.each(ALL)('is shown, at Low, when the %s read failed', (gap) => {
+  it.each(DECISIVE)('is shown, at Low, when the %s read failed', (gap) => {
     const r = run([row()], [gap]);
     expect(r.verdict).toBe('KEPT');
     expect(r.band).toBe('Low');
