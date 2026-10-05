@@ -1,7 +1,8 @@
 import { rateLimit, type RateLimitRequestHandler } from 'express-rate-limit';
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import type { ToolError } from '@receipts/shared';
 import { config } from './config.js';
+import { utcDay, type UsageCounter } from './data/UsageCounter.js';
 
 // ===========================================================================
 // Per-IP rate limiting for the public API.
@@ -38,6 +39,16 @@ import { config } from './config.js';
 // there is one description of what happened, in two transports.
 // ===========================================================================
 
+/**
+ * "October 5 at 3:12 AM UTC". Stated in UTC because the server cannot know
+ * the reader's zone, and a wrong local time is worse than an honest UTC one.
+ */
+export function whenUtc(at: Date): string {
+  const day = at.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
+  const time = at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+  return `${day} at ${time} UTC`;
+}
+
 /** Copy for a rate-limited caller. Says what happened and that waiting fixes it. */
 const RATE_LIMITED_ERROR: ToolError = {
   code: 'RATE_LIMITED',
@@ -58,6 +69,42 @@ const wantsEventStream = (req: Request): boolean =>
  * design, so it is worth asserting directly rather than through a live socket.
  */
 export function respondRateLimited(req: Request, res: Response): void {
+  respondWith(req, res, RATE_LIMITED_ERROR);
+}
+
+/**
+ * The per-IP DAILY cap. Not "give it a few minutes": the window is a day, and
+ * telling someone to retry in minutes when the answer is hours sends them
+ * into a wall again. Says when it lifts, from the limiter's own reset time.
+ */
+export function dailyLimitError(limit: number, resetTime: Date | undefined): ToolError {
+  return {
+    code: 'RATE_LIMITED',
+    message:
+      `You've reached today's limit of ${limit} checks from your connection for this research preview. ` +
+      (resetTime ? `You can run more after ${whenUtc(resetTime)}. ` : 'You can run more tomorrow. ') +
+      'Nothing is broken, and your earlier answers are unaffected.',
+    // Waiting fixes it, but not soon: a "Try again" button would send the
+    // reader straight back here.
+    recoverable: false,
+  };
+}
+
+/** The GLOBAL daily cap: everyone, together, for the UTC day. */
+export function capacityError(now: Date): ToolError {
+  const midnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+  return {
+    code: 'CAPACITY_REACHED',
+    message:
+      'Receipts has reached its limit of checks for today. It is a research preview with a fixed daily ' +
+      `budget shared by everyone testing it, and the limit resets at ${whenUtc(midnight)}. ` +
+      'Nothing is broken, and your earlier answers are unaffected.',
+    recoverable: false,
+  };
+}
+
+/** Send `error` in whichever shape the caller can read (see the header). */
+export function respondWith(req: Request, res: Response, error: ToolError): void {
   if (wantsEventStream(req)) {
     // A stream that opens, explains itself and closes. The client already
     // handles a `type: 'error'` event; nothing new is needed on that side.
@@ -66,13 +113,15 @@ export function respondRateLimited(req: Request, res: Response): void {
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
     });
-    res.write(`data: ${JSON.stringify({ type: 'error', error: RATE_LIMITED_ERROR })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'error', error })}\n\n`);
     res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
     res.end();
     return;
   }
 
-  res.status(429).json({ error: RATE_LIMITED_ERROR });
+  // 429 for one caller's limit; 503 for the service's — the caller did
+  // nothing to exceed it.
+  res.status(error.code === 'CAPACITY_REACHED' ? 503 : 429).json({ error });
 }
 
 /**
@@ -123,8 +172,46 @@ export const queryDailyLimiter: RateLimitRequestHandler = rateLimit({
   ...COMMON,
   windowMs: HOURS_24,
   limit: config.rateLimit.queryPerDay,
-  handler: respondRateLimited,
+  handler: (req, res) =>
+    respondWith(
+      req,
+      res,
+      dailyLimitError(
+        config.rateLimit.queryPerDay,
+        (req as Request & { rateLimit?: { resetTime?: Date } }).rateLimit?.resetTime,
+      ),
+    ),
 });
+
+/**
+ * The global daily cap — a circuit breaker on the bill, not on a caller.
+ *
+ * Per-IP limits do nothing against ten testers at their caps at once, or one
+ * script on rotating addresses. This counts every paid request admitted past
+ * the per-IP limiters, across everyone, per UTC day, and refuses the rest
+ * until midnight UTC. Mounted AFTER the per-IP limiters, so a request they
+ * refuse never spends the shared budget.
+ *
+ * Counts requests, not cost: a follow-up (~$0.04) counts the same as a query
+ * (~$0.24), and a cached answer counts though it costs nothing. Conservative
+ * by design; see the PR for the measured costs behind the default.
+ */
+export function globalDailyCap(
+  counter: UsageCounter,
+  limit: number,
+  now: () => Date = () => new Date(),
+): RequestHandler {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const at = now();
+    const count = await counter.increment(utcDay(at));
+    if (count > limit) {
+      console.warn(`[usage] global daily cap reached: ${count} > ${limit} (${counter.kind})`);
+      respondWith(req, res, capacityError(at));
+      return;
+    }
+    next();
+  };
+}
 
 /**
  * The free, memory-cached routes.

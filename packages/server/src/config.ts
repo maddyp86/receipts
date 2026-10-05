@@ -297,6 +297,13 @@ export const config = {
     queryPerDay: num(process.env.RATE_LIMIT_QUERY_PER_DAY, 60),
     /** Free, memory-cached routes. Generous; only stops a hammering loop. */
     readPer15Min: num(process.env.RATE_LIMIT_READ_PER_15MIN, 120),
+    /**
+     * Global: paid requests (/api/query + /api/followup) per UTC day across
+     * EVERYONE, then "come back tomorrow". The only control that bounds total
+     * spend. Measured 2026-10-04: ~$0.24 per query, so 150 ≈ $36/day at most.
+     * Counted in app.app_usage_daily (migration 011), in memory without it.
+     */
+    globalQueryPerDay: num(process.env.RATE_LIMIT_GLOBAL_QUERY_PER_DAY, 150),
   },
 
   /**

@@ -133,15 +133,28 @@ export function UncachedState({
   );
 }
 
+/**
+ * A limit is not a failure. "We couldn't finish checking this" over a limit
+ * reads as the tool breaking; the limit's own message says what happened and
+ * when it lifts.
+ */
+const LIMIT_HEADLINE: Partial<Record<ToolError['code'], string>> = {
+  RATE_LIMITED: 'You’ve reached the limit for now',
+  CAPACITY_REACHED: 'Receipts has reached today’s limit',
+};
+
 export function ErrorState({ error, onRetry }: { error: ToolError; onRetry: () => void }) {
+  const limitHeadline = LIMIT_HEADLINE[error.code];
   return (
-    <section className="notice error" aria-label="Something went wrong">
-      <h2>We couldn’t finish checking this</h2>
+    <section className="notice error" aria-label={limitHeadline ?? 'Something went wrong'}>
+      <h2>{limitHeadline ?? 'We couldn’t finish checking this'}</h2>
       <p>{error.message}</p>
-      <p>
-        We’d rather show you this than a half-finished answer — nothing was scored, so there’s no
-        partial verdict hiding behind it.
-      </p>
+      {limitHeadline ? null : (
+        <p>
+          We’d rather show you this than a half-finished answer — nothing was scored, so there’s no
+          partial verdict hiding behind it.
+        </p>
+      )}
       {error.recoverable ? (
         <div className="actions">
           <button type="button" className="secondary" onClick={onRetry}>

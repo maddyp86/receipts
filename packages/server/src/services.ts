@@ -1,3 +1,4 @@
+import { MemoryUsageCounter, SupabaseUsageCounter, type UsageCounter } from './data/UsageCounter.js';
 import { config } from './config.js';
 import type { ActionStore } from './data/ActionStore.js';
 import { FixtureActionStore } from './data/FixtureActionStore.js';
@@ -31,6 +32,15 @@ export const embedder: Embedder = config.fixtureMode ? new FixtureEmbedder() : n
 export const queryStore: QueryStore = config.database.url
   ? new SupabaseQueryStore()
   : new NullQueryStore();
+
+/**
+ * The global daily count behind the spend cap (rateLimit.ts). Persisted when
+ * there is a database, because the free tier restarts the service and an
+ * in-memory count would reset with it.
+ */
+export const usageCounter: UsageCounter = config.database.url
+  ? new SupabaseUsageCounter(config.database.url)
+  : new MemoryUsageCounter();
 
 /**
  * Query trace sinks and the reader over them (trace/Trace.ts).

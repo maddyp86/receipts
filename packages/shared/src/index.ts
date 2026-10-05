@@ -238,6 +238,12 @@ export interface ToolError {
      * an upstream outage.
      */
     | 'RATE_LIMITED'
+    /**
+     * The service's own daily budget is spent — the global cap, shared by
+     * everyone. Not this caller's doing, and not fixed by a retry today, so
+     * `recoverable` is false.
+     */
+    | 'CAPACITY_REACHED'
     | 'INTERNAL';
   message: string;
   /** True when a retry could plausibly succeed. Drives the UI's retry affordance. */
