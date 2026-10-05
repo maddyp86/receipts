@@ -13,7 +13,7 @@ import {
 import { EvidenceCard } from './EvidenceCard.js';
 import { GatedActions } from './GatedActions.js';
 import { HowWeGotHere } from './HowWeGotHere.js';
-import { CoverageNote } from './States.js';
+import { CoverageNote, EnrichmentGapNote } from './States.js';
 
 // ===========================================================================
 // The two-level receipt.
@@ -242,6 +242,11 @@ export function Verdict({ result }: { result: QueryResult }) {
             a KEPT drawn from two 118th-Congress bills is scoped by the same
             window as a no-match, and the reader is owed it either way. */}
         <CoverageNote coverage={result.coverage} />
+
+        {/* Reads that failed for this answer. Beside the coverage boundary
+            because it is the same kind of fact — a limit on what this answer
+            rests on — but louder, because it is a limit we did not intend. */}
+        <EnrichmentGapNote gaps={result.enrichment_gaps} />
 
         {/* A published accusation that went through review says so, and shows
             the senator's counterargument beside it. Handoff v2 §5 makes a PASS

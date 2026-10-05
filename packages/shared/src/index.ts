@@ -667,6 +667,35 @@ export interface CoverageWindow {
  * `observed` must come from the retrieved candidates rather than from anything
  * the browser could assert.
  */
+/**
+ * A part of the record the evidence layer reads beside the vector match. Each
+ * groups one or more reads by what a reader would recognise.
+ */
+export type EnrichmentGap = 'vote_records' | 'roll_call_context' | 'bill_progress' | 'text_versions';
+
+export const ENRICHMENT_GAP_PHRASE: Record<EnrichmentGap, string> = {
+  vote_records: "the dates of the senator's votes and sponsorships",
+  roll_call_context: 'roll-call results, party whip votes and leadership roles',
+  bill_progress: 'how far each bill got',
+  text_versions: "which version of each bill's text was in effect",
+};
+
+/**
+ * Said on the result when a read failed. The checks that need these fail
+ * open — a timing check with no vote date does not fire — so the verdict was
+ * reached with less scrutiny than usual, and the reader is told so.
+ */
+export function enrichmentGapSentence(gaps: EnrichmentGap[] | null | undefined): string | null {
+  const known = [...new Set(gaps ?? [])].filter((g) => ENRICHMENT_GAP_PHRASE[g]);
+  if (!known.length) return null;
+  const parts = known.map((g) => ENRICHMENT_GAP_PHRASE[g]);
+  const list = parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join('; ')}; and ${parts[parts.length - 1]}`;
+  return (
+    `Part of the record we check against couldn't be read for this answer: ${list}. ` +
+    'The checks that depend on it ran without it, so treat this result with extra caution — trying again may complete it.'
+  );
+}
+
 export function coverageSentence(coverage: CoverageWindow): string {
   if (coverage.unknown) {
     return 'We could not establish which legislative record was searched, so treat an empty result as inconclusive rather than as an absence of action.';
@@ -863,6 +892,14 @@ export interface QueryResult {
   fixture_mode: boolean;
   /** What record was searched. Must be rendered alongside any verdict. */
   coverage?: CoverageWindow;
+  /**
+   * Parts of the record the evidence layer could not read for THIS answer —
+   * the reads failed and every check that needed them ran without them
+   * (failing open, as they are designed to). Absent when every read succeeded.
+   * A result carrying gaps is degraded and is said to be on screen, not only
+   * in the server log.
+   */
+  enrichment_gaps?: EnrichmentGap[];
   /**
    * Actions closed by a gate before evaluation. Rendered with their reasons.
    *

@@ -25,7 +25,12 @@ import {
 } from '../evaluation/fulfillment.js';
 import { liveResponsesFetcher } from '../evaluation/responsesFetcher.js';
 import { preEvaluatorGates, type GateResult } from '../evaluation/preEvaluatorGates.js';
-import { enrichmentSource, type ActionEnrichment } from '../evaluation/enrichment.js';
+import {
+  enrichmentSource,
+  type ActionEnrichment,
+  type EnrichmentPart,
+  type EnrichmentReport,
+} from '../evaluation/enrichment.js';
 import { recordSentence } from '../scoring/recordSentence.js';
 import {
   applyTextVersion,
@@ -167,6 +172,8 @@ export interface QuerySession {
   }>;
   /** Which enrichment source the gates ran against, for the degradation notice. */
   enrichmentKind?: 'mirror' | 'null';
+  /** Reads that failed on this run. Each failed open; see the ENRICHMENT step. */
+  enrichmentFailures?: Array<{ part: EnrichmentPart; message: string }>;
   /** The adversarial judge's verdict and disposition, when it ran. */
   judge?: { verdict: JudgeVerdict; disposition: DispositionResult };
   /** Injected in tests; the live path builds its own. */
@@ -881,22 +888,38 @@ async function evaluateEffectsTool(
   // excluded from scoring because their verdict is terminal and deterministic —
   // routing them through the alignment table would ask "which way does this
   // cut" about an action we have already established cannot cut either way.
-  const refs = await enrichmentSource.refs();
-  // Bill progress is read beside the per-action rows: the record sentence
-  // needs both, and both are batched to the 2–4 admitted candidates.
-  const [enrichment, bills] = await Promise.all([
-    enrichmentSource.forActions(matches.map((m) => m.action_uid)),
-    enrichmentSource.forBills(matches.map((m) => String(m.bill_id ?? ''))),
+  // Every read the gates, the version selector and the record sentence need,
+  // together. Each fails OPEN — a gate with no vote date does not fire — and
+  // used to fail only into the server log, so a run that lost its vote dates
+  // looked identical to one that had them. Failures are now collected for
+  // THIS run, traced, put on the result and told to the explainer.
+  const enrichmentFailures: Array<{ part: EnrichmentPart; message: string }> = [];
+  const report: EnrichmentReport = (part, message) => enrichmentFailures.push({ part, message });
+  const billIds = matches.map((m) => String(m.bill_id ?? ''));
+  const [refs, enrichment, bills, versionRows] = await Promise.all([
+    enrichmentSource.refs(report),
+    enrichmentSource.forActions(matches.map((m) => m.action_uid), report),
+    enrichmentSource.forBills(billIds, report),
+    enrichmentSource.forVersions(billIds, report),
   ]);
   session.enrichmentKind = enrichmentSource.kind;
+  session.enrichmentFailures = enrichmentFailures;
+  const failedParts = [...new Set(enrichmentFailures.map((f) => f.part))];
   traceStep({
     stage: 'ENRICHMENT', kind: 'io',
-    status: enrichmentSource.kind === 'null' ? 'skipped' : 'ok',
+    status: enrichmentSource.kind === 'null' ? 'skipped' : failedParts.length ? 'error' : 'ok',
     label: enrichmentSource.kind === 'mirror'
-      ? `mirror · ${enrichment.size} of ${matches.length} actions enriched (vote dates, whip votes, roles) · ${bills.size} bill(s) with progress`
+      ? (failedParts.length ? `DEGRADED — could not read: ${failedParts.join(', ')} · checks that need them ran without them · ` : '') +
+        `mirror · ${enrichment.size} of ${matches.length} actions enriched (vote dates, whip votes, roles) · ${bills.size} bill(s) with progress · ${versionRows.size} bill(s) with text versions`
       : 'no enrichment source — scope and leader gates fail OPEN',
     input: { actions: matches.map((m) => m.action_uid) },
-    output: { kind: enrichmentSource.kind, enriched: Object.fromEntries(enrichment), bills: Object.fromEntries(bills) },
+    output: {
+      kind: enrichmentSource.kind,
+      failures: enrichmentFailures,
+      enriched: Object.fromEntries(enrichment),
+      bills: Object.fromEntries(bills),
+    },
+    error: failedParts.length ? enrichmentFailures.map((f) => `${f.part}: ${f.message}`).join(' | ') : null,
   });
 
   // ---- WHICH TEXT EACH ACTION WAS TAKEN ON ------------------------------
@@ -911,7 +934,6 @@ async function evaluateEffectsTool(
   // vehicle, and the latest title on s1071-119 is the FY2026 NDAA even for a
   // March 2025 cosponsorship of a single-veteran VA bill. Most bills have no
   // version rows and take the unchanged path.
-  const versionRows = await enrichmentSource.forVersions(matches.map((m) => String(m.bill_id ?? '')));
   const textVersions: Record<string, TextVersionSelection> = {};
   for (const m of matches) {
     const rows = versionRows.get(String(m.bill_id ?? '')) ?? [];
@@ -1263,7 +1285,12 @@ async function evaluateEffectsTool(
     if (lead) {
       const gate = session.gates?.[lead.action_uid];
       const f = session.fulfillment?.[lead.action_uid];
-      const enriched = (await enrichmentSource.forActions([lead.action_uid])).get(lead.action_uid) ?? {};
+      // The judge's own read reports into the same run: a judge shown no vote
+      // dates is reviewing with less than the evaluator had.
+      const enriched =
+        (await enrichmentSource.forActions([lead.action_uid], (part, message) => {
+          session.enrichmentFailures = [...(session.enrichmentFailures ?? []), { part, message }];
+        })).get(lead.action_uid) ?? {};
       const scoredBefore = scored.verdict;
       // The judge reviews the evaluator's reading, so it must read the same
       // text. Shown the enrolled NDAA while the evaluator read the introduced
@@ -1507,9 +1534,14 @@ async function evaluateEffectsTool(
     gated: session.gated?.length ?? 0,
     gated_reasons: session.gated?.map((g) => ({ bill_id: g.bill_id, reason: g.reason })) ?? [],
     // Said plainly so the model never narrates a gate that could not run.
-    enrichment: session.enrichmentKind === 'mirror'
-      ? 'mirror (vote dates, whip votes and roles available)'
-      : 'unavailable — scope and leader gates failed open',
+    // Said plainly, including when reads FAILED: the model must not narrate a
+    // timing or leadership check that ran without its inputs.
+    enrichment: session.enrichmentKind !== 'mirror'
+      ? 'unavailable — scope and leader gates failed open'
+      : session.enrichmentFailures?.length
+        ? `mirror, but these reads FAILED for this answer: ${[...new Set(session.enrichmentFailures.map((f) => f.part))].join(', ')} — ` +
+          'the checks that need them ran without them. Say so; do not describe those checks as having been made.'
+        : 'mirror (vote dates, whip votes and roles available)',
     judge: session.judge
       ? {
           disposition: session.judge.disposition.disposition,
