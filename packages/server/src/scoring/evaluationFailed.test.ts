@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ND_REASON_COPY, type StreamEvent } from '@receipts/shared';
+import {
+  ND_REASON_COPY,
+  VERDICT_PHRASE,
+  notDeterminableHeadline,
+  type NotDeterminableReason,
+  type StreamEvent,
+} from '@receipts/shared';
 import { scoreMatches, type ScorableMatch } from './score.js';
 import { isCacheable } from '../data/ResultCache.js';
 
@@ -128,5 +134,22 @@ describe('the session cache', () => {
   it('still keeps every other completed result', () => {
     expect(isCacheable([result('ALL_NEUTRAL')])).toBe(true);
     expect(isCacheable([result(null)])).toBe(true);
+  });
+});
+
+describe('the headline', () => {
+  // "We couldn't find enough to say" is a statement about the record. A failed
+  // check is a statement about the tool, and gets its own headline.
+  it('a failed check is headlined as the tool not completing, not the record being thin', () => {
+    expect(notDeterminableHeadline('EVALUATION_FAILED')).toBe("We couldn't complete this check");
+    expect(notDeterminableHeadline('EVALUATION_FAILED')).not.toBe(VERDICT_PHRASE.NOT_DETERMINABLE);
+  });
+
+  it('every other reason keeps the shared headline', () => {
+    for (const reason of Object.keys(ND_REASON_COPY) as NotDeterminableReason[]) {
+      if (reason === 'EVALUATION_FAILED') continue;
+      expect(notDeterminableHeadline(reason)).toBe(VERDICT_PHRASE.NOT_DETERMINABLE);
+    }
+    expect(notDeterminableHeadline(null)).toBe(VERDICT_PHRASE.NOT_DETERMINABLE);
   });
 });

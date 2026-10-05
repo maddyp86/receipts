@@ -1071,6 +1071,23 @@ export const VERDICT_PHRASE: Record<Verdict, string> = {
 };
 
 /**
+ * Headlines for the NOT_DETERMINABLE reasons that must not share the default.
+ *
+ * "We couldn't find enough to say" reads as a statement about the senator's
+ * record — there wasn't enough of it. When the check itself failed that is
+ * false: it is a statement about the tool. Every other reason keeps the
+ * shared headline; add one here only when the default would misstate it.
+ */
+export const ND_HEADLINE: Partial<Record<NotDeterminableReason, string>> = {
+  EVALUATION_FAILED: "We couldn't complete this check",
+};
+
+/** The headline for a NOT_DETERMINABLE result, by its reason. */
+export function notDeterminableHeadline(reason: NotDeterminableReason | null | undefined): string {
+  return (reason && ND_HEADLINE[reason]) || VERDICT_PHRASE.NOT_DETERMINABLE;
+}
+
+/**
  * Plain-language reasons for each NOT_DETERMINABLE cause. A thin result is
  * designed with as much care as a strong one, so each cause gets its own
  * sentence rather than a shared shrug.

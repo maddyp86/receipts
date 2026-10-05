@@ -3,9 +3,9 @@ import {
   BAND_PHRASE,
   ND_NO_REASON_COPY,
   ND_REASON_COPY,
-  VERDICT_PHRASE,
   confidenceTraceLabel,
   judgeDispositionSentence,
+  notDeterminableHeadline,
   outcomeHeadline,
   verdictWord,
   type QueryResult,
@@ -51,7 +51,9 @@ const ICON: Record<string, string> = {
  */
 function headline(result: QueryResult): string {
   const { verdict, band, mode } = result.scored;
-  if (verdict === 'NOT_DETERMINABLE') return VERDICT_PHRASE.NOT_DETERMINABLE;
+  // By reason: a failed check is headlined as a fact about the tool, not as
+  // "we couldn't find enough", which reads as a fact about the record.
+  if (verdict === 'NOT_DETERMINABLE') return notDeterminableHeadline(result.scored.nd_reason);
   const { statement_type, provenance } = result.interpretation;
   const suffix = band ? ` — ${BAND_PHRASE[band]}` : '';
   return `${outcomeHeadline(verdict, statement_type, provenance)}${suffix}${mode === 'ranked' ? ', but it’s mixed' : ''}`;
