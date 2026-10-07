@@ -16,7 +16,7 @@ import {
 import { senatorCache } from '../data/SenatorCache.js';
 import { queueStore } from '../data/QueueStore.js';
 import { actionStore, embedder } from '../services.js';
-import { buildPromiseEmbeddingText } from '../embeddings/promiseEmbeddingText.js';
+import { NA_VALUE, buildPromiseEmbeddingText } from '../embeddings/promiseEmbeddingText.js';
 import { isValidCombination, lookupTaxonomyKeywords } from '../embeddings/taxonomy.js';
 import { evaluateRelevance, type RelevanceCandidate } from '../evaluation/relevance.js';
 import { applyEvidenceGate, describeExclusions } from '../evaluation/evidenceGate.js';
@@ -369,15 +369,28 @@ async function interpretPromise(
   };
 
   session.interpretation = interpretation;
+  // THE EMBEDDED TEXT IS DETERMINISTIC (2026-10-07; RECONCILIATION). The two
+  // lines WF7a fills with model-written prose — Key Policy Terms and Reasoning
+  // — are sampled afresh by the classifier on every run, and the stability
+  // measurement showed them moving retrieval for the same question (top-10
+  // overlap as low as 28% across five runs). So they are filled
+  // deterministically instead:
+  //   Key Policy Terms  the user's own corrected terms when they gave some —
+  //                     a correction must still move the vector — otherwise
+  //                     the taxonomy lookup, the same keywords as Related Terms;
+  //   Reasoning         'NA', the literal WF3 writes when there is none.
+  // The interpretation shown to the reader keeps the classifier's terms and
+  // reasoning; only the text that is embedded changes.
+  const userKeyTerms = Array.isArray(corrections?.key_policy_terms) ? corrections.key_policy_terms.map(String) : null;
   session.embeddingText = buildPromiseEmbeddingText({
     statement: interpretation.raw,
     stance: interpretation.stance,
     promise_type: interpretation.promise_type,
     primary_issue,
     sub_issue,
-    key_policy_terms: interpretation.key_policy_terms,
+    key_policy_terms: userKeyTerms ?? keywords,
     taxonomy_keywords: keywords,
-    reasoning: interpretation.reasoning,
+    reasoning: NA_VALUE,
   });
 
   // GATE: classification → the text that gets embedded. Three inputs can

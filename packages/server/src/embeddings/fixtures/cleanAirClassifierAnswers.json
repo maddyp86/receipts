@@ -1,0 +1,74 @@
+{
+  "_provenance": "LIVE. The classifier's interpret_promise answers on five runs of the same question (Schumer, 'promised to protect clean air standards from rollback'), 2026-10-07, tools/stability.mts run stability-a, verbatim from the traces. Same labels, different model-written key terms and reasoning.",
+  "senator": "S000148",
+  "promise": "promised to protect clean air standards from rollback",
+  "answers": [
+    {
+      "restated": "Defend existing clean air standards against weakening or elimination.",
+      "primary_issue": "Environment",
+      "sub_issue": "Pollution & Clean Air/Water",
+      "stance": "In Favor",
+      "promise_type": "policy",
+      "is_evaluable": true,
+      "key_policy_terms": [
+        "clean air standards"
+      ],
+      "reasoning": "The statement commits to preserving environmental air quality regulations against regulatory rollback, which is a specific legislative/administrative objective."
+    },
+    {
+      "restated": "Maintain current clean air standards and prevent their weakening.",
+      "primary_issue": "Environment",
+      "sub_issue": "Pollution & Clean Air/Water",
+      "stance": "In Favor",
+      "promise_type": "policy",
+      "is_evaluable": true,
+      "key_policy_terms": [
+        "clean air standards"
+      ],
+      "reasoning": "The statement expresses commitment to preserving existing environmental protections against regulatory weakening, a legislative goal under environmental policy."
+    },
+    {
+      "restated": "Prevent weakening of existing clean air standards",
+      "primary_issue": "Environment",
+      "sub_issue": "Pollution & Clean Air/Water",
+      "stance": "In Favor",
+      "promise_type": "policy",
+      "is_evaluable": true,
+      "key_policy_terms": [
+        "clean air standards"
+      ],
+      "reasoning": "The promise commits to defending existing clean air standards against weakening, which is a specific environmental protection goal that can be tracked against legislative voting and sponsorships on air quality regulation."
+    },
+    {
+      "restated": "Preserve existing clean air standards against weakening or elimination.",
+      "primary_issue": "Environment",
+      "sub_issue": "Pollution & Clean Air/Water",
+      "stance": "In Favor",
+      "promise_type": "policy",
+      "is_evaluable": true,
+      "key_policy_terms": [
+        "clean air standards"
+      ],
+      "reasoning": "The promise specifically commits to defending existing clean air pollution standards against regulatory reduction, which is a concrete legislative and regulatory goal."
+    },
+    {
+      "restated": "Commitment to protect clean air standards from being reversed or weakened.",
+      "primary_issue": "Environment",
+      "sub_issue": "Pollution & Clean Air/Water",
+      "stance": "In Favor",
+      "promise_type": "policy",
+      "is_evaluable": true,
+      "key_policy_terms": [
+        "clean air standards"
+      ],
+      "reasoning": "The promise seeks to preserve existing clean air standards against rollback, which is a policy commitment to maintain environmental protections."
+    }
+  ],
+  "embedded_texts_before": [
+    "Promise: promised to protect clean air standards from rollback\n\nStance: In Favor\n\nPromise Type: policy\n\nPrimary Issue: Environment\n\nSub-Issue: Pollution & Clean Air/Water\n\nKey Policy Terms: clean air standards\n\nRelated Terms: pollution, clean air, clean water, air quality, water quality, EPA, Environmental Protection Agency, environmental regulations, emissions, pollutants, water pollution, air pollution, toxic waste, contamination\n\nReasoning: The statement commits to preserving environmental air quality regulations against regulatory rollback, which is a specific legislative/administrative objective.",
+    "Promise: promised to protect clean air standards from rollback\n\nStance: In Favor\n\nPromise Type: policy\n\nPrimary Issue: Environment\n\nSub-Issue: Pollution & Clean Air/Water\n\nKey Policy Terms: clean air standards\n\nRelated Terms: pollution, clean air, clean water, air quality, water quality, EPA, Environmental Protection Agency, environmental regulations, emissions, pollutants, water pollution, air pollution, toxic waste, contamination\n\nReasoning: The statement expresses commitment to preserving existing environmental protections against regulatory weakening, a legislative goal under environmental policy.",
+    "Promise: promised to protect clean air standards from rollback\n\nStance: In Favor\n\nPromise Type: policy\n\nPrimary Issue: Environment\n\nSub-Issue: Pollution & Clean Air/Water\n\nKey Policy Terms: clean air standards\n\nRelated Terms: pollution, clean air, clean water, air quality, water quality, EPA, Environmental Protection Agency, environmental regulations, emissions, pollutants, water pollution, air pollution, toxic waste, contamination\n\nReasoning: The promise commits to defending existing clean air standards against weakening, which is a specific environmental protection goal that can be tracked against legislative voting and sponsorships on air quality regulation.",
+    "Promise: promised to protect clean air standards from rollback\n\nStance: In Favor\n\nPromise Type: policy\n\nPrimary Issue: Environment\n\nSub-Issue: Pollution & Clean Air/Water\n\nKey Policy Terms: clean air standards\n\nRelated Terms: pollution, clean air, clean water, air quality, water quality, EPA, Environmental Protection Agency, environmental regulations, emissions, pollutants, water pollution, air pollution, toxic waste, contamination\n\nReasoning: The promise specifically commits to defending existing clean air pollution standards against regulatory reduction, which is a concrete legislative and regulatory goal.",
+    "Promise: promised to protect clean air standards from rollback\n\nStance: In Favor\n\nPromise Type: policy\n\nPrimary Issue: Environment\n\nSub-Issue: Pollution & Clean Air/Water\n\nKey Policy Terms: clean air standards\n\nRelated Terms: pollution, clean air, clean water, air quality, water quality, EPA, Environmental Protection Agency, environmental regulations, emissions, pollutants, water pollution, air pollution, toxic waste, contamination\n\nReasoning: The promise seeks to preserve existing clean air standards against rollback, which is a policy commitment to maintain environmental protections."
+  ]
+}

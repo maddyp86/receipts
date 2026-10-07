@@ -2003,3 +2003,47 @@ every exchange for `TRACE_MAX_FILES` runs.
 
 **Not a pipeline concern.** No n8n equivalent; nothing to adopt either way.
 
+
+## 2026-10-07 — the query's embedded text departs from WF7a, deliberately
+
+**The departure.** WF7a `Promise Embedding Text` fills two lines with
+model-written prose: `Key Policy Terms` (the classifier's terms) and
+`Reasoning` (the classifier's one-line rationale). The query tool now fills
+them deterministically:
+
+| Line | WF7a (and the query tool before) | Query tool now |
+|---|---|---|
+| `Key Policy Terms` | classifier output, `', '`-joined, or `NA` | the user's corrected terms when they gave some; otherwise the taxonomy lookup for (Primary Issue, Sub Issue) — the same keywords as `Related Terms` |
+| `Reasoning` | classifier output, or `NA` | `NA` always |
+
+Every other line is unchanged, and the template is unchanged
+(`embeddings/promiseEmbeddingText.ts` is still the WF7a port; the change is
+in what `dispatch.ts` passes it). The interpretation shown to the reader
+still carries the classifier's terms and reasoning.
+
+**Why.** The classifier samples both lines afresh on every call, and they
+reach the query vector. Stability measurement, 2026-10-07 (six promises ×
+five runs, `tools/stability.mts`): five runs of one question produced five
+embedded texts, and the retrieved top-10 overlapped as little as 28%
+(Schumer, drug prices) and 57–83% elsewhere. Retrieval only, with the two
+lines made deterministic: one text per promise, top-10 identical across every
+repeat of all six. Recall cost, all near the WEAK floor (0.50–0.52):
+`Key Policy Terms` = `NA` lost a clean-energy-credit bill and a Senate
+climate resolution on clean energy; the taxonomy version lost only the
+resolution, and is the one adopted. Both gained four unrelated tax bills near
+the floor on the death-tax question, which the relevance step filters.
+
+**What it does not fix.** The judges still sample. With the interpretation
+frozen, the clean-air question still flipped BROKE/KEPT — that came from the
+version summaries of sjres31-119 describing the overturned rule backwards
+(flagged upstream 2026-10-07), not from retrieval.
+
+**Corrections keep their effect.** `orchestrator/corrections.test.ts` pins the
+rule that every correctable field is inside the embedded text. A user's
+corrected key terms are deterministic, so they go in; the taxonomy keywords
+stand in only when the user gave none.
+
+**For the pipeline.** Not a proposal to change WF7a: the batch pipeline's
+per-statement evaluations are not re-run per request, so its run-to-run
+variance does not reach a reader the same way. Recorded so a future
+re-verification of the port reads this as deliberate, not drift.
