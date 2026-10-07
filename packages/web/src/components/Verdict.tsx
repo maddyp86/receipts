@@ -342,7 +342,7 @@ export function Verdict({ result }: { result: QueryResult }) {
 
       {undirected.length ? (
         <>
-          <h3 className="section-heading">Also found, but it doesn’t settle anything</h3>
+          <h3 className="section-heading">Also found, but not counted either way</h3>
           {undirected.map((e) => (
             <EvidenceCard
               key={e.action_uid}

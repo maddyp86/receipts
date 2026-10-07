@@ -145,11 +145,13 @@ describe('the headline', () => {
     expect(notDeterminableHeadline('EVALUATION_FAILED')).not.toBe(VERDICT_PHRASE.NOT_DETERMINABLE);
   });
 
-  it('every other reason keeps the shared headline', () => {
-    for (const reason of Object.keys(ND_REASON_COPY) as NotDeterminableReason[]) {
-      if (reason === 'EVALUATION_FAILED') continue;
-      expect(notDeterminableHeadline(reason)).toBe(VERDICT_PHRASE.NOT_DETERMINABLE);
-    }
+  // Honesty sweep: "We couldn't find enough to say" is a claim that the record
+  // is thin. It stays only where that is what happened.
+  it('only an empty or too-distant search keeps the shared headline', () => {
+    const shared = (Object.keys(ND_REASON_COPY) as NotDeterminableReason[]).filter(
+      (r) => notDeterminableHeadline(r) === VERDICT_PHRASE.NOT_DETERMINABLE,
+    );
+    expect(shared.sort()).toEqual(['ALL_BELOW_FLOOR', 'NO_MATCHES']);
     expect(notDeterminableHeadline(null)).toBe(VERDICT_PHRASE.NOT_DETERMINABLE);
   });
 });

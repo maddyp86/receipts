@@ -588,6 +588,15 @@ export type NotDeterminableReason =
    */
   | 'ABSTAINED'
   /**
+   * Nothing was directed, and at least one bill the senator acted on was read
+   * as CONTESTED: it can reasonably be read as advancing the goal or as
+   * setting it back. That is not "no effect" — ALL_NEUTRAL's sentence would
+   * overstate it — so it gets its own. Takes precedence over ALL_NEUTRAL and,
+   * for an abstention on a contested bill, over nothing else: ABSTAINED is
+   * only for bills read as advancing, hindering, or unread.
+   */
+  | 'CONTESTED_READING'
+  /**
    * A pre-evaluator gate closed every candidate before the evaluator ran: the
    * statement's window had passed, its precondition no longer held, or the
    * vehicle could not bear on it. Each gated action carries its own reason.
@@ -884,7 +893,7 @@ export function judgeDispositionSentence(disposition: string | null | undefined)
   if (!disposition) return null;
   if (JUDGE_DISPOSITION_COPY[disposition]) return JUDGE_DISPOSITION_COPY[disposition]!;
   if (disposition.startsWith('GATED_')) {
-    return 'A deterministic check caught this reading before it reached review, so we are not publishing it. The bills and votes are below — read them and judge for yourself.';
+    return 'A rule-based check stopped this reading before it reached review, so we are not publishing it. The bills and votes are below — read them and judge for yourself.';
   }
   return null;
 }
@@ -1135,10 +1144,16 @@ export function verdictWord(bucket: Verdict, statementType: StatementType): stri
   return VERDICT_PHRASE[bucket];
 }
 
+/**
+ * How sure we are, in words. Low is not only thin evidence: it is also an
+ * action read against a later text, an unread bill beside the verdict, or a
+ * failed read of the record (#24, #28, #31). "The evidence is thin" was false
+ * for those, so Low says what is true of all of them.
+ */
 export const BAND_PHRASE: Record<ConfidenceBand, string> = {
-  High: "we're confident",
-  Medium: "there's decent evidence",
-  Low: 'the evidence is thin',
+  High: 'strong evidence',
+  Medium: 'moderate evidence',
+  Low: 'low confidence',
 };
 
 export const STRENGTH_PHRASE: Record<MatchStrength, string> = {
@@ -1163,6 +1178,22 @@ export const VERDICT_PHRASE: Record<Verdict, string> = {
  */
 export const ND_HEADLINE: Partial<Record<NotDeterminableReason, string>> = {
   EVALUATION_FAILED: "We couldn't complete this check",
+  // Bills were found and read; the record is not thin, it just doesn't
+  // decide the question.
+  ALL_NEUTRAL: "The record we found doesn't settle this",
+  CONTESTED_READING: "The record we found doesn't settle this",
+  NO_ACTION: "The record we found doesn't settle this",
+  ABSTAINED: "The record we found doesn't settle this",
+  PROCEDURAL_SWITCH: "The record we found doesn't settle this",
+  UNDIRECTABLE_METADATA: "The record we found doesn't settle this",
+  GATED: "The record we found doesn't settle this",
+  // A reading existed and was not published. "Couldn't find enough" would
+  // misstate that as a thin record.
+  WITHHELD_LOW_CONFIDENCE: "We can't make a reliable call on this",
+  WITHHELD_PENDING_REVIEW: "We can't make a reliable call on this",
+  WITHHELD_TEXT_UNAVAILABLE: "We can't make a reliable call on this",
+  NOT_EVALUABLE: "We couldn't tell what to check",
+  NON_LEGISLATIVE: "We don't think a vote can settle this",
 };
 
 /** The headline for a NOT_DETERMINABLE result, by its reason. */
@@ -1177,25 +1208,25 @@ export function notDeterminableHeadline(reason: NotDeterminableReason | null | u
  */
 export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   NO_MATCHES:
-    "We didn't find any bills or votes in this senator's analyzed record that relate to this promise.",
+    "We didn't find any bills or votes in this senator's analyzed record that relate to this statement. Our search can miss things, so that isn't proof there are none.",
   ALL_BELOW_FLOOR:
-    "We found some legislation on this subject, but nothing closely enough related to this promise to count as evidence.",
+    "We found some legislation on this subject, but nothing closely enough related to this statement to count as evidence.",
   ALL_NEUTRAL:
-    "The bills we found touch this subject but don't move the goal in this promise in either direction.",
+    "As we read them, the bills we found touch this subject but don't move the goal in this statement in either direction.",
   NO_ACTION:
-    "We found related legislation, but this senator neither voted on it nor put their name to it — so there's no action to judge.",
+    "We found related legislation, but the record we have shows no vote by this senator on it and no sponsorship — so there's no action to judge.",
   PROCEDURAL_SWITCH:
-    'They sponsored this bill but voted against it, so we can’t read this as either keeping or breaking the promise.',
+    'They sponsored this bill and then voted against it. Those point opposite ways, so we don’t read it as either for or against this statement.',
   NON_LEGISLATIVE:
-    "This promise isn't something a bill or a vote can settle, and we only track legislative action.",
+    "As we read it, this statement isn't something a bill or a vote can settle, and we only track legislative action.",
   NOT_EVALUABLE:
     "We couldn't tell what specific commitment to check here. Try naming the policy, program, or outcome you have in mind.",
   UNDIRECTABLE_METADATA:
-    "We found related legislation but couldn't establish which way it cuts on this promise, so we're not going to guess.",
+    "We found related legislation but couldn't establish which way it cuts on this statement, so we're not going to guess.",
   // Deliberately NOT exculpatory. Withholding an accusation is not a finding
   // that he kept it, and this sentence must never be readable as one.
   WITHHELD_LOW_CONFIDENCE:
-    "The record here points against this promise, but not clearly enough for us to say so publicly. The bills and votes are below — read them and judge for yourself.",
+    "Our reading of the record leans against this statement, but not clearly enough for us to say so. The bills and votes are below — read them and judge for yourself.",
   // Also deliberately not exculpatory. "A reviewer disagreed" is not "he kept
   // it", and the sentence must not be readable as either an accusation or a
   // clearing.
@@ -1204,7 +1235,7 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   // Not exculpatory either. The text the senator acted on is missing from the
   // record we have, which says nothing about which way he acted.
   WITHHELD_TEXT_UNAVAILABLE:
-    "This bill was rewritten after the senator acted on it, and the version of the text in effect at the time isn't available to us. We won't call the promise broken on the strength of a different version. The bills and votes are below — read them and judge for yourself.",
+    "The version of the bill's text in effect when the senator acted isn't available to us, so it could only be read against a later version, which may say something different. We won't make a call against the senator on the strength of a text they may not have voted on. The bills and votes are below — read them and judge for yourself.",
   // Neither exculpatory nor accusatory, and not "no effect": we did not
   // finish reading the bills, so we say that and nothing more.
   EVALUATION_FAILED:
@@ -1213,9 +1244,13 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   // tell apart, so this sentence names none and implies none — and it is not
   // "no effect", which is a claim about the bills.
   ABSTAINED:
-    "We found legislation that could bear on this promise, but this senator was recorded as not voting on it and didn't put their name to it, so there's no yes or no to judge. The record doesn't say why.",
+    "We found legislation that could bear on this statement, but this senator was recorded as not voting on it and didn't put their name to it, so there's no yes or no to judge. The record doesn't say why.",
+  // Not "can't settle": the gates are rules, and the copy says a rule set the
+  // bills aside rather than that the bills are incapable of bearing on it.
+  CONTESTED_READING:
+    "We found bills on this subject, but at least one can reasonably be read either way — as advancing the goal in this statement or as setting it back — and we couldn't settle which, so it isn't counted in either direction. The bills and votes are below — read them and judge for yourself.",
   GATED:
-    "The legislation we found can't settle this statement — the window it applied to had closed, or the bills were too broad to say anything about it specifically. Each item below says which.",
+    "Our rules set aside everything we found before weighing it — the window the statement applied to had closed, or the bills were too broad to say anything about it specifically. Each item below says which.",
 };
 
 /**
@@ -1250,7 +1285,7 @@ export const GOVERNING_VOTE_COPY: Record<string, string> = {
   // -> BROKE" while hiding a cloture YEA is exactly the claim a senator's
   // office knocks down.
   'CLOTURE (60-vote threshold; split vote)':
-    'Two votes here, and they point different ways. The vote on whether to let the bill proceed is the one that governs, because that is the stage where a bill lives or dies.',
+    'Two votes here, and they point different ways. We count the vote on whether to let the bill proceed, because in the Senate that is usually the stage where a bill lives or dies.',
   'CLOTURE+PASSAGE (agree)':
     'They voted the same way twice — once on whether to let the bill proceed, once on the bill itself.',
   'CLOTURE (only vote recorded)':
@@ -1312,7 +1347,7 @@ export const VOTE_FLAG_COPY: Record<string, string> = {
   [EFFECT_UNREAD]:
     "We couldn't read this bill against the statement — the step that does it failed — so it isn't counted either way, and this reading is low confidence.",
   [TEXT_AT_ACTION_UNAVAILABLE]:
-    'This bill was rewritten over time, and the version of its text in effect when the senator acted is not available to us. It was judged against a later version, so this reading is low confidence.',
+    'The version of this bill’s text in effect when the senator acted is not available to us. It was judged against a later version, which may say something different, so this reading is low confidence.',
 };
 
 /** 'YYYY-MM-DD' -> 'March 14, 2025', in UTC so it never drifts a day. Null when not a date. */
