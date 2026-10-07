@@ -1238,10 +1238,11 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   // clearing.
   WITHHELD_PENDING_REVIEW:
     "A second review didn't back this reading, so we're not publishing it. The bills and votes are below — read them and judge for yourself.",
-  // Not exculpatory either. The text the senator acted on is missing from the
-  // record we have, which says nothing about which way he acted.
+  // Not exculpatory either. We lack a reliable summary of the text the senator
+  // acted on — missing, or flagged as wrong — which says nothing about which
+  // way they acted.
   WITHHELD_TEXT_UNAVAILABLE:
-    "The version of the bill's text in effect when the senator acted isn't available to us, so it could only be read against a later version, which may say something different. We won't make a call against the senator on the strength of a text they may not have voted on. The bills and votes are below — read them and judge for yourself.",
+    "We don't have a reliable summary of the version of the bill in effect when the senator acted, so it could only be read against a later version, which may say something different. We won't make a call against the senator on the strength of a text they may not have voted on. The bills and votes are below — read them and judge for yourself.",
   // Neither exculpatory nor accusatory, and not "no effect": we did not
   // finish reading the bills, so we say that and nothing more.
   EVALUATION_FAILED:
@@ -1353,7 +1354,7 @@ export const VOTE_FLAG_COPY: Record<string, string> = {
   [EFFECT_UNREAD]:
     "We couldn't read this bill against the statement — the step that does it failed — so it isn't counted either way, and this reading is low confidence.",
   [TEXT_AT_ACTION_UNAVAILABLE]:
-    'The version of this bill’s text in effect when the senator acted is not available to us. It was judged against a later version, which may say something different, so this reading is low confidence.',
+    'We don’t have a reliable summary of the version of this bill in effect when the senator acted. It was judged against a later version, which may say something different, so this reading is low confidence.',
 };
 
 /** 'YYYY-MM-DD' -> 'March 14, 2025', in UTC so it never drifts a day. Null when not a date. */
@@ -1449,7 +1450,7 @@ export function textVersionLines(d: TextVersionDisclosure | null | undefined): s
     lines.push(`Judged against the text in effect ${moment}: ${phrase}${date ? ` (${date})` : ''}${own}.`);
   } else if (d.status === 'TEXT_UNAVAILABLE') {
     lines.push(
-      `The text in effect ${moment} — ${phrase}${date ? ` (${date})` : ''} — isn't available to us, so a later version was used.`,
+      `We don't have a reliable summary of the text in effect ${moment} — ${phrase}${date ? ` (${date})` : ''} — so a later version was used.`,
     );
   } else if (d.status === 'NO_ACTION_DATE') {
     lines.push(
