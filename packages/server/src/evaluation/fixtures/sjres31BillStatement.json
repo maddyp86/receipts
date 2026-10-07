@@ -1,0 +1,26 @@
+{
+  "_provenance": "LIVE. mirror.mirror_impact_statements row for sjres31-119, read 2026-10-07, verbatim.",
+  "bill_impact_uid": "FCDALF",
+  "bill_id": "sjres31-119",
+  "row": {
+    "Title": "A joint resolution providing for congressional disapproval under chapter 8 of title 5, United States Code, of the rule submitted by the Environmental Protection Agency relating to \"Review of Final Rule Reclassification of Major Sources as Area Sources Under Section 112 of the Clean Air Act\"",
+    "Bill ID": "sjres31-119",
+    "Summary": "This joint resolution disapproves the EPA's 2024 rule requiring major sources of persistent and bioaccumulative hazardous air pollutants to continue complying with major source emission standards under the Clean Air Act, even after reclassifying as area sources. It restores the EPA's 2020 rule allowing such reclassification upon reducing emissions below major source thresholds, thereby exempting facilities from major source emission standards. The resolution also reinstates the EPA's 2018 guidance memorandum that withdrew the 'once in, always in' policy, permitting facilities to reclassify from major to area source status at any time after reducing hazardous air pollutant emissions below major source thresholds. Major sources of hazardous air pollutants benefit by gaining the ability to reclassify as area sources upon reducing emissions below major source thresholds, thereby exempting them from major source emission standards. Environmental advocacy groups face challenges in ensuring continued compliance with major source emission standards for facilities that reclassify as area sources.",
+    "Congress": 119,
+    "Reviewed": "yes",
+    "Sub Issue": "Pollution & Clean Air/Water",
+    "Impact UID": "FCDALF",
+    "Mechanisms": "Congressional disapproval under the Congressional Review Act (CRA)",
+    "row_number": 538,
+    "Policy Area": "Environmental Protection",
+    "Target Name": "Review of Final Rule Reclassification of Major Sources as Area Sources Under Section 112 of the Clean Air Act",
+    "Target Type": "AGENCY_RULE",
+    "Bill Keywords": "congressional review act, clean air act section 112, epa reclassification rule, once in always in policy, major source emission standards, hazardous air pollutants, area source reclassification, persistent bioaccumulative pollutants, air pollution regulation rollback, epa emission threshold, environmental regulatory oversight, pollution source reclassification",
+    "Primary Issue": "Environment",
+    "Target Effect": "Requires major sources of persistent and bioaccumulative hazardous air pollutants to continue complying with major source emission standards under the Clean Air Act, even after reclassifying as area sources.",
+    "Target Source": "Environmental Protection Agency",
+    "Intended Effects": "Nullifies the Environmental Protection Agency's (EPA) 2024 rule requiring major sources of persistent and bioaccumulative hazardous air pollutants to continue complying with major source emission standards under the Clean Air Act, even after reclassifying as area sources.; Restores the EPA's 2020 rule allowing major sources to reclassify as area sources upon reducing emissions below major source thresholds, thereby exempting them from major source emission standards.; Reinstates the EPA's 2018 guidance memorandum that withdrew the 'once in, always in' policy, permitting facilities to reclassify from major to area source status at any time after reducing hazardous air pollutant emissions below major source thresholds.",
+    "Direction Confidence": 0.9,
+    "Reverses Existing Policy": true
+  }
+}

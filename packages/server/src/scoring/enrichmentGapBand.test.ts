@@ -131,7 +131,7 @@ describe('a favourable reading', () => {
 
 describe('which reads decide', () => {
   it('everything but bill progress', () => {
-    expect([...DECISIVE_ENRICHMENT_GAPS].sort()).toEqual(['roll_call_context', 'text_versions', 'vote_records']);
+    expect([...DECISIVE_ENRICHMENT_GAPS].sort()).toEqual(['bill_statements', 'roll_call_context', 'text_versions', 'vote_records']);
   });
 
   // The judge's own read (dispatch) uses the same function on a BROKE.
