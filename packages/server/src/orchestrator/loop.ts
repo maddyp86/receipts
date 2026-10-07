@@ -325,13 +325,48 @@ function summariseLastMessage(messages: Anthropic.MessageParam[]): unknown {
   };
 }
 
+/**
+ * The request's view of the history: identical to `messages` except that the
+ * LAST block of the LAST message carries a cache breakpoint.
+ *
+ * PROMPT CACHING, and why it is shaped like this. Every turn re-sends the
+ * whole conversation; uncached, the orchestrator was 82% of a query's cost
+ * (2026-10-04 traces). Caching is a byte-exact prefix match, so two rules:
+ *
+ *   - The stored history is append-only and never edited. The breakpoint is
+ *     put on a CLONE of the newest message for this request only, so the
+ *     marker moves forward each turn while every earlier message reaches the
+ *     API byte-for-byte as it did before (a moved marker is not a change to
+ *     the prefix; the earlier positions are still cache hits).
+ *   - The prefix before the conversation — tools, then system — is static.
+ *     systemPrompt() is a fixed template plus the taxonomy file; the tool list
+ *     is a constant. Its own breakpoint (on the system block) lets the next
+ *     query read it too, within the cache's five minutes.
+ *
+ * Two breakpoints of the four allowed. Each turn reads everything up to the
+ * previous turn's marker at a tenth of the input price and writes only what
+ * the turn added.
+ */
+export function withMovingBreakpoint(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  const last = messages[messages.length - 1];
+  if (!last) return messages;
+  const blocks: Anthropic.ContentBlockParam[] =
+    typeof last.content === 'string' ? [{ type: 'text', text: last.content }] : [...last.content];
+  const tail = blocks[blocks.length - 1];
+  if (!tail) return messages;
+  blocks[blocks.length - 1] = { ...tail, cache_control: { type: 'ephemeral' } } as Anthropic.ContentBlockParam;
+  return [...messages.slice(0, -1), { ...last, content: blocks }];
+}
+
 async function runLive(session: QuerySession, emit: Emit): Promise<void> {
   const client = new Anthropic({ apiKey: config.anthropic.apiKey });
 
+  // Text blocks rather than a bare string, so the first message reaches the
+  // API in the same shape whether or not it carries this turn's breakpoint.
   const messages: Anthropic.MessageParam[] = [
     {
       role: 'user',
-      content: [
+      content: [{ type: 'text', text: [
         `A voter has asked whether this senator kept a promise.`,
         ``,
         `Senator id: ${session.politicianId}`,
@@ -340,7 +375,7 @@ async function runLive(session: QuerySession, emit: Emit): Promise<void> {
         `Run the sequence. When you reach explain_result, follow these constraints:`,
         ``,
         EXPLANATION_CONSTRAINTS,
-      ].join('\n'),
+      ].join('\n') }],
     },
   ];
 
@@ -352,9 +387,10 @@ async function runLive(session: QuerySession, emit: Emit): Promise<void> {
     const stream = client.messages.stream({
       model: config.models.explain,
       max_tokens: config.anthropic.maxTokens,
-      system,
+      // Tools render before system, so this one breakpoint caches both.
+      system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
       tools: TOOL_DEFINITIONS as unknown as Anthropic.Tool[],
-      messages,
+      messages: withMovingBreakpoint(messages),
     });
 
     let message: Anthropic.Message;

@@ -88,7 +88,10 @@ export type TraceStatus = 'ok' | 'error' | 'skipped' | 'rejected';
 export interface TraceUsage {
   input_tokens?: number;
   output_tokens?: number;
+  /** Tokens served from cache. OpenAI: a subset of input_tokens. Anthropic: separate from it. */
   cached_tokens?: number;
+  /** Anthropic only: tokens written to the prompt cache (billed at the write premium). */
+  cache_write_tokens?: number;
   reasoning_tokens?: number;
 }
 
@@ -322,7 +325,9 @@ export function traceBegin(): (step: StepInput) => TraceStep | undefined {
 
 /**
  * Anthropic usage → the shared shape. Cached tokens come from the
- * cache_read field; the SDK types differ by version so this reads loosely.
+ * cache_read field, cache writes from cache_creation; input_tokens is the
+ * uncached remainder only (see trace/pricing.ts). The SDK types differ by
+ * version so this reads loosely.
  */
 export function anthropicUsage(usage: unknown): TraceUsage | null {
   if (!usage || typeof usage !== 'object') return null;
@@ -332,6 +337,7 @@ export function anthropicUsage(usage: unknown): TraceUsage | null {
   if (n(u.input_tokens) !== undefined) out.input_tokens = n(u.input_tokens);
   if (n(u.output_tokens) !== undefined) out.output_tokens = n(u.output_tokens);
   if (n(u.cache_read_input_tokens) !== undefined) out.cached_tokens = n(u.cache_read_input_tokens);
+  if (n(u.cache_creation_input_tokens) !== undefined) out.cache_write_tokens = n(u.cache_creation_input_tokens);
   return Object.keys(out).length ? out : null;
 }
 
