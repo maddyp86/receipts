@@ -12,7 +12,11 @@ import { primaryIssues, subIssuesFor } from './embeddings/taxonomy.js';
 import type { Corrections } from '@receipts/shared';
 import { actionStore, embedder } from './services.js';
 import { TAXONOMY_IS_COMPLETE } from './embeddings/taxonomy.js';
-import { queryBurstLimiter, queryDailyLimiter, readOnlyLimiter } from './rateLimit.js';
+import { globalDailyCap, queryBurstLimiter, queryDailyLimiter, readOnlyLimiter } from './rateLimit.js';
+import { usageCounter } from './services.js';
+
+/** After the per-IP limiters: a request they refuse never spends the shared budget. */
+const globalCap = globalDailyCap(usageCounter, config.rateLimit.globalQueryPerDay);
 
 const app = express();
 
@@ -144,7 +148,7 @@ app.get('/api/senators', (_req, res) => {
  * record is the follow-up's own trace run. Rate-limited as a query: it is
  * one paid model call.
  */
-app.post('/api/followup', queryDailyLimiter, queryBurstLimiter, async (req, res) => {
+app.post('/api/followup', queryDailyLimiter, queryBurstLimiter, globalCap, async (req, res) => {
   const body = (req.body ?? {}) as { run_id?: unknown; question?: unknown; history?: unknown };
   const runId = String(body.run_id ?? '').trim();
   const question = String(body.question ?? '').trim();
@@ -202,7 +206,7 @@ app.get('/api/taxonomy', (_req, res) => {
  * reconnect semantics come for free. Steps are flushed as they resolve — the
  * visible reasoning IS the traceability, so buffering it would defeat the point.
  */
-app.get('/api/query', queryDailyLimiter, queryBurstLimiter, async (req, res) => {
+app.get('/api/query', queryDailyLimiter, queryBurstLimiter, globalCap, async (req, res) => {
   const politicianId = String(req.query.senator ?? '').trim();
   const promiseText = String(req.query.promise ?? '').trim();
 
@@ -288,6 +292,12 @@ app.listen(config.port, () => {
   console.info(
     `  rate limit: query ${config.rateLimit.queryPer15Min}/15min, ${config.rateLimit.queryPerDay}/day · ` +
       `read ${config.rateLimit.readPer15Min}/15min · health exempt · trust proxy hops ${config.rateLimit.trustProxyHops}`,
+  );
+  console.info(
+    `  global cap: ${config.rateLimit.globalQueryPerDay} paid requests/UTC day, counted ` +
+      (usageCounter.kind === 'supabase'
+        ? 'in app.app_usage_daily (falls back to memory if migration 011 is missing)'
+        : 'IN MEMORY — resets on every restart; set DATABASE_URL to persist it'),
   );
   if (config.demoMode) {
     console.info('  DEMO MODE — interpretation and explanation are canned, and the UI says so.');
