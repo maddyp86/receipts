@@ -71,6 +71,30 @@ export interface DispositionResult {
    * PENDING and REVIEW_REQUIRED both mean "no judge has cleared this".
    */
   withheld: boolean;
+  /**
+   * Set only by `forDisplay`: the verdict the judge corrected to, kept for the
+   * audit record when the query tool withheld instead of publishing it.
+   */
+  judge_corrected_verdict?: AlignmentOutcome;
+}
+
+/** The only dispositions under which the query tool publishes an accusation. */
+const CLEARS_ACCUSATION = new Set<Disposition>(['PASS', 'PASS_ON_RETRY']);
+
+/**
+ * The disposition as the QUERY TOOL shows it.
+ *
+ * `applyJudgeVerdict` is the WF13 port: in the pipeline, a FAIL corrected to a
+ * non-accusation means "the row becomes the corrected verdict", so it is not
+ * withheld. The query tool does not publish the judge's correction as its own
+ * verdict — it withholds (decided 2026-10-07, after the clean-air trace showed
+ * a refuted BROKE going out). So the record kept for the page and the audit
+ * log is rewritten to match what is shown: NOT_DETERMINABLE, withheld, with the
+ * judge's correction preserved beside it for review.
+ */
+export function forDisplay(d: DispositionResult): DispositionResult {
+  if (d.withheld || CLEARS_ACCUSATION.has(d.disposition)) return d;
+  return { ...d, verdict: 'NOT_DETERMINABLE', confidence: null, withheld: true, judge_corrected_verdict: d.verdict };
 }
 
 /**
@@ -265,7 +289,12 @@ export function applyDispositionToResult(
   result: ScoredResult,
   disposition: DispositionResult,
 ): JudgedResultOutcome {
-  if (result.verdict !== 'BROKE' || !disposition.withheld) {
+  // Only accusations, and only those the judge did NOT clear. A judge that
+  // failed the reading — with or without a correction — has not cleared it.
+  // Testing `disposition.withheld` here was the bug: a FAIL corrected to a
+  // non-accusation is not "withheld" in the WF13 sense, so the original BROKE
+  // fell through and was published under copy that called it corrected.
+  if (result.verdict !== 'BROKE' || CLEARS_ACCUSATION.has(disposition.disposition)) {
     return { result, withheld: false, reason: '' };
   }
 

@@ -361,12 +361,15 @@ describe('buildAuditEvents', () => {
     expect(e!.senator_counterargument).toBe('It was procedural.');
   });
 
+  // The audit disposition is what the reader was SHOWN. A correction the
+  // query tool withheld is WITHHELD; CORRECTED only when it was published.
   it.each([
-    ['JUDGE_ERROR', 'ERROR'],
-    ['REVIEW_REQUIRED_JUDGE_CORRECTED', 'CORRECTED'],
-    ['REVIEW_REQUIRED', 'WITHHELD'],
-  ])('maps disposition %s to %s', (d, expected) => {
-    const [e] = buildAuditEvents(judged({ disposition: d }), 'q-1');
+    ['JUDGE_ERROR', true, 'ERROR'],
+    ['REVIEW_REQUIRED_JUDGE_CORRECTED', true, 'WITHHELD'],
+    ['REVIEW_REQUIRED_JUDGE_CORRECTED', false, 'CORRECTED'],
+    ['REVIEW_REQUIRED', true, 'WITHHELD'],
+  ])('maps disposition %s (withheld %s) to %s', (d, withheld, expected) => {
+    const [e] = buildAuditEvents(judged({ disposition: d, withheld }), 'q-1');
     expect(e!.disposition).toBe(expected);
   });
 
