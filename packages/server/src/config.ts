@@ -293,17 +293,21 @@ export const config = {
     trustProxyHops: num(process.env.TRUST_PROXY_HOPS, 1),
     /** Burst: an engaged session is 3-5 promises, ~10-15 with corrections. */
     queryPer15Min: num(process.env.RATE_LIMIT_QUERY_PER_15MIN, 15),
-    /** Sustained: stops a slow drip that never trips the burst window. */
-    queryPerDay: num(process.env.RATE_LIMIT_QUERY_PER_DAY, 60),
+    /**
+     * Sustained: stops a slow drip that never trips the burst window. 20 is
+     * the closed-beta limit (2026-10-06): ~$5/day per tester at ~$0.24 a query.
+     */
+    queryPerDay: num(process.env.RATE_LIMIT_QUERY_PER_DAY, 20),
     /** Free, memory-cached routes. Generous; only stops a hammering loop. */
     readPer15Min: num(process.env.RATE_LIMIT_READ_PER_15MIN, 120),
     /**
      * Global: paid requests (/api/query + /api/followup) per UTC day across
      * EVERYONE, then "come back tomorrow". The only control that bounds total
-     * spend. Measured 2026-10-04: ~$0.24 per query, so 150 ≈ $36/day at most.
+     * spend. Closed-beta limit (2026-10-06): 75 ≈ $18/day at most, at the
+     * ~$0.24 per query measured 2026-10-04.
      * Counted in app.app_usage_daily (migration 011), in memory without it.
      */
-    globalQueryPerDay: num(process.env.RATE_LIMIT_GLOBAL_QUERY_PER_DAY, 150),
+    globalQueryPerDay: num(process.env.RATE_LIMIT_GLOBAL_QUERY_PER_DAY, 75),
   },
 
   /**
