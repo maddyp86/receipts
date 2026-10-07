@@ -4,6 +4,7 @@ import type {
   ConfidenceBand,
   Direction,
   DirectedAction,
+  EnrichmentGap,
   EvidenceType,
   FactorReceipt,
   MatchedAction,
@@ -14,7 +15,7 @@ import type {
   StatementType,
   Verdict,
 } from '@receipts/shared';
-import { EFFECT_UNREAD, TEXT_AT_ACTION_UNAVAILABLE, toVerdict } from '@receipts/shared';
+import { DECISIVE_ENRICHMENT_GAPS, EFFECT_UNREAD, TEXT_AT_ACTION_UNAVAILABLE, toVerdict } from '@receipts/shared';
 import {
   EVIDENCE_TYPE_FACTOR,
   HIGH_AVG_STRENGTH,
@@ -69,6 +70,8 @@ export type ScorableMatch = MatchedAction & {
   text_version?: import('@receipts/shared').TextVersionDisclosure;
   /** The record sentence. Passed through untouched; never read for scoring. */
   record?: string;
+  /** The bill's history could not be read. Passed through; never read for scoring. */
+  history_unavailable?: boolean;
   /**
    * Disclosure flags already established upstream — `FLOOR_LEADER` and
    * `ACTION_DATE_PROXY` come from the pre-evaluator gates, which know the
@@ -116,6 +119,13 @@ export interface ScoreInput {
    * record" is false when we found them and deliberately declined to read them.
    */
   gated_count?: number;
+  /**
+   * Parts of the record whose read failed for this run. A gap in a part that
+   * decides the text or a gate (DECISIVE_ENRICHMENT_GAPS) lowers the band to
+   * Low and withholds an accusation. Bill progress is display only and
+   * changes neither. Never moves a weight or a direction. Defaults to none.
+   */
+  enrichment_gaps?: EnrichmentGap[];
 }
 
 const mean = (xs: number[]): number =>
@@ -218,7 +228,11 @@ const textUnavailable = (e: DirectedAction): boolean =>
  * several sound ones still lowers the band, because a reader cannot tell from
  * a "High" which of the actions behind it carried the doubt.
  */
-function bandWithText(subset: DirectedAction[], unread = 0): { band: ConfidenceBand; why: string } {
+function bandWithText(
+  subset: DirectedAction[],
+  unread = 0,
+  gaps: readonly EnrichmentGap[] = [],
+): { band: ConfidenceBand; why: string } {
   const dial = bandFor(subset);
   const n = subset.filter(textUnavailable).length;
   const reasons: string[] = [];
@@ -230,6 +244,11 @@ function bandWithText(subset: DirectedAction[], unread = 0): { band: ConfidenceB
   // computed without it is not one we can stand behind — the #24 principle.
   if (unread) {
     reasons.push(`${unread} bill(s) behind a vote or sponsorship could not be read against the statement`);
+  }
+  // A failed record read: the checks that needed it failed open, so the band
+  // was computed with less scrutiny than it claims.
+  if (gaps.length) {
+    reasons.push(`part of the record the checks depend on could not be read (${[...new Set(gaps)].join(', ')})`);
   }
   if (!reasons.length) return dial;
   return { band: 'Low', why: `${dial.why}; lowered to Low because ${reasons.join(' and ')}` };
@@ -406,6 +425,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
   for (const e of evidence) flags.push(...e.scoring_flags);
 
   const unreadCount = evidence.filter(unreadDecisive).length;
+  const gaps = (input.enrichment_gaps ?? []).filter((g) => DECISIVE_ENRICHMENT_GAPS.includes(g));
   const keeps = evidence.filter((e) => e.direction === 'keeps');
   const breaks = evidence.filter((e) => e.direction === 'breaks');
   const directed = [...keeps, ...breaks];
@@ -501,7 +521,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
     const dominantSet = dominantIsKeep ? keeps : breaks;
     const dissentSet = dominantIsKeep ? breaks : keeps;
 
-    const dominantBand = bandWithText(dominantSet, unreadCount);
+    const dominantBand = bandWithText(dominantSet, unreadCount, gaps);
     // Never claim High on a contested record.
     const cappedBand: ConfidenceBand = dominantBand.band === 'High' ? 'Medium' : dominantBand.band;
 
@@ -526,7 +546,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
       },
       {
         verdict: dominantIsKeep ? 'BROKE' : 'KEPT',
-        band: bandWithText(dissentSet, unreadCount).band,
+        band: bandWithText(dissentSet, unreadCount, gaps).band,
         weight: dominantIsKeep ? breakWeight : keepWeight,
         evidence_uids: dissentSet.map((e) => e.action_uid),
       },
@@ -542,12 +562,12 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
       ranked,
       receipt: { ...receipt, trace },
       evidence,
-    }).result;
+    }, { enrichmentGaps: gaps }).result;
   }
 
   // ---- Clean direction: dials set the band --------------------------------
   const verdict: Verdict = keeps.length > 0 ? 'KEPT' : 'BROKE';
-  const { band, why } = bandWithText(directed, unreadCount);
+  const { band, why } = bandWithText(directed, unreadCount, gaps);
   trace.push(`G2 passed: direction is unanimous (${verdict}).`);
   trace.push(`Band ${band} — ${why}.`);
 
@@ -559,7 +579,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
     ranked: [],
     receipt: { ...receipt, trace },
     evidence,
-  }).result;
+  }, { enrichmentGaps: gaps }).result;
 }
 
 export { PATTERN_MULTIPLIER };

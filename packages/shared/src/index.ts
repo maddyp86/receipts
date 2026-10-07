@@ -419,7 +419,22 @@ export interface DirectedAction extends MatchedAction {
    * nothing about the action.
    */
   record?: string;
+
+  /**
+   * True when the bill's history — how far it got, which committees acted —
+   * could not be read for this answer. Display only: the card says so, so
+   * that a missing "reported by committee" is not read as "never reported".
+   * Never read for scoring.
+   */
+  history_unavailable?: boolean;
 }
+
+/**
+ * Said on a card whose bill history could not be read. Display only, and says
+ * so: the reading does not depend on it.
+ */
+export const HISTORY_UNAVAILABLE_COPY =
+  "We couldn't load this bill's history for this answer — how far it got and which committees acted on it. The reading above doesn't depend on it.";
 
 /** The act whose date picked the text: the same act that governs the verdict. */
 export type TextVersionGoverningAct = 'CLOTURE' | 'PASSAGE' | 'VOTE' | 'SPONSORSHIP';
@@ -681,12 +696,29 @@ export const ENRICHMENT_GAP_PHRASE: Record<EnrichmentGap, string> = {
 };
 
 /**
- * Said on the result when a read failed. The checks that need these fail
- * open — a timing check with no vote date does not fire — so the verdict was
- * reached with less scrutiny than usual, and the reader is told so.
+ * The parts of the record whose failed read can change what is published.
+ *
+ * Each feeds the text selection or a gate: vote and sponsorship dates pick the
+ * version of the text in effect (and date G1a); roll-call context is the
+ * cloture result, the whip's vote and the senator's role (G2, G3); the text
+ * versions are the text itself. A failed read of any of these lowers the band
+ * and withholds an accusation.
+ *
+ * Bill progress is absent on purpose: tier, stage and committee feed only the
+ * record sentence, which is display. Its failure is said on the card
+ * (`history_unavailable`) and leaves the band where the evidence puts it.
+ */
+export const DECISIVE_ENRICHMENT_GAPS: readonly EnrichmentGap[] = ['vote_records', 'roll_call_context', 'text_versions'];
+
+/**
+ * Said on the result when a read the checks depend on failed. The checks that
+ * need these fail open — a timing check with no vote date does not fire — so
+ * the verdict was reached with less scrutiny than usual, and the reader is
+ * told so. A failed bill-history read is not listed: no check depends on it,
+ * and each card says it instead.
  */
 export function enrichmentGapSentence(gaps: EnrichmentGap[] | null | undefined): string | null {
-  const known = [...new Set(gaps ?? [])].filter((g) => ENRICHMENT_GAP_PHRASE[g]);
+  const known = [...new Set(gaps ?? [])].filter((g) => ENRICHMENT_GAP_PHRASE[g] && DECISIVE_ENRICHMENT_GAPS.includes(g));
   if (!known.length) return null;
   const parts = known.map((g) => ENRICHMENT_GAP_PHRASE[g]);
   const list = parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join('; ')}; and ${parts[parts.length - 1]}`;
@@ -1176,7 +1208,7 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   // Neither exculpatory nor accusatory, and not "no effect": we did not
   // finish reading the bills, so we say that and nothing more.
   EVALUATION_FAILED:
-    "We couldn't finish checking this: the step that reads each bill against this statement failed for some or all of the bills we found. That says nothing about the senator either way. The bills and votes are below, and trying again may complete the check.",
+    "We couldn't finish checking this: a step failed for this answer — either reading the bills against this statement, or reading the part of the record we check them against. That says nothing about the senator either way. The bills and votes are below, and trying again may complete the check.",
   // The record, and only the record. A missed vote has reasons the data can't
   // tell apart, so this sentence names none and implies none — and it is not
   // "no effect", which is a claim about the bills.

@@ -3,6 +3,7 @@ import {
   BANNED_MOTIVE_TERMS,
   fail,
   ok,
+  type EnrichmentGap,
   type Envelope,
   type Explanation,
   type Interpretation,
@@ -26,6 +27,7 @@ import {
 import { liveResponsesFetcher } from '../evaluation/responsesFetcher.js';
 import { preEvaluatorGates, type GateResult } from '../evaluation/preEvaluatorGates.js';
 import {
+  ENRICHMENT_GAP_OF,
   enrichmentSource,
   type ActionEnrichment,
   type EnrichmentPart,
@@ -50,6 +52,7 @@ import {
 import { classifyPromise, type ClassifyFetcher } from '../evaluation/classify.js';
 import type { CorrectionDelta, Corrections } from '@receipts/shared';
 import { scoreMatches, type ScorableMatch } from '../scoring/score.js';
+import { withholdForUnreadRecord } from '../scoring/withholding.js';
 import { config, namespaceFor } from '../config.js';
 import { traceStep, type TraceUsage } from '../trace/Trace.js';
 import type { ResponsesEnvelope } from '../evaluation/relevance.js';
@@ -1137,7 +1140,11 @@ async function evaluateEffectsTool(
 
   const disagreements: string[] = [];
 
-  const recordFor = (m: MatchedAction): { record?: string } => {
+  // A failed bill-progress read leaves the record sentence without its
+  // outcome and committee clauses. The card says so, so that the absence is
+  // not read as "never advanced".
+  const historyUnavailable = enrichmentFailures.some((f) => f.part === 'bill_progress');
+  const recordFor = (m: MatchedAction): { record?: string; history_unavailable?: boolean } => {
     const r = recordSentence({
       bill_id: String(m.bill_id ?? ''),
       is_sponsor: m.is_sponsor,
@@ -1146,7 +1153,10 @@ async function evaluateEffectsTool(
       bill: bills.get(String(m.bill_id ?? '')) ?? null,
       text_version: textVersions[m.action_uid]?.disclosure ?? null,
     });
-    return r ? { record: r.sentence } : {};
+    return {
+      ...(r ? { record: r.sentence } : {}),
+      ...(historyUnavailable ? { history_unavailable: true } : {}),
+    };
   };
 
   const scorable: ScorableMatch[] = scorableMatches.map((m) => {
@@ -1217,6 +1227,8 @@ async function evaluateEffectsTool(
     // Without this the scorer cannot tell "retrieval found nothing" from "the
     // gates closed everything retrieval found" — `scorable` is empty either way.
     gated_count: gatedRows.length,
+    // A failed record read lowers the band and can withhold an accusation.
+    enrichment_gaps: [...new Set((session.enrichmentFailures ?? []).map((f) => ENRICHMENT_GAP_OF[f.part]))],
   });
   session.scored = scored;
 
@@ -1282,15 +1294,32 @@ async function evaluateEffectsTool(
       .sort((a, b) => (b.alignment_confidence ?? 0) - (a.alignment_confidence ?? 0));
     const lead = breaking[0];
 
-    if (lead) {
+    // The judge's own read reports into the same run: a judge shown no vote
+    // dates is reviewing with less than the evaluator had.
+    const judgeReadFailed: EnrichmentGap[] = [];
+    const enriched = lead
+      ? ((await enrichmentSource.forActions([lead.action_uid], (part, message) => {
+          session.enrichmentFailures = [...(session.enrichmentFailures ?? []), { part, message }];
+          judgeReadFailed.push(ENRICHMENT_GAP_OF[part]);
+        })).get(lead.action_uid) ?? {})
+      : {};
+    // The judge's gates need the dates and roll-call context the scorer had.
+    // Read failed, they would run without them and fail open — the incomplete
+    // check the scorer withholds for — so the accusation is withheld here too
+    // and the judge is not asked to review it.
+    const unreadRecord = withholdForUnreadRecord(scored, judgeReadFailed);
+
+    if (lead && unreadRecord.withheld) {
+      session.scored = unreadRecord.result;
+      traceStep({
+        stage: 'JUDGE', kind: 'deterministic', subject: lead.action_uid, status: 'error',
+        label: `skipped — the judge's record read failed · BROKE → NOT_DETERMINABLE (withheld)`,
+        input: { lead_action: lead.action_uid, failed: judgeReadFailed },
+        output: { withheld_reason: unreadRecord.reason, verdict_after: 'NOT_DETERMINABLE' },
+      });
+    } else if (lead) {
       const gate = session.gates?.[lead.action_uid];
       const f = session.fulfillment?.[lead.action_uid];
-      // The judge's own read reports into the same run: a judge shown no vote
-      // dates is reviewing with less than the evaluator had.
-      const enriched =
-        (await enrichmentSource.forActions([lead.action_uid], (part, message) => {
-          session.enrichmentFailures = [...(session.enrichmentFailures ?? []), { part, message }];
-        })).get(lead.action_uid) ?? {};
       const scoredBefore = scored.verdict;
       // The judge reviews the evaluator's reading, so it must read the same
       // text. Shown the enrolled NDAA while the evaluator read the introduced
@@ -1502,6 +1531,8 @@ async function evaluateEffectsTool(
       // The checked record of the senator's sponsorship and the bill's path,
       // built from the pipeline's columns. Quoted or omitted, never paraphrased.
       record: e.record,
+      // The bill's progress could not be read: say nothing about how far it got.
+      history_unavailable: e.history_unavailable || undefined,
       // Which version of the bill's text the action was judged against, when
       // the bill has more than one. `title` above is the bill's CURRENT title.
       // Titles only when read from the version's own text. The rest are mostly
@@ -1562,7 +1593,9 @@ async function evaluateEffectsTool(
       'vote flag TEXT_AT_ACTION_UNAVAILABLE, say that the text in effect when the senator acted is not ' +
       'available and the reading is low confidence; never state the finding about that row as certain. ' +
       'Where an evidence row has record, it is the checked record of what the senator did on the bill ' +
-      'and what became of it: quote it as written or leave it out. Never turn it into a claim about ' +
+      'and what became of it: quote it as written or leave it out. Where a row has history_unavailable, ' +
+      'the bill\'s progress could not be read: say nothing about how far it got or whether a committee acted. ' +
+      'Never turn the record into a claim about ' +
       'effort or intent — not "fought for", "pushed", "championed", "abandoned" or "gave up".',
   });
 }
