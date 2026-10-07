@@ -23,7 +23,9 @@ import { anthropicContent, anthropicUsage, traceBegin } from '../trace/Trace.js'
 //     HTTP node; this port never constructs the key at all.
 //   * `max_tokens: 1200` IS NOT ENOUGH. The model spent the whole budget on a
 //     thinking block, emitted no text, and returned stop_reason: max_tokens.
-//     Use 8000.
+//     8000 was not enough either: 3 of 7 clean-air calls (2026-10-07) ended
+//     the same way. The ceiling is now config.judge.maxTokens (32,000), and
+//     the call streams, which the SDK requires at that size.
 //   * Response content CAN BE THINKING BLOCKS. Filter for type === 'text'; if
 //     that yields nothing it is an infrastructure failure, not a verdict.
 //   * NEVER LET AN EMPTY RESPONSE BECOME A CONTENT VERDICT. The first version
@@ -31,8 +33,6 @@ import { anthropicContent, anthropicUsage, traceBegin } from '../trace/Trace.js'
 //     a fabricated accusation in the audit log.
 // ===========================================================================
 
-/** See the header. 1200 produced thinking-only responses with no text. */
-const JUDGE_MAX_TOKENS = 8000;
 
 export type JudgeGrade = 'PASS' | 'FAIL' | 'ERROR';
 
@@ -220,7 +220,12 @@ export function parseJudgeResponse(message: {
 
   const p = parseJudgeJson(raw);
   if (!p) {
-    return judgeErrorVerdict(`judge output was not valid JSON: ${raw.slice(0, 200)}`);
+    // Cut off mid-answer is a budget failure, not a prose one; say which.
+    return judgeErrorVerdict(
+      stop === 'max_tokens'
+        ? `judge hit its output ceiling mid-answer (stop_reason=max_tokens) — raise max_tokens: ${raw.slice(0, 160)}`
+        : `judge output was not valid JSON: ${raw.slice(0, 200)}`,
+    );
   }
 
   let grade: JudgeGrade = U(p.grade) === 'PASS' ? 'PASS' : 'FAIL';
@@ -274,49 +279,58 @@ export class JudgeUnavailableError extends Error {
 export type JudgeFetcher = (input: JudgeInput) => Promise<JudgeVerdict>;
 
 export function liveJudgeFetcher(): JudgeFetcher {
-  return async (input) => {
-    if (!config.anthropic.apiKey) throw new JudgeUnavailableError();
+  return async (input) => callJudgeModel(buildJudgeUserMessage(input), input.bill_id);
+}
 
-    const client = new Anthropic({ apiKey: config.anthropic.apiKey });
-    const userMessage = buildJudgeUserMessage(input);
-    const end = traceBegin();
-    let message: Anthropic.Message;
-    try {
-      // NOTE the absence of `temperature`. claude-sonnet-5 400s on it; this is
-      // not an omission to be tidied up.
-      message = await client.messages.create({
+/**
+ * One judge call on a prepared user message: traced, parsed, never a content
+ * verdict on failure. Exported so a recorded judge input can be replayed
+ * through exactly this path (tools/replay-judge.mts).
+ */
+export async function callJudgeModel(userMessage: string, subject: string | null = null): Promise<JudgeVerdict> {
+  if (!config.anthropic.apiKey) throw new JudgeUnavailableError();
+
+  const client = new Anthropic({ apiKey: config.anthropic.apiKey });
+  const end = traceBegin();
+  let message: Anthropic.Message;
+  try {
+    // NOTE the absence of `temperature`. claude-sonnet-5 400s on it; this is
+    // not an omission to be tidied up. Streamed because the SDK refuses a
+    // non-streaming request with an output ceiling this large.
+    message = await client.messages
+      .stream({
         model: config.models.judge,
-        max_tokens: JUDGE_MAX_TOKENS,
+        max_tokens: config.judge.maxTokens,
         system: JUDGE_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }],
-      });
-    } catch (err) {
-      end({
-        stage: 'JUDGE_MODEL', kind: 'model', status: 'error', label: 'judge call failed',
-        subject: input.bill_id,
-        model: config.models.judge, prompt_version: JUDGE_SYSTEM_PROMPT_VERSION, prompt_text: JUDGE_SYSTEM_PROMPT,
-        input: { user_message: userMessage },
-        error: err instanceof Error ? err.message : String(err),
-      });
-      throw err;
-    }
-
-    const verdict = parseJudgeResponse(message as Parameters<typeof parseJudgeResponse>[0]);
-    // Raw blocks AND the parse, side by side: the parser turns a thinking-only
-    // or empty response into JUDGE_NO_OUTPUT, and a reader needs to see which.
+      })
+      .finalMessage();
+  } catch (err) {
     end({
-      stage: 'JUDGE_MODEL', kind: 'model',
-      status: verdict.grade === 'ERROR' ? 'error' : 'ok',
-      label: `${verdict.grade}${verdict.failed_test ? ` ${verdict.failed_test}` : ''}${verdict.failure_class ? ` ${verdict.failure_class}` : ''} (stop_reason=${message.stop_reason ?? 'none'})`,
-      subject: input.bill_id,
+      stage: 'JUDGE_MODEL', kind: 'model', status: 'error', label: 'judge call failed',
+      subject,
       model: config.models.judge, prompt_version: JUDGE_SYSTEM_PROMPT_VERSION, prompt_text: JUDGE_SYSTEM_PROMPT,
-      usage: anthropicUsage(message.usage),
       input: { user_message: userMessage },
-      output: { stop_reason: message.stop_reason, content: anthropicContent(message.content), parsed: verdict },
-      error: verdict.grade === 'ERROR' ? verdict.critique : null,
+      error: err instanceof Error ? err.message : String(err),
     });
-    return verdict;
-  };
+    throw err;
+  }
+
+  const verdict = parseJudgeResponse(message as Parameters<typeof parseJudgeResponse>[0]);
+  // Raw blocks AND the parse, side by side: the parser turns a thinking-only
+  // or empty response into JUDGE_NO_OUTPUT, and a reader needs to see which.
+  end({
+    stage: 'JUDGE_MODEL', kind: 'model',
+    status: verdict.grade === 'ERROR' ? 'error' : 'ok',
+    label: `${verdict.grade}${verdict.failed_test ? ` ${verdict.failed_test}` : ''}${verdict.failure_class ? ` ${verdict.failure_class}` : ''} (stop_reason=${message.stop_reason ?? 'none'})`,
+    subject,
+    model: config.models.judge, prompt_version: JUDGE_SYSTEM_PROMPT_VERSION, prompt_text: JUDGE_SYSTEM_PROMPT,
+    usage: anthropicUsage(message.usage),
+    input: { user_message: userMessage },
+    output: { stop_reason: message.stop_reason, content: anthropicContent(message.content), parsed: verdict },
+    error: verdict.grade === 'ERROR' ? verdict.critique : null,
+  });
+  return verdict;
 }
 
 /**

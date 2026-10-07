@@ -154,6 +154,16 @@ export const config = {
      * about a path that does not exist, and enabling retry is a flag flip.
      */
     retryEnabled: process.env.JUDGE_RETRY === 'true',
+    /**
+     * Output ceiling for one judge call, thinking included. Sonnet 5 has no
+     * separate thinking budget, so this is the only lever, and it must sit
+     * well clear of what the judge actually uses: 8,000 failed on 3 of 7
+     * clean-air calls (2026-10-07) — thinking took all of it and no verdict
+     * came out — while the calls that finished used 3.7k-6.5k. A call that
+     * still hits it is an explicit JUDGE_ERROR, never a content verdict.
+     * Billed on use, not on the ceiling.
+     */
+    maxTokens: num(process.env.JUDGE_MAX_TOKENS, 32_000),
   },
 
   anthropic: {
