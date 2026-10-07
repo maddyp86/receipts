@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { GatedAction, QueryResult, StepId, StreamEvent, ToolError } from '@receipts/shared';
 import { config } from '../config.js';
 import { dispatchTool, newSession, type QuerySession } from './dispatch.js';
+import type { ClassifyFetcher } from '../evaluation/classify.js';
 import { queryStore, traceSinks } from '../services.js';
 import {
   QueryTrace,
@@ -1100,7 +1101,18 @@ export async function runQuery(
   promiseText: string,
   emit: Emit,
   corrections?: Corrections,
-  meta: { userAgent?: string; statementDate?: string; sessionKey?: string } = {},
+  meta: {
+    userAgent?: string;
+    statementDate?: string;
+    sessionKey?: string;
+    /**
+     * Measurement only (tools/stability.mts): answer the classifier from a
+     * stored result instead of the live model, so the interpretation — and
+     * with it the embedded text — is byte-identical across runs. Never set on
+     * the request path.
+     */
+    classifyFetcher?: ClassifyFetcher;
+  } = {},
 ): Promise<void> {
   // ---- PER-SESSION REPLAY CACHE ------------------------------------------
   //
@@ -1152,6 +1164,7 @@ export async function runQuery(
   }
 
   const session = newSession(politicianId, promiseText, corrections, meta.statementDate);
+  if (meta.classifyFetcher) session.classifyFetcher = meta.classifyFetcher;
   const trace = new QueryTrace(traceSinks, { politicianId, promiseText, meta: traceMeta });
 
   // Every event this run produces, so a cacheable run can be replayed later.
