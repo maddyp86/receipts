@@ -872,13 +872,16 @@ export function buildAuditEvents(session: QuerySession, queryId: string): AuditE
   // ---- THE JUDGE.
   if (session.judge) {
     const { verdict, disposition } = session.judge;
+    // What the reader was SHOWN. A correction the query tool withheld is
+    // WITHHELD, not CORRECTED — CORRECTED would claim the corrected verdict
+    // was published. verdict_after below is likewise the shown verdict.
     const outcome =
       disposition.disposition === 'JUDGE_ERROR'
         ? 'ERROR'
-        : disposition.disposition === 'REVIEW_REQUIRED_JUDGE_CORRECTED'
-          ? 'CORRECTED'
-          : disposition.withheld
-            ? 'WITHHELD'
+        : disposition.withheld
+          ? 'WITHHELD'
+          : disposition.disposition === 'REVIEW_REQUIRED_JUDGE_CORRECTED'
+            ? 'CORRECTED'
             : 'PASS';
 
     events.push({
@@ -901,6 +904,8 @@ export function buildAuditEvents(session: QuerySession, queryId: string): AuditE
       detail: {
         gate_agreement: verdict.gate_agreement || null,
         corrected_bill_effect: verdict.corrected_bill_effect || null,
+        // The judge's correction, kept for review though not published.
+        judge_corrected_verdict: disposition.judge_corrected_verdict ?? null,
       },
     });
   }

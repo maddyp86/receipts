@@ -1,0 +1,82 @@
+{
+  "_provenance": "LIVE. Query trace 205c08d1-21bf-4ba5-8e76-83f183d709b4 (2026-10-07, tools/stability.mts run stability-a #1): Schumer, 'promised to protect clean air standards from rollback'. The SCORE step's output and the JUDGE step's judge_verdict and disposition, verbatim. The judge FAILED the accusation (T4 BILL_EFFECT_INVERTED) and corrected it to CONSISTENT; the code then published the original BROKE.",
+  "run_id": "205c08d1-21bf-4ba5-8e76-83f183d709b4",
+  "scored": {
+    "verdict": "BROKE",
+    "band": "Low",
+    "mode": "single",
+    "nd_reason": null,
+    "ranked": [],
+    "receipt": {
+      "match_count": 1,
+      "directed_count": 1,
+      "avg_strength": 0.593,
+      "strongest_score": 0.593,
+      "evidence_mix": {
+        "vote": 1,
+        "sponsorship": 0,
+        "procedural": 0,
+        "associative": 0
+      },
+      "direction_split": {
+        "keeps": 0,
+        "breaks": 1,
+        "neutral": 0
+      },
+      "weight_split": {
+        "keeps": 0,
+        "breaks": 0.5935
+      },
+      "minority_share": 0,
+      "trace": [
+        "Retrieved 8 candidate actions; 1 at or above the evidence floor (0.575), 7 related but below it.",
+        "G1 passed: 1 of 1 actions carry a direction (0 toward keeping, 1 toward breaking).",
+        "G2 passed: direction is unanimous (BROKE).",
+        "Band Low \u2014 a single match, below the strength bar for a confident read."
+      ],
+      "scoring_flags": []
+    },
+    "evidence": [
+      {
+        "action_uid": "ACT-sjres31-119-S000148",
+        "bill_id": "sjres31-119",
+        "bill_effect": "ADVANCE",
+        "outcome": "INCONSISTENT",
+        "direction": "breaks",
+        "evidence_type": "vote",
+        "action_tier": "VOTED",
+        "vote_pattern": "PASSAGE_ONLY",
+        "weight": 0.5935,
+        "alignment_confidence": 0.89,
+        "vote_governing": "PASSAGE (no cloture vote)",
+        "vote_flags": [
+          "FLOOR_LEADER"
+        ],
+        "scoring_flags": []
+      }
+    ]
+  },
+  "judge_verdict": {
+    "grade": "FAIL",
+    "failed_test": "T4",
+    "failure_class": "BILL_EFFECT_INVERTED",
+    "corrected_verdict": "CONSISTENT",
+    "corrected_bill_effect": "HINDER",
+    "corrected_confidence": 0.65,
+    "senator_counterargument": "My NAY vote was a vote to preserve the EPA's 2024 rule tightening hazardous-air-pollutant reclassification standards, not a vote against clean air protections \u2014 the joint resolution itself was the rollback.",
+    "gate_agreement": "NO_GATE_FIRED",
+    "gold_agreement": "NO_GOLD",
+    "critique": "The Summary and Affected Stakeholders fields make clear that the EPA rule being disapproved (89 Fed. Reg. 73293) is the protective measure \u2014 losing it is described as a loss 'public health and environmental advocacy groups' would face, while industrial facilities benefit from the rule's nullification. That means passage of sjres31-119 is the rollback, not the protection; a NAY vote therefore opposes the rollback and is CONSISTENT with a promise to protect clean air standards, the opposite of the evaluator's ADVANCE/INCONSISTENT call. The evaluator inverted bill direction by treating the disapproval resolution as the clean-air-protecting action when the inputs show it is the deregulatory one.",
+    "model": "claude-sonnet-5",
+    "prompt_version": "judge-v1"
+  },
+  "disposition_as_published": {
+    "disposition": "REVIEW_REQUIRED_JUDGE_CORRECTED",
+    "verdict": "CONSISTENT",
+    "confidence": 0.65,
+    "reasoning": "The statement supports protecting clean air standards from rollback, and this bill would block the EPA reclassification rule described as a rollback of existing protections. The senator voted NAY on passage, which means they opposed the measure that would have advanced that goal. There is no split vote or procedural-switch indication here. | JUDGE CORRECTION (BILL_EFFECT_INVERTED): The Summary and Affected Stakeholders fields make clear that the EPA rule being disapproved (89 Fed. Reg. 73293) is the protective measure \u2014 losing it is described as a loss 'public health and environmental advocacy groups' would face, while industrial facilities benefit from the rule's nullification. That means passage of sjres31-119 is the rollback, not the protection; a NAY vote therefore opposes the rollback and is CONSISTENT with a promise to protect clean air standards, the opposite of the evaluator's ADVANCE/INCONSISTENT call. The evaluator inverted bill direction by treating the disapproval resolution as the clean-air-protecting action when the inputs show it is the deregulatory one. | SENATOR RESPONSE: My NAY vote was a vote to preserve the EPA's 2024 rule tightening hazardous-air-pollutant reclassification standards, not a vote against clean air protections \u2014 the joint resolution itself was the rollback.",
+    "model_verdict": "INCONSISTENT",
+    "withheld": false
+  },
+  "verdict_after_as_published": "BROKE"
+}

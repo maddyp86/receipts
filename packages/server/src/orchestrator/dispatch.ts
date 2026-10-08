@@ -47,6 +47,7 @@ import { judgeErrorVerdict, judgeVerdict, type JudgeFetcher, type JudgeVerdict }
 import {
   applyDispositionToResult,
   applyJudgeVerdict,
+  forDisplay,
   type DispositionResult,
 } from '../judge/dispositions.js';
 import { classifyPromise, type ClassifyFetcher } from '../evaluation/classify.js';
@@ -1440,9 +1441,9 @@ async function evaluateEffectsTool(
         },
         verdict,
       );
-      session.judge = { verdict, disposition };
-
       const judged = applyDispositionToResult(scored, disposition);
+      // The record the page and the audit log read: what was SHOWN.
+      session.judge = { verdict, disposition: judged.withheld ? forDisplay(disposition) : disposition };
       if (judged.withheld) {
         session.scored = judged.result;
         console.info(`[judge] ${disposition.disposition} — accusation withheld: ${judged.reason}`);

@@ -880,8 +880,11 @@ export const JUDGE_DISPOSITION_COPY: Record<string, string> = {
     'This reading did not survive a first adversarial review. It was re-examined and passed on the second look, and is held to a lower confidence as a result.',
   REVIEW_REQUIRED:
     'A second, adversarial review did not sustain this reading, and offered no correction we could stand behind. We are not publishing it. The bills and votes are below — read them and judge for yourself.',
+  // The query tool withholds here; it does not publish the judge's correction
+  // as its own verdict. The sentence must not claim a corrected reading is on
+  // screen — nothing is.
   REVIEW_REQUIRED_JUDGE_CORRECTED:
-    'A second, adversarial review did not sustain the original reading and supplied a correction. What you see is the corrected reading, flagged for human review.',
+    'A second, adversarial review did not sustain this reading and read the record differently, so we are not publishing it. The bills and votes are below — read them and judge for yourself.',
   // NOT "a reviewer disagreed". Nobody looked, and saying otherwise would claim
   // a scrutiny this reading never received.
   JUDGE_ERROR:
