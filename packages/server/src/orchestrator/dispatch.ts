@@ -35,6 +35,7 @@ import {
   type EnrichmentReport,
 } from '../evaluation/enrichment.js';
 import { recordSentence } from '../scoring/recordSentence.js';
+import { SUMMARY_UNDER_REVIEW_GATE, SUMMARY_UNDER_REVIEW_REASON, summaryUnderReview } from '../evaluation/summaryReview.js';
 import {
   applyTextVersion,
   gateTextOf,
@@ -1056,6 +1057,18 @@ async function evaluateEffectsTool(
       },
       refs,
     );
+    // Set aside when the bill-level summary the evaluator would read is under
+    // review (summaryReview.ts). Checked only when no pre-evaluator gate
+    // fired, so a gate's own reason is never overwritten.
+    const underReview =
+      result.scorable &&
+      summaryUnderReview(billStatements.get(String(m.bill_id ?? '')), textVersions[m.action_uid]);
+    if (underReview) {
+      const hit = { gate: SUMMARY_UNDER_REVIEW_GATE, verdict: 'NOT_DETERMINABLE', reason: SUMMARY_UNDER_REVIEW_REASON };
+      result.scorable = false;
+      result.hit = hit as typeof result.hit;
+      result.hits = [...result.hits, hit as (typeof result.hits)[number]];
+    }
     gates[m.action_uid] = result;
     // GATE: fix/03 per action. Every rule and its context, whether or not
     // one fired — a gate that stayed silent for want of an input is a
