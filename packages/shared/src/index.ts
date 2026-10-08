@@ -1261,7 +1261,7 @@ export function likelyOutcomeHeadline(
       : 'You indicated this was a campaign promise. On that basis, their record likely runs counter to it';
   }
 
-  return bucket === 'KEPT' ? 'Likely kept' : 'Likely broke';
+  return bucket === 'KEPT' ? 'Likely kept' : 'Likely broken';
 }
 
 /**

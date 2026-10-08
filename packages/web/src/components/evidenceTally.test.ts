@@ -260,7 +260,7 @@ describe('the counts agree with "How we got here" and the analyst trace', () => 
 describe('the headline', () => {
   it.each([
     ['Campaign Promise', 'corpus', 'KEPT', 'Likely kept'],
-    ['Campaign Promise', 'corpus', 'BROKE', 'Likely broke'],
+    ['Campaign Promise', 'corpus', 'BROKE', 'Likely broken'],
     ['Policy Position', 'default', 'KEPT', 'Their record is likely consistent with this position'],
     ['Policy Position', 'default', 'BROKE', 'Their record likely runs counter to this position'],
     ['Campaign Promise', 'asserted', 'KEPT', 'You indicated this was a campaign promise. On that basis, their record is likely consistent with it'],
