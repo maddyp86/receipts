@@ -966,9 +966,35 @@ export interface FeedbackRequest {
   comment?: string;
 }
 
+/** The feedback control's label. The scope copy below names it, so one string. */
+export const FEEDBACK_CONTROL_LABEL = 'Something look wrong?';
+
 /** Shown after sending. Says plainly that it changes nothing on screen. */
 export const FEEDBACK_THANKS =
   "Thanks — this goes to a person for review. It doesn't change this answer.";
+
+// ---------------------------------------------------------------------------
+// What the beta covers, said to every tester. Approved wording; change it only
+// with sign-off. No senator is named: the picker is the list, and it grows.
+// Both point at "Something look wrong?", so both render only where that
+// control does.
+// ---------------------------------------------------------------------------
+
+/** The entry page, above the senator picker. */
+export const SCOPE_NOTE: readonly string[] = [
+  'This is a beta. Receipts checks what a senator promised against what they did in the Senate, ' +
+    'using the Senate record from January 2023 onward. Laws passed before then, like the 2022 ' +
+    'drug-pricing law, aren’t included.',
+  'The senators covered so far are the ones you can pick below, and more are being added.',
+  'Answers are worked out automatically. They can miss relevant bills, and they can be wrong. ' +
+    `If something looks off, tap “${FEEDBACK_CONTROL_LABEL}” under the answer or under any bill and ` +
+    'tell us what’s wrong. Reports go to a person for review; they don’t change the answer on screen.',
+];
+
+/** Every result, under the verdict. */
+export const RESULT_SCOPE_LINE =
+  'Beta · Senate record from January 2023 on. Answers can miss bills or be wrong. ' +
+  `If this one looks wrong, use “${FEEDBACK_CONTROL_LABEL}” and say why.`;
 
 export interface QueryResult {
   senator: Senator;

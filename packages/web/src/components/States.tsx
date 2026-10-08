@@ -115,7 +115,7 @@ export function UncachedState({
     <section className="notice" aria-label="Senator not analyzed">
       <h2>We haven’t analyzed {senator.name} yet</h2>
       <p>
-        We only answer for senators whose full legislative record we’ve already been through. Giving
+        We only answer for senators whose Senate record we’ve already been through. Giving
         you a guess for {senator.name} would be worse than giving you nothing.
       </p>
       {queued ? (
