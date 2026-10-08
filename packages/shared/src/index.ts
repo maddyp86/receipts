@@ -967,6 +967,12 @@ export interface QueryResult {
   judge?: JudgeDisclosure;
   /** The retrieval and relevance counts, for the reader-facing walkthrough. */
   search?: SearchSummary;
+  /**
+   * Set when this answer is a stored one, returned because the same senator
+   * and question were asked again (answer reuse). The reader is told when it
+   * was produced. Absent on a fresh answer.
+   */
+  reused_from?: { produced_at: string; run_id: string | null };
 }
 
 // ---------------------------------------------------------------------------
@@ -1360,6 +1366,20 @@ export const VOTE_FLAG_COPY: Record<string, string> = {
   [TEXT_AT_ACTION_UNAVAILABLE]:
     'We don’t have a reliable summary of the version of this bill in effect when the senator acted. It was judged against a later version, which may say something different, so this reading is low confidence.',
 };
+
+/**
+ * Said on a reused answer: when it was produced. In UTC, because the server
+ * cannot know the reader's zone and a wrong local time is worse than an
+ * honest UTC one. Says nothing about the record being unchanged — the cache
+ * checks the mirror and the pipeline, not everything a bill could touch.
+ */
+export function reusedSentence(producedAt: string | null | undefined): string | null {
+  const at = producedAt ? new Date(producedAt) : null;
+  if (!at || Number.isNaN(at.getTime())) return null;
+  const day = at.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+  const time = at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+  return `This answer was produced on ${day} at ${time} UTC, and is shown again because the same question was asked about this senator.`;
+}
 
 /** 'YYYY-MM-DD' -> 'March 14, 2025', in UTC so it never drifts a day. Null when not a date. */
 export function longDate(iso: string | null | undefined): string | null {

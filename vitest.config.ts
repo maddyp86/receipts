@@ -37,6 +37,10 @@ export default defineConfig({
       // No trace files from the suite. Tests that want a trace push a memory
       // sink onto `traceSinks`; see orchestrator/traceRun.test.ts.
       TRACE_DIR: 'off',
+      // Off for the suite: several tests run the same question twice and need
+      // two real runs. Reuse is tested directly, with the cache enabled in
+      // that test (data/answerCache.test.ts).
+      ANSWER_REUSE: 'false',
     },
   },
 });

@@ -321,6 +321,22 @@ export const config = {
   },
 
   /**
+   * Answer reuse (data/AnswerCache.ts): the same senator and the same
+   * normalised question get the stored answer, until a prompt, model, code
+   * or mirror-data change, or this many hours, whichever is first.
+   */
+  answerReuse: {
+    enabled: process.env.ANSWER_REUSE !== 'false',
+    /**
+     * The deployed commit, which Render sets. Part of the pipeline fingerprint:
+     * scoring and gates are code, so a new deploy never reuses an old answer.
+     */
+    commit: str(process.env.RENDER_GIT_COMMIT) || 'local',
+    ttlHours: num(process.env.ANSWER_REUSE_TTL_HOURS, 24),
+    maxEntries: num(process.env.ANSWER_REUSE_MAX_ENTRIES, 1000),
+  },
+
+  /**
    * Per-SESSION result cache for `/api/query`.
    *
    * Scoped to one browser session and never shared, which is what keeps it

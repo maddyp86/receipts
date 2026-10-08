@@ -43,6 +43,7 @@ import { createHash, randomUUID } from 'node:crypto';
 export type TraceStage =
   | 'REQUEST'
   | 'CACHE_REPLAY'
+  | 'ANSWER_REUSE'
   | 'SCOPE_MODEL'
   | 'SCOPE_CLASSIFY'
   | 'HALT'

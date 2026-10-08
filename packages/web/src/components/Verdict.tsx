@@ -7,6 +7,7 @@ import {
   judgeDispositionSentence,
   notDeterminableHeadline,
   outcomeHeadline,
+  reusedSentence,
   verdictWord,
   type QueryResult,
 } from '@receipts/shared';
@@ -237,6 +238,10 @@ export function Verdict({ result }: { result: QueryResult }) {
           {senator.name} · you asked about: “{result.interpretation.raw}”
         </p>
         <p className="verdict-why">{level1}</p>
+        {/* A stored answer, returned because the same question was asked again. */}
+        {reusedSentence(result.reused_from?.produced_at) ? (
+          <p className="reused-note">{reusedSentence(result.reused_from?.produced_at)}</p>
+        ) : null}
 
         {/* The boundary travels with the verdict, not only with empty results:
             a KEPT drawn from two 118th-Congress bills is scoped by the same

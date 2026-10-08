@@ -452,6 +452,13 @@ textarea.promise::placeholder {
 
 /* Part of the evidence layer could not be read for this answer. Louder than
    the coverage note: that boundary is by design, this one is not. */
+.reused-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
 .degraded-note {
   margin: 0.6rem 0 0;
   padding: 0.55rem 0.7rem;
