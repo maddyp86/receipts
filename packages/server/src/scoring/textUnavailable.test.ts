@@ -162,8 +162,10 @@ describe('everything else is unchanged', () => {
 
 describe('the reader-facing words', () => {
   it('exist for the flag and for the withholding reason', () => {
-    expect(VOTE_FLAG_COPY[TEXT_AT_ACTION_UNAVAILABLE]).toMatch(/not available/);
-    expect(ND_REASON_COPY.WITHHELD_TEXT_UNAVAILABLE).toMatch(/isn't available/);
+    // "No reliable summary" since 2026-10-07: true whether the version's text
+    // is missing or its summary is flagged as wrong (textUnavailableCopy.test).
+    expect(VOTE_FLAG_COPY[TEXT_AT_ACTION_UNAVAILABLE]).toMatch(/reliable summary/);
+    expect(ND_REASON_COPY.WITHHELD_TEXT_UNAVAILABLE).toMatch(/reliable summary/);
   });
 
   // Withholding is not exoneration — the same rule as the other withholdings.

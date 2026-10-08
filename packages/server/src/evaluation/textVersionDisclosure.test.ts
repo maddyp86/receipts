@@ -77,7 +77,7 @@ describe('textVersionLines — every status', () => {
   it('TEXT_UNAVAILABLE names the version that should have been used', () => {
     const lines = textVersionLines(d({ status: 'TEXT_UNAVAILABLE', flagged_for_review: true }));
     expect(lines[0]).toBe(
-      "The text in effect when the senator acted — the version as reported by committee (June 1, 2025) — isn't available to us, so a later version was used.",
+      "We don't have a reliable summary of the text in effect when the senator acted — the version as reported by committee (June 1, 2025) — so a later version was used.",
     );
   });
 

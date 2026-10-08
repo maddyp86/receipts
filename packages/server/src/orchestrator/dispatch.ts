@@ -1623,8 +1623,9 @@ async function evaluateEffectsTool(
       'Where an evidence row has text_version with status SELECTED, the action was judged against ' +
       'that version of the bill, not its current title: describe the bill as that version, and if ' +
       'later_became is set, say plainly that the bill was later rewritten. Where a row carries the ' +
-      'vote flag TEXT_AT_ACTION_UNAVAILABLE, say that the text in effect when the senator acted is not ' +
-      'available and the reading is low confidence; never state the finding about that row as certain. ' +
+      'vote flag TEXT_AT_ACTION_UNAVAILABLE, say that we do not have a reliable summary of the text in effect ' +
+      'when the senator acted and the reading is low confidence; never say the text itself does not exist, and ' +
+      'never state the finding about that row as certain. ' +
       'Where an evidence row has record, it is the checked record of what the senator did on the bill ' +
       'and what became of it: quote it as written or leave it out. Where a row has history_unavailable, ' +
       'the bill\'s progress could not be read: say nothing about how far it got or whether a committee acted. ' +
