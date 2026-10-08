@@ -125,9 +125,9 @@ app.get('/api/trace/:runId', async (req, res) => {
   }
 });
 
-app.get('/api/senators', (_req, res) => {
+app.get('/api/senators', async (_req, res) => {
   res.json({
-    senators: senatorCache.list(),
+    senators: await senatorCache.list(),
     demo_mode: config.demoMode,
     fixture_mode: config.fixtureMode,
     // The correction UI needs to know whether the override path exists before

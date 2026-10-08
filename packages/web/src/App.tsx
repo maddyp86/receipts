@@ -25,7 +25,9 @@ export default function App() {
   const [senators, setSenators] = useState<Senator[]>([]);
   const [modes, setModes] = useState({ demo: false, fixture: false, override: false, followups: false, feedback: false });
   const [taxonomy, setTaxonomy] = useState<TaxonomyEntry[]>([]);
-  const [selected, setSelected] = useState('S000148');
+  // Nobody is preselected until the list arrives: the list is the pipeline's,
+  // and the first covered senator is whoever it says.
+  const [selected, setSelected] = useState('');
   const [promise, setPromise] = useState('');
 
   const stream = useReceiptStream();
@@ -34,7 +36,9 @@ export default function App() {
     fetch(apiUrl('/api/senators'))
       .then((r) => r.json())
       .then((d) => {
-        setSenators(d.senators ?? []);
+        const list: Senator[] = d.senators ?? [];
+        setSenators(list);
+        setSelected((cur) => (list.some((s) => s.politician_id === cur) ? cur : (list[0]?.politician_id ?? '')));
         setModes({
           demo: Boolean(d.demo_mode),
           fixture: Boolean(d.fixture_mode),

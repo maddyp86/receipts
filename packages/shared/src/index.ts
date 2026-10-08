@@ -269,6 +269,15 @@ export interface Senator {
   state?: string;
 }
 
+/**
+ * "Angus S. King, Jr." → "King". Senator names now come from the mirror,
+ * which keeps generational suffixes; the last word alone would be "Jr.".
+ */
+export function surnameOf(name: string): string {
+  const words = name.trim().replace(/,?\s+(Jr|Sr)\.?$|\s+(II|III|IV)$/, '').split(/\s+/);
+  return words[words.length - 1] || name;
+}
+
 // ---------------------------------------------------------------------------
 // Interpretation — mirrors the live Statement Classifier's output contract,
 // because these strings are embedded verbatim into the query text.

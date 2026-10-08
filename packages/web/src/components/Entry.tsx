@@ -68,6 +68,13 @@ export function Entry({
     [senators],
   );
 
+  // An example for a senator no longer covered would run straight into the
+  // "not analysed" stop. Offer only those the picker offers.
+  const examples = useMemo(
+    () => EXAMPLES.filter((ex) => senators.some((s) => s.cached && s.politician_id === ex.senatorId)),
+    [senators],
+  );
+
   const canSubmit = Boolean(selected) && promise.trim().length > 2 && !busy;
 
   return (
@@ -123,7 +130,7 @@ export function Entry({
           onChange={(e) => onPromiseChange(e.target.value)}
         />
         <div className="examples">
-          {EXAMPLES.map((ex) => (
+          {examples.map((ex) => (
             <button
               key={ex.label}
               type="button"

@@ -5,6 +5,7 @@ import {
   coverageSpanPhrase,
   judgeDispositionSentence,
   outcomeHeadline,
+  surnameOf,
   type QueryResult,
 } from '@receipts/shared';
 
@@ -32,7 +33,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 export function HowWeGotHere({ result }: { result: QueryResult }) {
   const { senator, interpretation, scored, coverage, search, gated, judge } = result;
   const { receipt } = scored;
-  const surname = senator.name.split(' ').pop() ?? senator.name;
+  const surname = surnameOf(senator.name);
   const span = coverage ? coverageSpanPhrase(coverage) : null;
   const gatedCount = gated?.length ?? 0;
 
