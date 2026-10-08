@@ -147,6 +147,12 @@ export interface BillStatement {
   target_name: string | null;
   target_source: string | null;
   target_effect: string | null;
+  /**
+   * The sheet's `Flagged For Review` column: this summary is under review
+   * and its direction is not to be trusted (evaluation/summaryReview.ts).
+   * True only for a JSON true or the string "true"; blank is not flagged.
+   */
+  flagged_for_review: boolean;
 }
 
 /** The reversal fields of one bill-level statement row. */
@@ -157,6 +163,7 @@ export function billStatementOf(row: Record<string, unknown>): BillStatement {
     target_name: v('Target Name'),
     target_source: v('Target Source'),
     target_effect: v('Target Effect'),
+    flagged_for_review: S(pickRow(row, 'Flagged For Review')).toLowerCase() === 'true',
   };
 }
 
