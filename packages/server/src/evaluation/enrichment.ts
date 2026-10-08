@@ -215,6 +215,12 @@ export interface EnrichmentSource {
   forVersions(billIds: string[], report?: EnrichmentReport): Promise<Map<string, VersionMirrorRow[]>>;
   /** Bill-level impact statements' reversal fields, keyed by bill_id. */
   forBillStatements(billIds: string[], report?: EnrichmentReport): Promise<Map<string, BillStatement>>;
+  /**
+   * A version stamp for the mirror data the request path reads: the latest
+   * synced_at across those tables. Changes whenever Mirror Sync writes. Null
+   * when it cannot be read — answer reuse then neither serves nor stores.
+   */
+  dataVersion(): Promise<string | null>;
   close?(): Promise<void>;
 }
 
@@ -247,7 +253,22 @@ export const nullEnrichmentSource: EnrichmentSource = {
   async forBillStatements() {
     return new Map();
   },
+  // No mirror, so nothing to change; demo and fixture answers are keyed apart.
+  async dataVersion() {
+    return 'no-mirror';
+  },
 };
+
+/** The mirror tables the request path reads. Their latest sync is the data version. */
+export const MIRROR_TABLES_READ = [
+  'mirror_bills_master',
+  'mirror_impact_statement_versions',
+  'mirror_impact_statements',
+  'mirror_party_vote_positions',
+  'mirror_politician_bill_actions',
+  'mirror_politicians',
+  'mirror_roll_call_votes',
+] as const;
 
 /**
  * Reads the `mirror` schema.
@@ -519,6 +540,19 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
       report?.('bill_statements', describe(err));
     }
     return out;
+  }
+
+  async dataVersion(): Promise<string | null> {
+    try {
+      const { rows } = await this.pool.query<{ v: Date | string | null }>(
+        `select greatest(${MIRROR_TABLES_READ.map((t) => `(select max(synced_at) from mirror.${t})`).join(', ')}) as v`,
+      );
+      const v = rows[0]?.v;
+      return v ? new Date(v).toISOString() : null;
+    } catch (err) {
+      console.error('[enrichment] mirror data version unavailable — answers not reused:', describe(err));
+      return null;
+    }
   }
 
   async close(): Promise<void> {

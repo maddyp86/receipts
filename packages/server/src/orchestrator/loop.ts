@@ -17,6 +17,9 @@ import { derivePartialSubtype, describeExclusions } from '../evaluation/evidence
 import { classifyScope, haltForScope } from '../scope/classifyScope.js';
 import { describeCoverage } from '../scoring/coverage.js';
 import { cacheKey, isCacheable, resultCache } from '../data/ResultCache.js';
+import { answerCache, answerKey, stampReused } from '../data/AnswerCache.js';
+import { enrichmentSource } from '../evaluation/enrichment.js';
+import { pipelineFingerprint } from './pipelineFingerprint.js';
 import { ENRICHMENT_GAP_OF } from '../evaluation/enrichment.js';
 import { RECORD_UNREAD } from '../scoring/withholding.js';
 import type { Corrections } from '@receipts/shared';
@@ -1156,6 +1159,36 @@ export async function runQuery(
     return;
   }
 
+  // ---- ANSWER REUSE (data/AnswerCache.ts) -----------------------------------
+  //
+  // Across sessions: the same senator and question get the stored answer. The
+  // fingerprint ties it to the pipeline that produced it and to the mirror
+  // data as of then; either moving is a miss. Read per request — a stale
+  // version would serve an answer the data no longer supports. No version, no
+  // reuse.
+  const reuseKey = config.answerReuse.enabled
+    ? answerKey({ politicianId, promiseText, corrections, statementDate: meta.statementDate })
+    : null;
+  let fingerprint: string | null = null;
+  if (reuseKey) {
+    const dataVersion = await enrichmentSource.dataVersion();
+    fingerprint = dataVersion ? `${pipelineFingerprint()}|${dataVersion}` : null;
+    const reused = answerCache.get(reuseKey, fingerprint);
+    if (reused) {
+      console.info(`[reuse] serving the answer produced at ${reused.producedAt} (run ${reused.runId ?? 'unknown'})`);
+      const reuseTrace = new QueryTrace(traceSinks, { politicianId, promiseText, meta: traceMeta });
+      reuseTrace.record({
+        stage: 'ANSWER_REUSE', kind: 'control',
+        label: `reused the answer produced at ${reused.producedAt} by run ${reused.runId ?? 'unknown'} — no model was called`,
+        input: { original_run_id: reused.runId, produced_at: reused.producedAt, fingerprint, corrections: corrections ?? null },
+        output: { event_types: reused.events.map((e) => e.type) },
+      });
+      for (const event of stampReused(reused)) emit(event);
+      await reuseTrace.close('replay');
+      return;
+    }
+  }
+
   const session = newSession(politicianId, promiseText, corrections, meta.statementDate);
   const trace = new QueryTrace(traceSinks, { politicianId, promiseText, meta: traceMeta });
 
@@ -1227,13 +1260,16 @@ export async function runQuery(
       // recovered. See isCacheable.
       const cacheable = isCacheable(recorded);
       if (cacheable) resultCache.set(key, recorded);
+      // Stored for reuse only if it is a clean answer (isReusable) and the
+      // mirror version was readable when it started.
+      const reusable = reuseKey ? answerCache.set(reuseKey, recorded, fingerprint) : false;
       // After `done`, so persistence never delays the answer.
       const queryId = await persist(session, sessionId);
       trace.setQueryId(queryId);
       trace.record({
         stage: 'DONE', kind: 'control',
-        label: `${concludedAs(recorded)} · ${recorded.length} events · ${cacheable ? 'cached for this session' : 'not cached'}`,
-        output: { events: recorded.map((e) => e.type), cacheable, query_id: queryId },
+        label: `${concludedAs(recorded)} · ${recorded.length} events · ${cacheable ? 'cached for this session' : 'not cached'} · ${reusable ? 'stored for reuse' : 'not reusable'}`,
+        output: { events: recorded.map((e) => e.type), cacheable, reusable, query_id: queryId },
       });
       await trace.close(concludedAs(recorded));
     }
