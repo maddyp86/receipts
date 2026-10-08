@@ -5,9 +5,10 @@ import {
   ND_REASON_COPY,
   RESULT_SCOPE_LINE,
   confidenceTraceLabel,
+  evidenceTallySentence,
   judgeDispositionSentence,
+  likelyOutcomeHeadline,
   notDeterminableHeadline,
-  outcomeHeadline,
   reusedSentence,
   verdictWord,
   type QueryResult,
@@ -22,9 +23,10 @@ import { CoverageNote, EnrichmentGapNote } from './States.js';
 // The two-level receipt.
 //
 // Level 1 is plain language and carries no statistics — the words "similarity",
-// "confidence band" and any raw number are absent by construction, because the
-// copy comes from the shared vocabulary table rather than from formatting the
-// numbers.
+// "confidence band" and any score are absent by construction, because the copy
+// comes from the shared vocabulary table rather than from formatting the
+// numbers. The one number it does carry is a count of actions found, which a
+// reader can check against the cards below.
 //
 // Level 2 is "How we got here": the path from the statement to the verdict, in
 // plain language, one step per gate, derived from the result's own fields.
@@ -47,10 +49,11 @@ const ICON: Record<string, string> = {
  *
  * `scored.verdict` is the internal bucket and is KEPT for a consistent policy
  * position as much as for a kept campaign promise. The word a reader sees is
- * chosen by statement type and provenance in `outcomeHeadline` — this
+ * chosen by statement type and provenance in `likelyOutcomeHeadline` — this
  * component used to print VERDICT_PHRASE directly, so every free-typed
  * statement was headlined "Kept" while its own evidence cards said CONSISTENT.
- * A position is never kept; nobody promised anything.
+ * A position is never kept; nobody promised anything. "Likely" because the
+ * verdict is a reading of the record.
  */
 function headline(result: QueryResult): string {
   const { verdict, band, mode } = result.scored;
@@ -59,10 +62,10 @@ function headline(result: QueryResult): string {
   if (verdict === 'NOT_DETERMINABLE') return notDeterminableHeadline(result.scored.nd_reason);
   const { statement_type, provenance } = result.interpretation;
   const suffix = band ? ` — ${BAND_PHRASE[band]}` : '';
-  return `${outcomeHeadline(verdict, statement_type, provenance)}${suffix}${mode === 'ranked' ? ', but it’s mixed' : ''}`;
+  return `${likelyOutcomeHeadline(verdict, statement_type, provenance)}${suffix}${mode === 'ranked' ? ', but it’s mixed' : ''}`;
 }
 
-function AnalystTrace({ result }: { result: QueryResult }) {
+export function AnalystTrace({ result }: { result: QueryResult }) {
   const { receipt, evidence, mode, band } = result.scored;
   const gated = result.gated ?? [];
   const votes = receipt.evidence_mix.vote;
@@ -236,6 +239,8 @@ export function Verdict({
           : ND_NO_REASON_COPY
       : explanation.why;
 
+  const tally = evidenceTallySentence(result);
+
   const dominant = scored.ranked[0];
   const dissent = scored.ranked[1];
 
@@ -261,7 +266,14 @@ export function Verdict({
         <p className="verdict-band">
           {senator.name} · you asked about: “{result.interpretation.raw}”
         </p>
-        <p className="verdict-why">{level1}</p>
+        {/* The receipts before the explanation: how many actions we found and
+            which way each counts. Null for NOT_DETERMINABLE, where the reason
+            below says what is true. */}
+        {tally ? <p className="verdict-tally">{tally}</p> : null}
+        <p className="verdict-why">
+          <span className="verdict-why-label">Here’s why. </span>
+          {level1}
+        </p>
         {/* A stored answer, returned because the same question was asked again. */}
         {reusedSentence(result.reused_from?.produced_at) ? (
           <p className="reused-note">{reusedSentence(result.reused_from?.produced_at)}</p>

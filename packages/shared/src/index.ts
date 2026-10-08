@@ -1234,6 +1234,113 @@ export function verdictWord(bucket: Verdict, statementType: StatementType): stri
 }
 
 /**
+ * The Level-1 headline for a KEPT or BROKE, hedged with "likely".
+ *
+ * Same vocabulary rule as `outcomeHeadline` — position language unless the
+ * promise standard applies — with the hedge placed where the sentence reads
+ * naturally. The verdict is a reading of the record, and the headline says so.
+ * NOT_DETERMINABLE has no hedge to add; it falls through unchanged.
+ */
+export function likelyOutcomeHeadline(
+  outcome: AlignmentOutcome,
+  statementType: StatementType,
+  provenance: ProvenanceSource,
+): string {
+  const bucket = toVerdict(outcome);
+  if (bucket === 'NOT_DETERMINABLE') return VERDICT_PHRASE.NOT_DETERMINABLE;
+
+  if (statementType === 'Policy Position') {
+    return bucket === 'KEPT'
+      ? 'Their record is likely consistent with this position'
+      : 'Their record likely runs counter to this position';
+  }
+
+  if (provenance === 'asserted') {
+    return bucket === 'KEPT'
+      ? 'You indicated this was a campaign promise. On that basis, their record is likely consistent with it'
+      : 'You indicated this was a campaign promise. On that basis, their record likely runs counter to it';
+  }
+
+  return bucket === 'KEPT' ? 'Likely kept' : 'Likely broke';
+}
+
+/**
+ * The count-first line at the top of an answer: the receipts before the
+ * explanation. Built from the result's own fields; no model is involved.
+ *
+ * Counts the senator's ALIGNMENT on each action (`direction`), the same split
+ * the scorer records in `receipt.direction_split` and the analyst trace
+ * prints. Not `bill_effect`: a no vote on a bill that sets the goal back is
+ * consistent with the statement, whatever the bill does.
+ *
+ * Undirected actions "don't count either way", not "don't move it either
+ * way". An undirected action can be an abstention, a bill that could not be
+ * read, or a contested reading, and "How we got here" says of those bills that
+ * they move the goal, could not be read, or cut both ways. "Don't count" is
+ * true of all of them, and it describes the action, not the bill.
+ *
+ * Always "actions we found": never wording that implies the search was
+ * complete or that the senator did nothing else.
+ *
+ * Null for every NOT_DETERMINABLE. A withheld accusation still has its
+ * breaking rows on the result, so a count there would publish the accusation
+ * the withholding declined to make; for the rest, the reason's own copy says
+ * what is true and a count would only add weight to a non-finding.
+ */
+export function evidenceTallySentence(result: QueryResult): string | null {
+  const { scored, interpretation, senator } = result;
+  if (scored.verdict === 'NOT_DETERMINABLE') return null;
+
+  const total = scored.evidence.length;
+  if (total === 0) return null;
+  const keeps = scored.evidence.filter((e) => e.direction === 'keeps').length;
+  const breaks = scored.evidence.filter((e) => e.direction === 'breaks').length;
+  const neutral = total - keeps - breaks;
+  const gated = result.gated?.length ?? 0;
+
+  // Promise language only where outcomeHeadline would use it.
+  const promise =
+    interpretation.statement_type !== 'Policy Position' && interpretation.provenance !== 'asserted';
+  const one = (n: number) => n === 1;
+  const phrase = {
+    keeps: (n: number) =>
+      promise ? `${one(n) ? 'points' : 'point'} toward keeping it` : `${one(n) ? 'is' : 'are'} consistent with it`,
+    breaks: (n: number) =>
+      promise ? `${one(n) ? 'points' : 'point'} toward breaking it` : `${one(n) ? 'runs' : 'run'} counter to it`,
+    neutral: (n: number) => `${one(n) ? "doesn't" : "don't"} count either way`,
+  };
+
+  const surname = surnameOf(senator.name);
+  const lead = `We found ${total} ${one(total) ? 'action' : 'actions'} by ${surname} related to this statement.`;
+
+  const parts = (
+    [
+      ['keeps', keeps],
+      ['breaks', breaks],
+      ['neutral', neutral],
+    ] as const
+  ).filter(([, n]) => n > 0);
+
+  let body: string;
+  if (parts.length === 1) {
+    // Everything points one way: "Both are …", not "2 are …" after "We found 2".
+    const [kind] = parts[0]!;
+    const subject = one(total) ? 'That action' : total === 2 ? 'Both' : `All ${total}`;
+    body = `${subject} ${phrase[kind](total)}.`;
+  } else {
+    const items = parts.map(([kind, n]) => `${n} ${phrase[kind](n)}`);
+    body = `${items.slice(0, -1).join(', ')}${items.length > 2 ? ',' : ''} and ${items[items.length - 1]}.`;
+  }
+  body = body.charAt(0).toUpperCase() + body.slice(1);
+
+  const setAside = gated
+    ? ` ${gated} more ${one(gated) ? 'was' : 'were'} found but set aside — see “Found, but not evaluated”.`
+    : '';
+
+  return `${lead} ${body}${setAside}`;
+}
+
+/**
  * How sure we are, in words. Low is not only thin evidence: it is also an
  * action read against a later text, an unread bill beside the verdict, or a
  * failed read of the record (#24, #28, #31). "The evidence is thin" was false

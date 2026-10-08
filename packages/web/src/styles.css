@@ -441,9 +441,22 @@ textarea.promise::placeholder {
   margin: 0 0 0.9rem;
 }
 
+/* The count-first line: the receipts before the explanation. Set apart by
+   weight, not colour — it is a count, not a verdict. */
+.verdict-tally {
+  margin: 0 0 0.9rem;
+  font-size: 1.03rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
 .verdict-why {
   margin: 0;
   font-size: 1.03rem;
+}
+
+.verdict-why-label {
+  font-weight: 600;
 }
 
 .mixed-note {
