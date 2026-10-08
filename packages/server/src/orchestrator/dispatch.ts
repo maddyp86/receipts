@@ -449,7 +449,7 @@ async function resolveSenator(
   input: Record<string, unknown>,
 ): Promise<Envelope<unknown>> {
   const id = String(input.politician_id ?? session.politicianId).trim();
-  const senator = senatorCache.resolve(id);
+  const senator = await senatorCache.resolve(id);
 
   if (!senator) {
     return fail({
