@@ -134,6 +134,32 @@ export interface BillEnrichment {
   enacted_via?: string | null;
 }
 
+/**
+ * What a bill's BILL-LEVEL impact statement records about the policy it
+ * reverses (mirror.mirror_impact_statements). The evaluator's v7 prompt reads
+ * these to decide direction on a reversal — a disapproval resolution,
+ * typically — and treats an absent value as "false" / "N/A".
+ *
+ * Strings, as the prompt prints them. Null when the statement has none.
+ */
+export interface BillStatement {
+  reverses_existing_policy: string | null;
+  target_name: string | null;
+  target_source: string | null;
+  target_effect: string | null;
+}
+
+/** The reversal fields of one bill-level statement row. */
+export function billStatementOf(row: Record<string, unknown>): BillStatement {
+  const v = (k: string) => S(pickRow(row, k)) || null;
+  return {
+    reverses_existing_policy: v('Reverses Existing Policy'),
+    target_name: v('Target Name'),
+    target_source: v('Target Source'),
+    target_effect: v('Target Effect'),
+  };
+}
+
 /** The reader-facing grouping of each read, for the notice on the result. */
 export const ENRICHMENT_GAP_OF: Record<EnrichmentPart, import('@receipts/shared').EnrichmentGap> = {
   actions: 'vote_records',
@@ -143,6 +169,7 @@ export const ENRICHMENT_GAP_OF: Record<EnrichmentPart, import('@receipts/shared'
   cloture_questions: 'roll_call_context',
   bill_progress: 'bill_progress',
   text_versions: 'text_versions',
+  bill_statements: 'bill_statements',
 };
 
 /** One read the reader makes. Each fails independently and fails open. */
@@ -153,7 +180,8 @@ export type EnrichmentPart =
   | 'whip_votes'
   | 'cloture_questions'
   | 'bill_progress'
-  | 'text_versions';
+  | 'text_versions'
+  | 'bill_statements';
 
 /**
  * Told about a read that failed, for THIS request.
@@ -178,6 +206,8 @@ export interface EnrichmentSource {
    * A bill with none is simply absent from the map — the normal case.
    */
   forVersions(billIds: string[], report?: EnrichmentReport): Promise<Map<string, VersionMirrorRow[]>>;
+  /** Bill-level impact statements' reversal fields, keyed by bill_id. */
+  forBillStatements(billIds: string[], report?: EnrichmentReport): Promise<Map<string, BillStatement>>;
   close?(): Promise<void>;
 }
 
@@ -205,6 +235,9 @@ export const nullEnrichmentSource: EnrichmentSource = {
     return new Map();
   },
   async forVersions() {
+    return new Map();
+  },
+  async forBillStatements() {
     return new Map();
   },
 };
@@ -447,6 +480,36 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
       // its latest summary — today's behaviour — rather than failing the query.
       console.error('[enrichment] text versions unavailable — using latest summaries:', describe(err));
       report?.('text_versions', describe(err));
+    }
+    return out;
+  }
+
+  /**
+   * The bill-level impact statement's reversal fields, batched by bill_id.
+   *
+   * Read for the evaluator's fallback: when no usable text version applies,
+   * the candidate is the bill-level summary, and without these the prompt
+   * printed "Reverses Existing Policy: false" even for a disapproval
+   * resolution. A selected version still supplies its own (applyTextVersion).
+   */
+  async forBillStatements(billIds: string[], report?: EnrichmentReport): Promise<Map<string, BillStatement>> {
+    const ids = [...new Set(billIds.map((b) => S(b)).filter(Boolean))];
+    if (!ids.length) return new Map();
+
+    const out = new Map<string, BillStatement>();
+    try {
+      const { rows } = await this.pool.query<{ bill_id: string; row: Record<string, unknown> }>(
+        `select bill_id, row
+           from mirror.mirror_impact_statements
+          where bill_id = any($1::text[])`,
+        [ids],
+      );
+      for (const r of rows) out.set(S(r.bill_id), billStatementOf(r.row ?? {}));
+    } catch (err) {
+      // Fails open to today's prompt (reversal fields absent), and says so:
+      // this read feeds the evaluator's direction, so its failure is decisive.
+      console.error('[enrichment] bill-level statements unavailable — reversal fields absent:', describe(err));
+      report?.('bill_statements', describe(err));
     }
     return out;
   }

@@ -95,7 +95,7 @@ describe('every read reports its own failure', () => {
 
 describe('what the reader is told', () => {
   it('every read maps to a part of the record a reader recognises', () => {
-    const parts: EnrichmentPart[] = ['roles', 'cloture_results', 'actions', 'whip_votes', 'cloture_questions', 'bill_progress', 'text_versions'];
+    const parts: EnrichmentPart[] = ['roles', 'cloture_results', 'actions', 'whip_votes', 'cloture_questions', 'bill_progress', 'text_versions', 'bill_statements'];
     for (const p of parts) expect(ENRICHMENT_GAP_PHRASE[ENRICHMENT_GAP_OF[p]]).toBeTruthy();
   });
 

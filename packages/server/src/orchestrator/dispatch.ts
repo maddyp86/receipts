@@ -30,6 +30,7 @@ import {
   ENRICHMENT_GAP_OF,
   enrichmentSource,
   type ActionEnrichment,
+  type BillStatement,
   type EnrichmentPart,
   type EnrichmentReport,
 } from '../evaluation/enrichment.js';
@@ -563,8 +564,14 @@ export function toFulfillmentCandidate(
    * per-version text existed; `applyTextVersion` returns the same object.
    */
   version: TextVersion | null = null,
+  /**
+   * The bill-level statement's reversal fields. Used when no text version is
+   * selected — the candidate is then the bill-level summary, and these are
+   * its own. A selected version replaces them with the version's.
+   */
+  statement: BillStatement | null = null,
 ): FulfillmentCandidate {
-  return applyTextVersion(baseFulfillmentCandidate(session, m, enriched, gate), version);
+  return applyTextVersion(baseFulfillmentCandidate(session, m, enriched, gate, statement), version);
 }
 
 function baseFulfillmentCandidate(
@@ -572,9 +579,19 @@ function baseFulfillmentCandidate(
   m: MatchedAction,
   enriched: ActionEnrichment,
   gate: GateResult | undefined,
+  statement: BillStatement | null = null,
 ): FulfillmentCandidate {
   const c = session.interpretation!;
   return {
+    // The bill-level statement's reversal fields. Absent, the v7 prompt
+    // prints "Reverses Existing Policy: false" — on a disapproval resolution
+    // that tells the evaluator the bill changes nothing existing, and the
+    // direction of a NAY reads backwards. (2026-10-07, sjres31-119.)
+    reverses_existing_policy: statement?.reverses_existing_policy ?? undefined,
+    target_name: statement?.target_name ?? undefined,
+    target_source: statement?.target_source ?? undefined,
+    target_effect: statement?.target_effect ?? undefined,
+
     // Drives the verdict vocabulary AND the prompt's -0.1 confidence penalty,
     // which the evaluator applies per its system prompt. Never re-applied here.
     statement_type: c.statement_type,
@@ -913,11 +930,12 @@ async function evaluateEffectsTool(
   const enrichmentFailures: Array<{ part: EnrichmentPart; message: string }> = [];
   const report: EnrichmentReport = (part, message) => enrichmentFailures.push({ part, message });
   const billIds = matches.map((m) => String(m.bill_id ?? ''));
-  const [refs, enrichment, bills, versionRows] = await Promise.all([
+  const [refs, enrichment, bills, versionRows, billStatements] = await Promise.all([
     enrichmentSource.refs(report),
     enrichmentSource.forActions(matches.map((m) => m.action_uid), report),
     enrichmentSource.forBills(billIds, report),
     enrichmentSource.forVersions(billIds, report),
+    enrichmentSource.forBillStatements(billIds, report),
   ]);
   session.enrichmentKind = enrichmentSource.kind;
   session.enrichmentFailures = enrichmentFailures;
@@ -1112,6 +1130,7 @@ async function evaluateEffectsTool(
               enrichment.get(m.action_uid) ?? {},
               gates[m.action_uid],
               textVersions[m.action_uid]?.version ?? null,
+              billStatements.get(String(m.bill_id ?? '')) ?? null,
             ),
           ),
           session.fulfillmentFetcher ?? liveResponsesFetcher('fulfillment'),

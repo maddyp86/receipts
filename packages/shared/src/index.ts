@@ -701,13 +701,14 @@ export interface CoverageWindow {
  * A part of the record the evidence layer reads beside the vector match. Each
  * groups one or more reads by what a reader would recognise.
  */
-export type EnrichmentGap = 'vote_records' | 'roll_call_context' | 'bill_progress' | 'text_versions';
+export type EnrichmentGap = 'vote_records' | 'roll_call_context' | 'bill_progress' | 'text_versions' | 'bill_statements';
 
 export const ENRICHMENT_GAP_PHRASE: Record<EnrichmentGap, string> = {
   vote_records: "the dates of the senator's votes and sponsorships",
   roll_call_context: 'roll-call results, party whip votes and leadership roles',
   bill_progress: 'how far each bill got',
   text_versions: "which version of each bill's text was in effect",
+  bill_statements: 'what each bill would reverse, as our analysis of it records',
 };
 
 /**
@@ -723,7 +724,7 @@ export const ENRICHMENT_GAP_PHRASE: Record<EnrichmentGap, string> = {
  * record sentence, which is display. Its failure is said on the card
  * (`history_unavailable`) and leaves the band where the evidence puts it.
  */
-export const DECISIVE_ENRICHMENT_GAPS: readonly EnrichmentGap[] = ['vote_records', 'roll_call_context', 'text_versions'];
+export const DECISIVE_ENRICHMENT_GAPS: readonly EnrichmentGap[] = ['vote_records', 'roll_call_context', 'text_versions', 'bill_statements'];
 
 /**
  * Said on the result when a read the checks depend on failed. The checks that
