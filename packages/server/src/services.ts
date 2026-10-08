@@ -1,3 +1,4 @@
+import { SupabaseFeedbackStore, nullFeedbackStore, type FeedbackStore } from './data/FeedbackStore.js';
 import { MemoryUsageCounter, SupabaseUsageCounter, type UsageCounter } from './data/UsageCounter.js';
 import { config } from './config.js';
 import type { ActionStore } from './data/ActionStore.js';
@@ -38,6 +39,11 @@ export const queryStore: QueryStore = config.database.url
  * there is a database, because the free tier restarts the service and an
  * in-memory count would reset with it.
  */
+/** Reader feedback, write-only (data/FeedbackStore.ts). Refuses honestly with no database. */
+export const feedbackStore: FeedbackStore = config.database.url
+  ? new SupabaseFeedbackStore(config.database.url)
+  : nullFeedbackStore;
+
 export const usageCounter: UsageCounter = config.database.url
   ? new SupabaseUsageCounter(config.database.url)
   : new MemoryUsageCounter();

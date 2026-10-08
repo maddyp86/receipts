@@ -12,8 +12,9 @@ import { primaryIssues, subIssuesFor } from './embeddings/taxonomy.js';
 import type { Corrections } from '@receipts/shared';
 import { actionStore, embedder } from './services.js';
 import { TAXONOMY_IS_COMPLETE } from './embeddings/taxonomy.js';
-import { globalDailyCap, queryBurstLimiter, queryDailyLimiter, readOnlyLimiter } from './rateLimit.js';
-import { usageCounter } from './services.js';
+import { feedbackLimiter, globalDailyCap, queryBurstLimiter, queryDailyLimiter, readOnlyLimiter } from './rateLimit.js';
+import { feedbackStore, usageCounter } from './services.js';
+import { validateFeedback } from './data/FeedbackStore.js';
 
 /** After the per-IP limiters: a request they refuse never spends the shared budget. */
 const globalCap = globalDailyCap(usageCounter, config.rateLimit.globalQueryPerDay);
@@ -137,6 +138,9 @@ app.get('/api/senators', (_req, res) => {
     // box is not offered, because a control the server will refuse is worse
     // than no control.
     followups_available: !config.demoMode,
+    // Feedback needs somewhere to go. Without a database the control is
+    // hidden rather than offered and then refused.
+    feedback_available: feedbackStore.kind === 'supabase',
   });
 });
 
@@ -195,6 +199,28 @@ app.post('/api/followup', queryDailyLimiter, queryBurstLimiter, globalCap, async
  * Served from the same generated table the query path uses, so the menu a user
  * corrects with cannot drift from the menu retrieval is keyed on.
  */
+/**
+ * Reader feedback: "something looks wrong", about the whole answer or one
+ * evidence card. Validated, stored write-only for an operator's review, and
+ * never read back — it cannot change a verdict (data/FeedbackStore.ts).
+ */
+app.post('/api/feedback', feedbackLimiter, async (req, res) => {
+  const checked = validateFeedback(req.body);
+  if (!checked.ok) {
+    res.status(400).json({ error: { code: 'BAD_INPUT', message: checked.message, recoverable: false } });
+    return;
+  }
+  try {
+    await feedbackStore.add(checked.row);
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    console.error('[feedback] not stored:', err instanceof Error ? err.message : err);
+    res.status(503).json({
+      error: { code: 'UPSTREAM_UNAVAILABLE', message: "Your feedback couldn't be saved just now. Please try again in a moment.", recoverable: true },
+    });
+  }
+});
+
 app.get('/api/taxonomy', (_req, res) => {
   res.json({ primary_issues: primaryIssues().map((p) => ({ primary_issue: p, sub_issues: subIssuesFor(p) })) });
 });

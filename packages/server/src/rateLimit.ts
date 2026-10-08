@@ -183,6 +183,14 @@ export const queryDailyLimiter: RateLimitRequestHandler = rateLimit({
     ),
 });
 
+/** Feedback submissions: a reader sends a handful; a script sends thousands. */
+export const feedbackLimiter: RateLimitRequestHandler = rateLimit({
+  ...COMMON,
+  windowMs: 60 * 60 * 1000,
+  limit: config.rateLimit.feedbackPerHour,
+  handler: respondRateLimited,
+});
+
 /**
  * The global daily cap — a circuit breaker on the bill, not on a caller.
  *

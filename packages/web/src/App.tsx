@@ -23,7 +23,7 @@ import { FollowUp } from './components/FollowUp.js';
 
 export default function App() {
   const [senators, setSenators] = useState<Senator[]>([]);
-  const [modes, setModes] = useState({ demo: false, fixture: false, override: false, followups: false });
+  const [modes, setModes] = useState({ demo: false, fixture: false, override: false, followups: false, feedback: false });
   const [taxonomy, setTaxonomy] = useState<TaxonomyEntry[]>([]);
   const [selected, setSelected] = useState('S000148');
   const [promise, setPromise] = useState('');
@@ -40,6 +40,7 @@ export default function App() {
           fixture: Boolean(d.fixture_mode),
           override: Boolean(d.campaign_promise_override),
           followups: Boolean(d.followups_available),
+          feedback: Boolean(d.feedback_available),
         });
       })
       .catch(() => {
@@ -135,7 +136,7 @@ export default function App() {
             <>
               <AssertedPremiseBadge interpretation={stream.interpretation} />
               <AppliedCorrections interpretation={stream.interpretation} />
-              <Verdict result={stream.result} />
+              <Verdict result={stream.result} traceId={stream.traceId} feedbackAvailable={modes.feedback} />
             </>
           ) : null}
 

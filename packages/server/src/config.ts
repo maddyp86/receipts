@@ -310,6 +310,8 @@ export const config = {
     queryPerDay: num(process.env.RATE_LIMIT_QUERY_PER_DAY, 20),
     /** Free, memory-cached routes. Generous; only stops a hammering loop. */
     readPer15Min: num(process.env.RATE_LIMIT_READ_PER_15MIN, 120),
+    /** Feedback submissions per IP per hour. Generous for a reader; stops a flood. */
+    feedbackPerHour: num(process.env.RATE_LIMIT_FEEDBACK_PER_HOUR, 30),
     /**
      * Global: paid requests (/api/query + /api/followup) per UTC day across
      * EVERYONE, then "come back tomorrow". The only control that bounds total

@@ -12,6 +12,7 @@ import {
   type QueryResult,
 } from '@receipts/shared';
 import { EvidenceCard } from './EvidenceCard.js';
+import { FeedbackControl, type FeedbackContext } from './FeedbackControl.js';
 import { GatedActions } from './GatedActions.js';
 import { HowWeGotHere } from './HowWeGotHere.js';
 import { CoverageNote, EnrichmentGapNote } from './States.js';
@@ -184,10 +185,32 @@ function AnalystTrace({ result }: { result: QueryResult }) {
   );
 }
 
-export function Verdict({ result }: { result: QueryResult }) {
+export function Verdict({
+  result,
+  traceId,
+  feedbackAvailable = false,
+}: {
+  result: QueryResult;
+  /** The run that produced this answer; feedback is tied to it. */
+  traceId?: string | null;
+  feedbackAvailable?: boolean;
+}) {
   const [showDetails, setShowDetails] = useState(false);
   const [showTrace, setShowTrace] = useState(false);
   const { scored, explanation, senator } = result;
+  // What the reader saw, for feedback: the run that produced this answer —
+  // a replayed answer carries its original trace event, so the stream's trace
+  // id is already that run — and the verdict as shown.
+  const feedbackRunId = traceId ?? null;
+  const feedback: FeedbackContext | undefined =
+    feedbackAvailable && feedbackRunId
+      ? {
+          runId: feedbackRunId,
+          politicianId: senator.politician_id,
+          promiseText: result.interpretation.raw,
+          verdictShown: [scored.verdict, scored.band, scored.nd_reason].filter(Boolean).join(' · '),
+        }
+      : undefined;
 
   // A NOT_DETERMINABLE with no recorded reason must NOT borrow NO_MATCHES's
   // copy. "We didn't find any bills or votes in this senator's record" is the
@@ -278,6 +301,7 @@ export function Verdict({ result }: { result: QueryResult }) {
             shown below rather than averaged out.
           </p>
         ) : null}
+        {feedback ? <FeedbackControl level="result" context={feedback} /> : null}
       </section>
 
       <button
@@ -314,6 +338,7 @@ export function Verdict({ result }: { result: QueryResult }) {
               action={e}
               connector={explanation.connectors[e.action_uid]}
               senatorName={senator.name}
+              feedback={feedback}
             />
           ))}
 
@@ -326,6 +351,7 @@ export function Verdict({ result }: { result: QueryResult }) {
               action={e}
               connector={explanation.connectors[e.action_uid]}
               senatorName={senator.name}
+              feedback={feedback}
             />
           ))}
         </>
@@ -340,6 +366,7 @@ export function Verdict({ result }: { result: QueryResult }) {
                 action={e}
                 connector={explanation.connectors[e.action_uid]}
                 senatorName={senator.name}
+                feedback={feedback}
               />
             ))}
         </>
@@ -354,6 +381,7 @@ export function Verdict({ result }: { result: QueryResult }) {
               action={e}
               connector={explanation.connectors[e.action_uid]}
               senatorName={senator.name}
+              feedback={feedback}
             />
           ))}
         </>
