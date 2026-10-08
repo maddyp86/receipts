@@ -145,6 +145,27 @@ button {
   box-shadow: inset 0 0 0 1px var(--focus);
 }
 
+/* The beta scope note, above the picker. Read once, before the first
+   question: plain, bordered like a notice, no alarm colour. */
+.scope-note {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.05rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.scope-note p {
+  margin: 0 0 0.55rem;
+}
+
+.scope-note p:last-child {
+  margin-bottom: 0;
+}
+
 .senator-name {
   font-weight: 600;
 }
@@ -450,8 +471,7 @@ textarea.promise::placeholder {
   font-style: italic;
 }
 
-/* Part of the evidence layer could not be read for this answer. Louder than
-   the coverage note: that boundary is by design, this one is not. */
+/* A stored answer shown again. */
 .reused-note {
   margin: 0.5rem 0 0;
   font-size: 0.85rem;
@@ -459,6 +479,17 @@ textarea.promise::placeholder {
   color: var(--ink-soft);
 }
 
+/* What the beta covers. Same register as the coverage note it sits under:
+   always there, never loud. */
+.scope-line {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+/* Part of the evidence layer could not be read for this answer. Louder than
+   the coverage note: that boundary is by design, this one is not. */
 .degraded-note {
   margin: 0.6rem 0 0;
   padding: 0.55rem 0.7rem;

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { Senator } from '@receipts/shared';
+import { SCOPE_NOTE, type Senator } from '@receipts/shared';
 
 // ===========================================================================
 // The entry screen.
@@ -47,6 +47,8 @@ interface Props {
   onPromiseChange: (text: string) => void;
   onSubmit: () => void;
   onExample: (example: ExamplePromise) => void;
+  /** The beta scope note. It points at "Something look wrong?", so only where that exists. */
+  showScopeNote?: boolean;
 }
 
 export function Entry({
@@ -58,6 +60,7 @@ export function Entry({
   onPromiseChange,
   onSubmit,
   onExample,
+  showScopeNote = false,
 }: Props) {
   // Analysed senators first — the picker should lead with what works.
   const ordered = useMemo(
@@ -74,6 +77,14 @@ export function Entry({
         if (canSubmit) onSubmit();
       }}
     >
+      {showScopeNote ? (
+        <aside className="scope-note" aria-label="About this beta">
+          {SCOPE_NOTE.map((p) => (
+            <p key={p}>{p}</p>
+          ))}
+        </aside>
+      ) : null}
+
       <div className="field">
         <span className="field-label" id="senator-label">
           Senator

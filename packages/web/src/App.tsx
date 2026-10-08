@@ -109,6 +109,7 @@ export default function App() {
           onPromiseChange={setPromise}
           onSubmit={submit}
           onExample={runExample}
+          showScopeNote={modes.feedback}
         />
       ) : (
         <>

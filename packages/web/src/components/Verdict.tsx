@@ -3,6 +3,7 @@ import {
   BAND_PHRASE,
   ND_NO_REASON_COPY,
   ND_REASON_COPY,
+  RESULT_SCOPE_LINE,
   confidenceTraceLabel,
   judgeDispositionSentence,
   notDeterminableHeadline,
@@ -275,6 +276,10 @@ export function Verdict({
             because it is the same kind of fact — a limit on what this answer
             rests on — but louder, because it is a limit we did not intend. */}
         <EnrichmentGapNote gaps={result.enrichment_gaps} />
+
+        {/* What the beta covers and what to do if this looks wrong. Only with
+            the control it points at. */}
+        {feedback ? <p className="scope-line">{RESULT_SCOPE_LINE}</p> : null}
 
         {/* A published accusation that went through review says so, and shows
             the senator's counterargument beside it. Handoff v2 §5 makes a PASS

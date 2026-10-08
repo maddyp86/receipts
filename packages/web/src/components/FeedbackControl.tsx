@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   FEEDBACK_KINDS,
   FEEDBACK_KIND_LABEL,
+  FEEDBACK_CONTROL_LABEL,
   FEEDBACK_THANKS,
   type FeedbackKind,
   type FeedbackLevel,
@@ -47,7 +48,7 @@ export function FeedbackControl({ level, context, actionUid, billId }: Props) {
   if (!open) {
     return (
       <button type="button" className="feedback-toggle" onClick={() => setOpen(true)}>
-        Something look wrong?
+        {FEEDBACK_CONTROL_LABEL}
       </button>
     );
   }
