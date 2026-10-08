@@ -986,3 +986,65 @@ textarea.promise::placeholder {
   border-radius: 6px;
   background: var(--surface-alt, #fafafa);
 }
+
+/* "Something look wrong?" — on the result and each evidence card. Quiet until
+   opened: it is a way to reach a person, not a second verdict. */
+.feedback-toggle {
+  margin-top: 0.6rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.feedback-form {
+  margin: 0.7rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  font-size: 0.88rem;
+}
+
+.feedback-form legend {
+  padding: 0 0.3rem;
+  font-weight: 600;
+}
+
+.feedback-choice {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  margin: 0.25rem 0;
+}
+
+.feedback-comment {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.feedback-comment textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+}
+
+.feedback-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+}
+
+.feedback-error {
+  margin: 0.4rem 0 0;
+  color: var(--ink);
+}
+
+.feedback-thanks {
+  margin: 0.6rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FeedbackControl, type FeedbackContext } from './FeedbackControl.js';
 import {
   EFFECT_UNREAD,
   STRENGTH_PHRASE,
@@ -117,9 +118,11 @@ interface Props {
   action: DirectedAction;
   connector?: string;
   senatorName: string;
+  /** Present when feedback can be sent; the card then offers it. */
+  feedback?: FeedbackContext;
 }
 
-export function EvidenceCard({ action, connector, senatorName }: Props) {
+export function EvidenceCard({ action, connector, senatorName, feedback }: Props) {
   const [open, setOpen] = useState(false);
   const relation = STRENGTH_PHRASE[action.strength];
   const governing = governingVoteSentence(action.vote_governing);
@@ -252,6 +255,9 @@ export function EvidenceCard({ action, connector, senatorName }: Props) {
           <strong>No source link available for this action.</strong>
         </p>
       )}
+      {feedback ? (
+        <FeedbackControl level="evidence" context={feedback} actionUid={action.action_uid} billId={action.bill_id} />
+      ) : null}
     </article>
   );
 }

@@ -932,6 +932,44 @@ export interface SearchSummary {
   exclusions: string[];
 }
 
+/**
+ * What a piece of reader feedback is about. Two belong to the whole result,
+ * two to one evidence card. Stored for an operator's review (app.app_feedback);
+ * never read back by the app, never changes a verdict.
+ */
+export type FeedbackKind = 'QUESTION_MISREAD' | 'VERDICT_WRONG' | 'BILL_NOT_RELEVANT' | 'BILL_READ_BACKWARDS';
+export type FeedbackLevel = 'result' | 'evidence';
+
+/** The kinds offered at each level, in the order shown. */
+export const FEEDBACK_KINDS: Record<FeedbackLevel, FeedbackKind[]> = {
+  result: ['QUESTION_MISREAD', 'VERDICT_WRONG'],
+  evidence: ['BILL_NOT_RELEVANT', 'BILL_READ_BACKWARDS'],
+};
+
+/** The words on each choice. */
+export const FEEDBACK_KIND_LABEL: Record<FeedbackKind, string> = {
+  QUESTION_MISREAD: 'You misread what I asked',
+  VERDICT_WRONG: 'The verdict is wrong',
+  BILL_NOT_RELEVANT: "This bill isn't relevant",
+  BILL_READ_BACKWARDS: 'This bill is read backwards',
+};
+
+/** What the browser sends. The run id ties it to the trace of what was shown. */
+export interface FeedbackRequest {
+  run_id: string;
+  kind: FeedbackKind;
+  politician_id: string;
+  promise_text: string;
+  verdict_shown: string;
+  action_uid?: string;
+  bill_id?: string;
+  comment?: string;
+}
+
+/** Shown after sending. Says plainly that it changes nothing on screen. */
+export const FEEDBACK_THANKS =
+  "Thanks — this goes to a person for review. It doesn't change this answer.";
+
 export interface QueryResult {
   senator: Senator;
   interpretation: Interpretation;
