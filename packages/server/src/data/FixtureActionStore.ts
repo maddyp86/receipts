@@ -101,7 +101,8 @@ function lexicalScore(queryTokens: Set<string>, action: FixtureAction): number {
 }
 
 function strengthOf(score: number): MatchStrength {
-  if (score >= SIMILARITY.STRONG) return 'STRONG';
+  // The card's wording line, not the evidence floor: see SIMILARITY.CLOSE.
+  if (score >= SIMILARITY.CLOSE) return 'STRONG';
   if (score >= SIMILARITY.WEAK) return 'WEAK';
   return 'BELOW_THRESHOLD';
 }

@@ -58,7 +58,7 @@ describe('headlines claim a thin record only when the record was thin', () => {
     ['ABSTAINED', "The record we found doesn't settle this"],
     ['WITHHELD_LOW_CONFIDENCE', "We can't make a reliable call on this"],
     ['WITHHELD_TEXT_UNAVAILABLE', "We can't make a reliable call on this"],
-    ['NOT_EVALUABLE', "We couldn't tell what to check"],
+    ['NOT_EVALUABLE', 'This is too broad to check against specific bills'],
     ['NO_MATCHES', "We couldn't find enough to say"],
   ] as Array<[NotDeterminableReason, string]>)('%s → %s', (reason, h) => {
     expect(notDeterminableHeadline(reason)).toBe(h);

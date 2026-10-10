@@ -42,7 +42,13 @@ if (!reportPath) {
   process.exit(2);
 }
 const floors = (floorArgs.length ? floorArgs : ['0.575', '0.55', '0.525', '0.50']).map(Number);
+/** The code's floor, restored after each replay. */
 const BASE = SIMILARITY.STRONG;
+/**
+ * "Newly admitted" is measured against the pipeline's floor (WF7a, 0.575) —
+ * the floor before 2026-10-10 — whatever the code's floor is now.
+ */
+const REFERENCE = 0.575;
 const report = JSON.parse(await readFile(reportPath, 'utf8')) as {
   cases: EvalCase[];
   rows: Array<{ id: string; run_id: string | null }>;
@@ -143,7 +149,7 @@ export async function replayCase(c: EvalCase, runId: string, opts: { forceEvalua
       const verdictCheck = needsJudge && c.verdict.some((v) => v === 'BROKE_JUDGED' || v === 'WITHHELD_AFTER_REVIEW')
         ? 'judge decides' : fmt(rep.verdict.pass);
       const newly = scored.evidence
-        .filter((e) => e.score < BASE && e.score >= floor)
+        .filter((e) => e.score < REFERENCE && e.score >= floor)
         .map((e) => `${e.bill_id} ${e.score.toFixed(3)} · relevance ${got.relevance.get(e.action_uid) ?? '—'} · effect ${e.bill_effect} · ${WORD[e.direction]} · “${(e.title ?? '').slice(0, 90)}${(e.title ?? '').length > 90 ? '…' : ''}”`);
       out.push({
         floor,
@@ -190,7 +196,7 @@ for (const row of report.rows) {
     if (x.notes.length && x.pass !== true) notesOut.push(`${row.id} @ ${x.floor}: ${x.notes.join('; ')}`);
   }
 }
-console.log('\nNewly admitted versus 0.575 (score · relevance · effect · direction · title):');
+console.log(`\nNewly admitted versus ${REFERENCE} (score · relevance · effect · direction · title):`);
 for (const a of admitted) console.log(`  ${a}`);
 console.log('\nWhy checks did not pass:');
 for (const n of notesOut) console.log(`  ${n}`);

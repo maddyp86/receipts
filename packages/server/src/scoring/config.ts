@@ -17,15 +17,31 @@ import type { EvidenceType } from '@receipts/shared';
 
 export const SIMILARITY = {
   /**
-   * LIVE — WF7a `STRONG_THRESHOLD`. The evidence floor: a match below this does
-   * not count toward a verdict.
+   * RECEIPTS — the evidence floor: a match below this does not count toward a
+   * verdict. DEPARTS from the pipeline (WF7a `STRONG_THRESHOLD`, 0.575); see
+   * docs/RECONCILIATION.md, 2026-10-10.
    *
-   * Lowered from 0.60 on 2026-08-09 after measurement on 30 promises: coverage
-   * went from 12/30 to 23/30 promises with any evaluable evidence. Issue
-   * agreement inside the WEAK band runs ~57% against ~22% below it, so WEAK is
-   * not noise — but precision is the relevance gate's job, not the threshold's.
+   * Lowered to the retrieval floor on 2026-10-10 after the accuracy set
+   * (docs/eval/cases.json): the query tool's own promise text scores
+   * systematically lower against the bill vectors than the corpus text the
+   * pipeline calibrated on, and relevant bills the relevance check had already
+   * confirmed sat at 0.50–0.573. A floor replay of the first eval run admitted
+   * no wrongly-directed bill at 0.50. Precision is the relevance gate's job,
+   * not the threshold's — the pipeline's own reasoning for lowering it from
+   * 0.60 on 2026-08-09 (coverage 12/30 → 23/30 promises).
+   *
+   * Equal to WEAK, so every retrieved candidate that survives the relevance
+   * check is weighed, and ALL_BELOW_FLOOR can no longer occur.
    */
-  STRONG: 0.575,
+  STRONG: 0.5,
+
+  /**
+   * RECEIPTS — display only: the score at which a card says "closely related"
+   * rather than "loosely related". The pipeline's evidence floor, kept as the
+   * wording line when the floor moved, so a 0.51 match is not described as
+   * close. Not read by scoring.
+   */
+  CLOSE: 0.575,
 
   /**
    * LIVE — WF7a `WEAK_THRESHOLD`. Retrieved and worth acknowledging, but not

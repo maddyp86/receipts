@@ -319,10 +319,19 @@ describe('G1 — determinability', () => {
     expect(r.mode).toBe('not_determinable');
   });
 
-  it('distinguishes "nothing found" from "nothing close enough"', () => {
+  // The evidence floor is the retrieval floor (0.50) since 2026-10-10, so a
+  // retrieved match always counts and ALL_BELOW_FLOOR no longer occurs. A
+  // 0.52 match was "related but not close enough" under the old 0.575 floor.
+  it('a match between the retrieval floor and the old 0.575 floor counts', () => {
+    // Admitted and weighed (this row has no vote, so it is weighed as no action).
     const r = run([match({ score: 0.52, strength: 'WEAK' })]);
-    expect(r.verdict).toBe('NOT_DETERMINABLE');
-    expect(r.nd_reason).toBe('ALL_BELOW_FLOOR');
+    expect(r.nd_reason).not.toBe('ALL_BELOW_FLOOR');
+    expect(r.receipt.match_count).toBe(1);
+  });
+
+  it('below the retrieval floor is still nothing found, not "not close enough"', () => {
+    const r = run([match({ score: 0.49, strength: 'BELOW_THRESHOLD' })]);
+    expect(r.nd_reason).toBe('NO_MATCHES');
   });
 
   it('distinguishes "nothing found" from "the gates closed everything found"', () => {

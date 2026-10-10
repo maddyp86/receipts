@@ -257,6 +257,15 @@ async function interpretPromise(
           disagreements.push(`${field}: orchestrator said "${mine}", classifier said "${theirs}" (classifier wins)`);
         }
       }
+      // is_evaluable decides whether anything is scored at all, so an override
+      // of it is the one disagreement that turns a whole answer. Absent means
+      // true on both sides, as below.
+      const evaluable = (v: unknown) => (v === undefined || v === null ? null : v !== false);
+      const mineEval = evaluable(modelInput.is_evaluable);
+      const theirsEval = evaluable(classified.input.is_evaluable);
+      if (mineEval !== null && theirsEval !== null && mineEval !== theirsEval) {
+        disagreements.push(`is_evaluable: orchestrator said ${mineEval}, classifier said ${theirsEval} (classifier wins)`);
+      }
 
       input = { ...modelInput, ...classified.input };
     } catch (err) {

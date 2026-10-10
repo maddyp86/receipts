@@ -28,13 +28,18 @@ export type MustHave =
   | { bill: string; direction: CaseDirection | CaseDirection[]; outcome?: string }
   | { any_of: string[]; min: number; direction: CaseDirection };
 
-export type Forbidden = ForbiddenToken | { bill_direction: { bill: string; direction: CaseDirection } };
+export type Forbidden =
+  | ForbiddenToken
+  | { bill_direction: { bill: string; direction: CaseDirection } }
+  /** This text must not appear on the rendered card (case-insensitive). */
+  | { text: string };
 
 export interface EvalCase {
   id: string;
   senator: string;
   statement: string;
   verdict: VerdictToken[];
+  /** When the answer is NOT_DETERMINABLE, its reason must be one of these. */
   nd_reasons?: string[];
   band?: string;
   flag_band?: string[];
@@ -135,7 +140,7 @@ export function checkCase(c: EvalCase, r: QueryResult, readerText: string): Case
   // 1. VERDICT, plus band and count when the case sets them.
   const tokens = verdictTokens(r);
   const verdictOk = c.verdict.some((v) => tokens.includes(v)) &&
-    (!c.nd_reasons || c.nd_reasons.includes(r.scored.nd_reason ?? ''));
+    (!c.nd_reasons || r.scored.verdict !== 'NOT_DETERMINABLE' || c.nd_reasons.includes(r.scored.nd_reason ?? ''));
   const verdictDetail = [`got ${verdictLabel(r)}; allowed ${c.verdict.join(' | ')}`];
   const flags: string[] = [];
   let bandOk = true;
@@ -211,6 +216,10 @@ export function checkCase(c: EvalCase, r: QueryResult, readerText: string): Case
   const tally = evidenceTallySentence(r);
   const nd = r.scored.verdict === 'NOT_DETERMINABLE';
   for (const f of c.forbidden ?? []) {
+    if (typeof f === 'object' && 'text' in f) {
+      if (readerText.toLowerCase().includes(f.text.toLowerCase())) fb.push(`text on the card: "${f.text}"`);
+      continue;
+    }
     if (typeof f === 'object') {
       const { bill, direction } = f.bill_direction;
       if (direction !== 'any' && directionMatches(bill, direction)) fb.push(`${bill} counted as ${direction}`);
@@ -229,7 +238,7 @@ export function checkCase(c: EvalCase, r: QueryResult, readerText: string): Case
 
   const listed = new Set<string>();
   for (const m of c.must_have) ('bill' in m ? [m.bill] : m.any_of).forEach((b) => listed.add(norm(b)));
-  for (const f of c.forbidden ?? []) if (typeof f === 'object') listed.add(norm(f.bill_direction.bill));
+  for (const f of c.forbidden ?? []) if (typeof f === 'object' && 'bill_direction' in f) listed.add(norm(f.bill_direction.bill));
   const extra_bills = r.scored.evidence
     .filter((e) => !listed.has(norm(e.bill_id)))
     .map((e) => `${e.bill_id} ${WORD[e.direction]}`);

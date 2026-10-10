@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "The accuracy set. Expected outcomes signed off by Matthew, 2026-10-10 (corrections to cases 1 and 3 the same day). Run with `npm run eval`.",
+    "The accuracy set. Expected outcomes signed off by Matthew, 2026-10-10 (cases 1–10, corrections to 1 and 3 the same day; cases 11–18 added the same day). Run with `npm run eval`.",
     "verdict: any one of the listed outcomes passes.",
     "  KEPT / BROKE                 single-mode verdict",
     "  KEPT_MIXED / BROKE_MIXED     ranked (mixed) verdict",
@@ -10,7 +10,7 @@
     "must_have: each bill must be in the evidence (not gated out, not below the floor) with the direction given.",
     "  direction: consistent | runs_counter | not_counted | any. outcome (optional) also checks the row's outcome.",
     "  any_of + min: at least `min` of the listed bills, each with the direction.",
-    "forbidden: bill_direction | BROKE_WITHOUT_JUDGE | TALLY_ON_NOT_DETERMINABLE | TALLY_SHOWN | DID_NOTHING_WORDING.",
+    "forbidden: bill_direction | { text } (must not appear on the card) | BROKE_WITHOUT_JUDGE | TALLY_ON_NOT_DETERMINABLE | TALLY_SHOWN | DID_NOTHING_WORDING.",
     "band / count are checked only when a case sets them; flag_band reports without failing.",
     "Extra bills are reported, never failed on."
   ],
@@ -266,6 +266,156 @@
         "DID_NOTHING_WORDING"
       ],
       "note": "The 2022 law is before the corpus. Not determinable, never 'he did nothing'."
+    },
+    {
+      "id": "11-schumer-iraq-aumf",
+      "senator": "S000148",
+      "statement": "Congress should repeal the outdated Iraq war authorizations.",
+      "verdict": [
+        "KEPT"
+      ],
+      "must_have": [
+        {
+          "bill": "s316-118",
+          "direction": "consistent"
+        }
+      ],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ]
+    },
+    {
+      "id": "12-thune-iraq-aumf",
+      "senator": "T000250",
+      "statement": "Congress should repeal the outdated Iraq war authorizations.",
+      "verdict": [
+        "BROKE_JUDGED",
+        "WITHHELD_AFTER_REVIEW"
+      ],
+      "must_have": [
+        {
+          "bill": "s316-118",
+          "direction": "runs_counter"
+        }
+      ],
+      "forbidden": [
+        "BROKE_WITHOUT_JUDGE",
+        "TALLY_ON_NOT_DETERMINABLE",
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Withheld counts only if the judge ran."
+    },
+    {
+      "id": "13-thune-tcja-permanent",
+      "senator": "T000250",
+      "statement": "I will make the 2017 Trump tax cuts permanent.",
+      "verdict": [
+        "KEPT"
+      ],
+      "must_have": [
+        {
+          "bill": "hr1-119",
+          "direction": "consistent"
+        }
+      ],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "hr1-119 is a very large bill: report its retrieval rank and score whatever the outcome (the rank check does)."
+    },
+    {
+      "id": "14-thune-womens-sports",
+      "senator": "T000250",
+      "statement": "Keep biological males out of girls' and women's sports.",
+      "verdict": [
+        "KEPT"
+      ],
+      "must_have": [
+        {
+          "bill": "s9-119",
+          "direction": "consistent"
+        }
+      ],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ]
+    },
+    {
+      "id": "15-thune-voter-id",
+      "senator": "T000250",
+      "statement": "Require proof of citizenship and photo ID to vote.",
+      "verdict": [
+        "KEPT"
+      ],
+      "must_have": [
+        {
+          "bill": "s1383-119",
+          "direction": "consistent"
+        },
+        {
+          "bill": "s5271-119",
+          "direction": "consistent"
+        }
+      ],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ]
+    },
+    {
+      "id": "16-schumer-fentanyl-schedule-i",
+      "senator": "S000148",
+      "statement": "Permanently classify fentanyl-related drugs as Schedule I so traffickers face full penalties.",
+      "verdict": [
+        "KEPT"
+      ],
+      "must_have": [
+        {
+          "bill": "s331-119",
+          "direction": "consistent"
+        }
+      ],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Bipartisan: both senators voted yes."
+    },
+    {
+      "id": "17-schumer-reca-radiation",
+      "senator": "S000148",
+      "statement": "Expand compensation for Americans sickened by radiation from nuclear testing and uranium mining.",
+      "verdict": [
+        "KEPT"
+      ],
+      "must_have": [
+        {
+          "bill": "s3853-118",
+          "direction": "consistent"
+        }
+      ],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ]
+    },
+    {
+      "id": "18-schumer-veterans-vague",
+      "senator": "S000148",
+      "statement": "I support our veterans.",
+      "verdict": [
+        "NOT_DETERMINABLE",
+        "KEPT"
+      ],
+      "nd_reasons": [
+        "NOT_EVALUABLE"
+      ],
+      "must_have": [],
+      "forbidden": [
+        {
+          "text": "We couldn't tell what to check"
+        },
+        "TALLY_ON_NOT_DETERMINABLE",
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Deliberately vague. Not determinable with the too-broad reason, or KEPT. BROKE is outside the allowed verdicts."
     }
   ]
 }

@@ -38,6 +38,19 @@ export const EXAMPLES: ExamplePromise[] = [
   },
 ];
 
+/**
+ * Helper text for the question box: what a checkable statement looks like.
+ * Specific on purpose — a broad one ("I support our veterans") is too broad to
+ * hold against bills — and naming no senator, since the list grows. The old
+ * placeholder, "lower prescription drug prices", pointed at a law from before
+ * the record starts.
+ */
+export const SPECIFIC_EXAMPLES = [
+  'promised to protect clean air standards from rollback',
+  'promised to require photo ID to vote',
+  'promised to classify fentanyl-related drugs as Schedule I',
+];
+
 interface Props {
   senators: Senator[];
   selected: string;
@@ -126,9 +139,18 @@ export function Entry({
           id="promise"
           className="promise"
           value={promise}
-          placeholder="e.g., promised to lower prescription drug prices."
+          placeholder={`e.g., ${SPECIFIC_EXAMPLES[0]}`}
+          aria-describedby="promise-help"
           onChange={(e) => onPromiseChange(e.target.value)}
         />
+        <p className="promise-help" id="promise-help">
+          Be specific: name the policy, program or bill. For example,{' '}
+          {SPECIFIC_EXAMPLES.map((ex, i) => (
+            <span key={ex}>
+              “{ex}”{i < SPECIFIC_EXAMPLES.length - 2 ? ', ' : i === SPECIFIC_EXAMPLES.length - 2 ? ' or ' : '.'}
+            </span>
+          ))}
+        </p>
         <div className="examples">
           {examples.map((ex) => (
             <button

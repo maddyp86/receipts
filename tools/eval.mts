@@ -34,7 +34,7 @@ import { evidenceTallySentence, type QueryResult, type StreamEvent } from '@rece
 
 const { config } = await import('../packages/server/src/config.ts');
 const { runQuery } = await import('../packages/server/src/orchestrator/loop.ts');
-const { traceSinks } = await import('../packages/server/src/services.ts');
+const { traceSinks, embedder } = await import('../packages/server/src/services.ts');
 const { MemoryTraceSink } = await import('../packages/server/src/trace/TraceStore.ts');
 const { costOf } = await import('../packages/server/src/trace/pricing.ts');
 const { checkCase, verdictLabel } = await import('../packages/server/src/accuracy/checks.ts');
@@ -83,6 +83,16 @@ const selected = only.length ? cases.filter((c) => only.some((p) => c.id.startsW
 const sink = new MemoryTraceSink();
 traceSinks.push(sink);
 
+// The query vector each case searched with, kept for the rank check
+// (tools/rank-check.mts): the same vector, a wider search, no re-embedding.
+let lastVector: number[] | null = null;
+const embed = embedder.embed.bind(embedder);
+(embedder as { embed: typeof embed }).embed = async (text: string) => {
+  const r = await embed(text);
+  if (r.ok) lastVector = r.data;
+  return r;
+};
+
 const text = (html: string) =>
   html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 
@@ -97,12 +107,14 @@ interface Row {
   classification: string;
   report: CaseReport | null;
   error: string | null;
+  vector: number[] | null;
 }
 
 const rows: Row[] = [];
 for (const c of selected) {
   const events: StreamEvent[] = [];
   const started = Date.now();
+  lastVector = null;
   process.stdout.write(`${c.id} … `);
   try {
     await runQuery(c.senator, c.statement, (e) => events.push(e));
@@ -136,6 +148,7 @@ for (const c of selected) {
     classification,
     report,
     error: other && !result ? JSON.stringify(other).slice(0, 300) : null,
+    vector: lastVector,
   };
   rows.push(row);
   console.log(`${row.report?.pass ? 'PASS' : 'FAIL'} · ${row.verdict} · $${usd.toFixed(3)} · ${row.seconds}s · run ${runId}`);
