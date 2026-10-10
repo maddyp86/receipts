@@ -80,30 +80,28 @@ describe('the E-Rate golden case — enrichment changes the input, not the verdi
     expect(deriveAlignment(after, 'Campaign Promise').verdict).toBe('BROKE');
   });
 
-  it('told the evaluator UNKNOWN for facts the gates already had', () => {
+  // v8 (2026-10-10): the action half of the enrichment stops at the
+  // evaluator. Role, votes, whip and action date still reach the gates and
+  // deriveAlignment; the bill-effect reading never sees them.
+  it('the bill half reaches the evaluator; the action half does not', () => {
     const before = buildFulfillmentUserMessage(ERATE_BASE);
-    expect(before).toContain('Senator role at the time: UNKNOWN');
-    expect(before).toContain('Party whip\'s vote: NA');
-    expect(before).toContain('Action date: unknown');
-    expect(before).toContain('Bill class: UNKNOWN');
-  });
-
-  it('now states them, with the values the gates resolved', () => {
     const after = buildFulfillmentUserMessage(ERATE_ENRICHED);
-    expect(after).toContain('Senator role at the time: MINORITY_LEADER');
-    expect(after).toContain('Party whip\'s vote: Yea');
-    expect(after).toContain('Passage Vote: Nay on 2025-05-08');
-    expect(after).toContain('Action date: 2025-05-08');
+    expect(before).toContain('Bill class: UNKNOWN');
     expect(after).toContain('Bill class: REVERSAL');
+    for (const msg of [before, after]) {
+      for (const s of ['Senator role', 'MINORITY_LEADER', "whip", 'Passage Vote', 'Action date', '2025-05-08']) {
+        expect(msg).not.toContain(s);
+      }
+    }
   });
 
   // The statement, the bill and the senator's action are the evidence. Only the
   // context around them changed, so a diff that touched the bill text would be
   // a different change from the one being made here.
   it('leaves the statement and the bill text untouched', () => {
-    const before = buildFulfillmentUserMessage(ERATE_BASE).split('## SENATOR');
-    const after = buildFulfillmentUserMessage(ERATE_ENRICHED).split('## SENATOR');
-    expect(after[0]!.replace(/Bill class: REVERSAL/, 'Bill class: UNKNOWN')).toBe(before[0]);
+    const before = buildFulfillmentUserMessage(ERATE_BASE);
+    const after = buildFulfillmentUserMessage(ERATE_ENRICHED);
+    expect(after.replace(/Bill class: REVERSAL/, 'Bill class: UNKNOWN')).toBe(before);
   });
 
   // v6 anchored this call on the relevance step's reasoning and produced false

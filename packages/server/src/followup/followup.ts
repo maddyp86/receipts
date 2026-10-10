@@ -196,7 +196,7 @@ export function buildFollowupContext(record: TraceRecord): string {
     for (const s of fulfillment) {
       const p = (out(s).parsed ?? {}) as Record<string, unknown>;
       if (s.status === 'skipped') { lines.push(`- ${s.label}`); continue; }
-      lines.push(`- ${s.label.split(' → ')[0]}: effect ${S(p.bill_effect)}${p.same_object === false ? ' (same object: NO — same policy lane, different thing)' : ''}; evaluator's own alignment ${S(p.alignment)}. Reasoning: ${S(p.reasoning)}`);
+      lines.push(`- ${s.label.split(' → ')[0]}: effect ${S(p.bill_effect)}${p.same_object === false ? ' (same object: NO — same policy lane, different thing)' : ''}${S(p.alignment) && S(p.alignment) !== 'NA' ? `; evaluator's own alignment ${S(p.alignment)}` : ''}. Reasoning: ${S(p.reasoning)}`);
     }
     lines.push('');
   }

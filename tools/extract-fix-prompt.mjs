@@ -58,27 +58,31 @@ const TARGETS = {
     ],
   },
   evaluator: {
-    source: 'docs/fix/07_wf10a_evaluator_prompt_v7.md',
+    // v8, Receipts only: the bill-effect reading without the senator's action.
+    // WF10A still runs v7 (docs/fix/07_…_v7.md, kept as the record of it);
+    // the departure is in docs/RECONCILIATION.md, 2026-10-10.
+    source: 'docs/fix/08_evaluator_prompt_v8_bill_only.md',
     heading: '## SYSTEM',
-    out: 'packages/server/src/evaluation/evaluatorPromptV7.ts',
+    out: 'packages/server/src/evaluation/evaluatorPromptV8.ts',
     constant: 'EVALUATOR_SYSTEM_PROMPT',
-    version: 'promise-alignment-v7',
-    length: 9343,
+    version: 'bill-effect-v8',
+    length: 6150,
     banner: [
-      'The FULFILMENT (bill_effect) prompt, v7. It decides',
-      'ADVANCE / HINDER / NEUTRAL / CONTESTED and a same_object gate.',
+      'The FULFILMENT (bill_effect) prompt, v8. It decides',
+      'ADVANCE / HINDER / NEUTRAL / CONTESTED and a same_object gate, and',
+      'nothing else.',
       '',
-      'v7 SUPERSEDES the 32,507-char v6 that was extracted from the live WF10A',
-      'node. v6 is gone, not deprecated: it carried the rules the audit blamed',
-      'for the false-positive class — a 0.6 confidence floor, "NEVER return',
-      'NEUTRAL because the connection requires inference", and an asymmetric',
-      'cloture/passage precedence. Keeping it importable would let a stray',
-      'import reinstate them.',
+      'v8 is v7 with the senator taken out. The model is never told who voted,',
+      'how, or in what role: the action leaked into the bill reading (the same',
+      'bill NEUTRAL for one senator and ADVANCE for the other; a leader\'s YEA',
+      'read as a procedural switch). Everything about the action is decided in',
+      'code: deriveAlignment, the pre-evaluator gates, the split-vote cap.',
       '',
       'This is NOT the relevance prompt (relevancePrompt.ts), which asks whether',
       'a bill is about the statement at all. Different question, different call.',
     ],
   },
+
   judge: {
     source: 'docs/fix/12_wf13_judge_system_prompt.md',
     extract: 'after-hr',

@@ -66,7 +66,7 @@ import {
 import {
   EVALUATOR_SYSTEM_PROMPT,
   EVALUATOR_SYSTEM_PROMPT_VERSION,
-} from '../evaluation/evaluatorPromptV7.js';
+} from '../evaluation/evaluatorPromptV8.js';
 
 /** /v1/responses usage → the trace's shape. */
 function responsesUsage(envelope: ResponsesEnvelope | null): TraceUsage | null {
@@ -1164,7 +1164,8 @@ async function evaluateEffectsTool(
                 stage: 'FULFILLMENT', kind: 'model',
                 status: o.error ? 'error' : o.result.bill_effect === 'ERROR' ? 'rejected' : 'ok',
                 subject: o.candidate.action_uid ?? o.candidate.bill_id,
-                label: `${o.candidate.bill_id} → ${o.result.bill_effect} · model says ${o.result.alignment} @ ${o.result.confidence}` +
+                label: `${o.candidate.bill_id} → ${o.result.bill_effect}` +
+                  (o.result.alignment !== 'NA' ? ` · model says ${o.result.alignment}` : '') + ` @ ${o.result.confidence}` +
                   (o.result.same_object === false ? ' · same_object=false' : '') +
                   (o.result.flags.length ? ` · ${o.result.flags.join(',')}` : ''),
                 model: o.request.model, prompt_version: EVALUATOR_SYSTEM_PROMPT_VERSION, prompt_text: EVALUATOR_SYSTEM_PROMPT,

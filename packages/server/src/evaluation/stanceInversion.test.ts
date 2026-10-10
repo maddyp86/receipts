@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StatementType } from '@receipts/shared';
 import { deriveAlignment } from '../scoring/deriveAlignment.js';
-import { EVALUATOR_SYSTEM_PROMPT } from './evaluatorPromptV7.js';
+import { EVALUATOR_SYSTEM_PROMPT } from './evaluatorPromptV8.js';
 
 // ===========================================================================
 // The v7 stance inversion — measured, not hypothesised.
@@ -29,7 +29,7 @@ import { EVALUATOR_SYSTEM_PROMPT } from './evaluatorPromptV7.js';
 //   3. the measured cases are held as data, so the prompt fix has a corpus to
 //      be judged against rather than a story.
 //
-// The prompt change itself is deliberately NOT made here. `evaluatorPromptV7.ts`
+// The prompt change itself is deliberately NOT made here. `evaluatorPromptV8.ts`
 // is a verbatim port, and `bill_effect` is the axis where divergence between
 // this tool and the corpus scorer does the most damage — two prompts judging
 // effect is how the query tool and the trust report end up printing different
@@ -177,11 +177,12 @@ describe('where the prompt fix has to go', () => {
   // Length is already pinned in wiring.test.ts; not duplicated here.
 
   it('tells the model the stance is already baked in — which is why STEP 1 is the only place to fix this', () => {
-    // STEP 3 forbids re-applying stance, correctly: applying it twice would
-    // invert every oppose-framed row a second time. So the direction has to be
-    // right when it LEAVES step 1, and no later stage may compensate.
+    // Stance is read once, in STEP 1: applying it twice would invert every
+    // oppose-framed row a second time. v8 moved the alignment step to code
+    // (deriveAlignment, which never re-applies stance), so the prompt now says
+    // where stance is read rather than where it must not be.
     expect(EVALUATOR_SYSTEM_PROMPT).toContain(
-      'The stance is already inside ADVANCE/HINDER. Do not apply it again.',
+      'The stance is part of the goal: "the direction the statement wants". Read it once, here.',
     );
   });
 
@@ -196,7 +197,7 @@ describe('where the prompt fix has to go', () => {
   });
 
   it.todo(
-    'carries an OPPOSE-framed worked example — deferred: evaluatorPromptV7.ts is GENERATED from ' +
+    'carries an OPPOSE-framed worked example — deferred: evaluatorPromptV8.ts is GENERATED from ' +
       'docs/fix/07, so the fix edits that source and re-runs tools/extract-fix-prompt.mjs, and it ' +
       'lands only alongside the matching n8n edit (RECONCILIATION 2026-09-09)',
   );

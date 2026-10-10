@@ -2084,3 +2084,42 @@ The same day, two changes with no pipeline counterpart: the classifier prompt
 classify the policy itself rather than the speaker's name for it, and the
 NOT_EVALUABLE copy now says the statement is too broad to hold against
 specific bills.
+
+---
+
+## 2026-10-10 — the bill-effect evaluator departs from WF10A v7, deliberately
+
+**What.** The query path's fulfilment evaluator runs Receipts' own prompt v8
+(`docs/fix/08_evaluator_prompt_v8_bill_only.md`, generated into
+`evaluation/evaluatorPromptV8.ts`), not WF10A's v7 (`docs/fix/07_…_v7.md`, kept
+as the record of what the pipeline runs). v8 judges the BILL only: same object,
+and what the bill does to the statement's goal. The user message no longer
+carries the `## SENATOR'S ACTION` section (role, cloture and passage votes,
+cloture result, party whip, party alignment, sponsorship, action date, vote
+flags) or the statement's role condition. Nothing in the message identifies
+the senator. The model returns no alignment; `model_verdict` records `NA`.
+
+**Why.** The accuracy set's second run (#48) showed the action leaking into
+the bill reading. The same statement and the same bill came back NEUTRAL for
+Schumer and ADVANCE for Thune (sjres81-119), and NEUTRAL and HINDER
+(hjres39-118). And a majority leader's YEA on a failed cloture motion
+(Thune, s5271-119) was read as a leader's procedural switch — a rule that
+applies only to a NAY — and the bill marked NEUTRAL, so the vote counted for
+nothing. A bill's effect on a goal does not depend on who voted on it.
+
+**Where the removed rules live.** Every rule v7 applied to the action is
+executed in code and was already: the cloture/passage precedence and the
+sponsor-NAY switch (`scoring/deriveAlignment.ts`), the statement window (G1a),
+the role condition (G2), the floor-leader switch (G3, NAY-only), and the
+split-vote confidence cap (contract 2, `capSplitConfidence`). The leader and
+sponsor exemptions are pinned NAY-only by `scoring/leaderYeaGuard.test.ts`.
+
+**What changes in meaning.** `confidence` (stored as `alignment_confidence`,
+read by the 0.7 accusation floor) now measures how defensible the reading of
+the bill is, not of the whole verdict. The prompt keeps the policy-position
+penalty and the broad-vehicle and policy-position caps. Lost: the model's
+"cloture-only vote" weakness, which lowered confidence by one band.
+
+**For the pipeline.** WF10A still runs v7, so the senator profile still
+judges bill and action together. Not a proposal to change WF10A until the
+batch pipeline is measured for the same leak.

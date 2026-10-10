@@ -2,7 +2,7 @@ import {
   EVALUATOR_SYSTEM_PROMPT,
   EVALUATOR_SYSTEM_PROMPT_LENGTH,
   EVALUATOR_SYSTEM_PROMPT_VERSION,
-} from './evaluatorPromptV7.js';
+} from './evaluatorPromptV8.js';
 import type { ResponsesEnvelope, ResponsesRequestBody } from './relevance.js';
 import { normalizeRelevanceResponse, notify, type EvaluationObservation } from './relevance.js';
 import { config } from '../config.js';
@@ -10,9 +10,19 @@ import { config } from '../config.js';
 // ===========================================================================
 // FULFILLMENT — the bill_effect leg.
 //
-// PORT of WF10A `Promise Alignment Evaluator` (BuA0XMoRIeA8K-IziChwR), running
-// EVALUATOR PROMPT v7 (docs/fix/07_wf10a_evaluator_prompt_v7.md, 2026-09-04)
-// on gpt-5.4-mini. Ported 2026-09-07.
+// PORT of WF10A `Promise Alignment Evaluator` (BuA0XMoRIeA8K-IziChwR), ported
+// at EVALUATOR PROMPT v7 (docs/fix/07_wf10a_evaluator_prompt_v7.md) on
+// gpt-5.4-mini on 2026-09-07, and running Receipts' own v8 since 2026-10-10
+// (docs/fix/08_evaluator_prompt_v8_bill_only.md).
+//
+// v8 DEPARTS FROM WF10A: the model judges the BILL and is never shown the
+// senator's action — no role, no votes, no party whip, no sponsorship. In v7
+// the action leaked into the bill reading: the same bill on the same statement
+// was NEUTRAL for one senator and ADVANCE for the other, and a majority
+// leader's YEA was read as a procedural switch and the bill marked NEUTRAL.
+// Everything about the action is decided in code: deriveAlignment, the
+// pre-evaluator gates, and the split-vote cap. docs/RECONCILIATION.md,
+// 2026-10-10.
 //
 // v7 replaced v6 wholesale. What v6 did that produced false accusations:
 // a 0.6 confidence FLOOR, "NEVER return NEUTRAL because the connection requires
@@ -43,6 +53,8 @@ import { config } from '../config.js';
 
 export type BillEffect = 'ADVANCE' | 'HINDER' | 'NEUTRAL' | 'CONTESTED';
 export type FulfillmentAlignment =
+  /** v8: the model is not asked for an alignment and never sees the action. */
+  | 'NA'
   | 'KEPT'
   | 'BROKE'
   | 'CONSISTENT'
@@ -206,7 +218,10 @@ export function buildFulfillmentUserMessage(c: FulfillmentCandidate): string {
   // the system prompt (it still said bill_effect was one of three values after
   // CONTESTED was added), and a user message that contradicts the system
   // message is resolved by the model, not by us.
-  return `Evaluate whether this senator's legislative action is evidence about the statement below, following the system rules. Use ONLY the information provided.
+  // v8: no "## SENATOR'S ACTION" section and no role condition. Nothing here
+  // identifies the senator or says how they acted; the candidate still carries
+  // those fields for the code that uses them, and they stop at this function.
+  return `Read this bill against the statement below and decide what the bill does to the statement's goal, following the system rules. Use ONLY the information provided.
 
 ## STATEMENT
 - Statement Type: ${S(c.statement_type)}
@@ -217,7 +232,6 @@ export function buildFulfillmentUserMessage(c: FulfillmentCandidate): string {
 - Date made: ${or(c.promise_date, 'unknown')}
 - Scope: ${or(c.scope, 'UNKNOWN')}${S(c.valid_until) ? ` (valid until ${S(c.valid_until)})` : ''}
 - Anchor entity: ${or(c.anchor_entity, 'none')}
-- Role condition: ${or(c.role_condition, 'UNKNOWN')}
 - Relevance step: match verdict ${or(c.match_verdict, 'NA')}, partial subtype ${or(
     c.partial_subtype,
     'NA',
@@ -241,21 +255,6 @@ ${stakeholders}
 - Target Name: ${or(c.target_name, 'N/A')}
 - Target Source: ${or(c.target_source, 'N/A')}
 - Target Effect: ${or(c.target_effect, 'N/A')}
-
-## SENATOR'S ACTION
-- Senator role at the time: ${or(c.senator_role, 'UNKNOWN')}
-- Cloture Vote: ${or(c.cloture_vote, 'NA')} on ${or(c.cloture_vote_date, 'NA')} — result: ${or(
-    c.cloture_result,
-    'UNKNOWN',
-  )}
-- Passage Vote: ${or(c.passage_vote, 'NA')} on ${or(c.passage_vote_date, 'NA')}
-- Party whip's vote: ${or(c.party_whip_vote, 'NA')} — party alignment: ${or(
-    c.party_alignment,
-    'NA',
-  )}
-- Is Sponsor: ${S(c.is_sponsor)} · Is Co-Sponsor: ${S(c.is_cosponsor)}
-- Action date: ${or(c.action_date, 'unknown')}
-- Vote flags: ${or(c.vote_flags, 'none')}
 
 Return the JSON specified in the system message.`;
 }
@@ -316,8 +315,10 @@ export function parseFulfillmentResponse(text: string | null | undefined): Fulfi
     );
   }
 
-  const alignment = S(parsed.alignment ?? parsed.promise_alignment).toUpperCase();
-  if (!KNOWN_ALIGNMENTS.has(alignment)) {
+  // v8 asks for no alignment; an absent one is NA, not an error. One that IS
+  // returned must still be a known label.
+  const alignment = S(parsed.alignment ?? parsed.promise_alignment).toUpperCase() || 'NA';
+  if (alignment !== 'NA' && !KNOWN_ALIGNMENTS.has(alignment)) {
     return fulfillmentErrorResult(
       `Fulfillment evaluator returned an unknown alignment "${parsed.alignment}". ` +
         `Expected one of ${[...KNOWN_ALIGNMENTS].join(', ')}.`,
@@ -344,7 +345,7 @@ export function parseFulfillmentResponse(text: string | null | undefined): Fulfi
   return {
     bill_effect: effect as BillEffect,
     alignment: alignment as FulfillmentAlignment,
-    reasoning: S(parsed.alignment_reasoning ?? parsed.reasoning),
+    reasoning: S(parsed.alignment_reasoning ?? parsed.bill_effect_reasoning ?? parsed.reasoning),
     confidence,
     same_object: sameObject,
     flags,
