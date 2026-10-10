@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { config } from '../config.js';
 import { CLASSIFY_SYSTEM_PROMPT } from '../evaluation/classify.js';
-import { EVALUATOR_SYSTEM_PROMPT } from '../evaluation/evaluatorPromptV7.js';
+import { EVALUATOR_SYSTEM_PROMPT } from '../evaluation/evaluatorPromptV8.js';
 import { RELEVANCE_SYSTEM_PROMPT } from '../evaluation/relevancePrompt.js';
 import { JUDGE_SYSTEM_PROMPT } from '../judge/judgePrompt.js';
 import { SCOPE_CLASSIFIER_SYSTEM_PROMPT } from '../scope/scopeClassifierPrompt.js';

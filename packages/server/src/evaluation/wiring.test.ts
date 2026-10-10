@@ -13,7 +13,7 @@ import {
   EVALUATOR_SYSTEM_PROMPT,
   EVALUATOR_SYSTEM_PROMPT_LENGTH,
   EVALUATOR_SYSTEM_PROMPT_VERSION,
-} from './evaluatorPromptV7.js';
+} from './evaluatorPromptV8.js';
 import {
   MissingCredentialError,
   fixtureEnvelope,
@@ -190,11 +190,11 @@ describe('no silent success', () => {
 // The extracted prompt is guarded at request time, not just at generation time.
 // ===========================================================================
 
-describe('evaluator prompt v7 integrity', () => {
+describe('evaluator prompt v8 integrity', () => {
   it('is exactly the asserted length and version', () => {
     expect(EVALUATOR_SYSTEM_PROMPT).toHaveLength(EVALUATOR_SYSTEM_PROMPT_LENGTH);
-    expect(EVALUATOR_SYSTEM_PROMPT_LENGTH).toBe(9343);
-    expect(EVALUATOR_SYSTEM_PROMPT_VERSION).toBe('promise-alignment-v7');
+    expect(EVALUATOR_SYSTEM_PROMPT_LENGTH).toBe(6150);
+    expect(EVALUATOR_SYSTEM_PROMPT_VERSION).toBe('bill-effect-v8');
   });
 
   it('is a different prompt from the relevance one — never conflate them', async () => {
@@ -216,41 +216,46 @@ describe('evaluator prompt v7 integrity', () => {
 
   it('hashes exactly — any silent trim anywhere fails here', () => {
     const hash = createHash('sha256').update(EVALUATOR_SYSTEM_PROMPT, 'utf8').digest('hex');
-    expect(hash).toBe('e181a26b83807a314f06f03c8c6a8d48c8c0fb0e18a9d57b02667c6f066672a5');
+    expect(hash).toBe('dc8ed62fd4e8283c8a2ae698789e479bb36b3ae06b52445e7119649f66d02d24');
   });
 
   it('carries the Policy Position penalty and its ceiling', () => {
     expect(EVALUATOR_SYSTEM_PROMPT).toContain(
-      'Apply a -0.1 confidence penalty; maximum 0.9',
+      'Policy Position: apply a -0.1 confidence penalty; maximum 0.9',
     );
   });
 
-  // Contract 2 lives in code (capSplitConfidence) AND here. Both, deliberately:
-  // the prompt asks the model to cap itself, the code enforces it when it
-  // doesn't. Losing the prompt half means every split row argues for a higher
-  // confidence that then gets clamped, which shows up as reasoning that
-  // contradicts the number beside it.
-  it('carries the hard confidence caps', () => {
-    expect(EVALUATOR_SYSTEM_PROMPT).toContain(
-      'Hard caps: split vote 0.75; broad vehicle 0.7; policy position 0.9',
-    );
+  // The caps that do not depend on a vote. The split-vote cap (contract 2)
+  // left the prompt with the votes and lives in code only (capSplitConfidence).
+  it('carries the hard confidence caps that do not depend on a vote', () => {
+    expect(EVALUATOR_SYSTEM_PROMPT).toContain('Hard caps: broad vehicle 0.7; policy position 0.9');
+    expect(EVALUATOR_SYSTEM_PROMPT).not.toContain('split vote 0.75');
   });
 
-  it('carries the v7 additions — same_object gate and CONTESTED', () => {
+  it('keeps the same_object gate and CONTESTED', () => {
     expect(EVALUATOR_SYSTEM_PROMPT).toContain('STEP 0: SAME OBJECT?');
-    expect(EVALUATOR_SYSTEM_PROMPT).toContain(
-      'same_object = false -> bill_effect NEUTRAL -> NOT_DETERMINABLE',
-    );
-    expect(EVALUATOR_SYSTEM_PROMPT).toContain('CONTESTED -> NOT_DETERMINABLE');
+    expect(EVALUATOR_SYSTEM_PROMPT).toContain('same_object = false -> bill_effect NEUTRAL. Stop.');
+    expect(EVALUATOR_SYSTEM_PROMPT).toMatch(/CONTESTED — the bill's direction on this goal IS the partisan dispute/);
   });
 
-  // Contract: cloture governs in BOTH directions. The prompt and
-  // deriveAlignment must agree, or the model argues for one verdict while the
-  // code returns the other and the reasoning shown to the user is about a
-  // verdict nobody reached.
-  it('states the symmetric cloture rule that deriveAlignment implements', () => {
-    expect(EVALUATOR_SYSTEM_PROMPT).toContain('cloture governs, in BOTH directions');
-    expect(EVALUATOR_SYSTEM_PROMPT).toContain('A split vote is disclosed, never collapsed.');
+  // v8: the model judges the bill only. Every rule about the senator's action
+  // is executed in code (deriveAlignment, the pre-evaluator gates), so none of
+  // it may come back here — a vote rule in the prompt is a vote in the reading.
+  it.each([
+    ['the effective-action step', 'THE SENATOR\'S EFFECTIVE ACTION'],
+    ['the alignment step', 'STEP 3: ALIGNMENT'],
+    ['the procedural-switch rule', 'PROCEDURAL_SWITCH'],
+    ['the cloture precedence', 'cloture governs'],
+    ['the role check', 'Role check'],
+    ['the party whip', 'whip'],
+    ['the alignment output', 'promise_alignment'],
+  ])('does not carry %s', (_name, clause) => {
+    expect(EVALUATOR_SYSTEM_PROMPT).not.toContain(clause);
+  });
+
+  it('tells the model it is not told who voted, and to judge the bill', () => {
+    expect(EVALUATOR_SYSTEM_PROMPT).toContain('You are not told who voted on the bill, how they voted, or what role they held.');
+    expect(EVALUATOR_SYSTEM_PROMPT).toContain('Judge the bill, not any senator.');
   });
 
   // =========================================================================
@@ -280,14 +285,35 @@ describe('evaluator prompt v7 integrity', () => {
     expect(msg).not.toContain('PRIOR EVALUATION CONTEXT');
   });
 
-  it('sends the v7 context fields, with explicit markers when absent', () => {
+  it('sends the bill and statement context, with explicit markers when absent', () => {
     const msg = buildFulfillmentUserMessage(candidate());
     expect(msg).toContain('- Scope: UNKNOWN');
     expect(msg).toContain('- Anchor entity: none');
-    expect(msg).toContain('- Role condition: UNKNOWN');
     expect(msg).toContain('- Bill class: UNKNOWN');
-    expect(msg).toContain('- Senator role at the time: UNKNOWN');
-    expect(msg).toContain('- Vote flags: none');
+  });
+
+  // The fix for the same bill read two ways for two senators, and a leader's
+  // YEA read as a procedural switch: nothing about the senator reaches the
+  // model, whatever the candidate carries.
+  it('never sends the senator: no role, votes, whip, sponsorship or vote flags', () => {
+    const msg = buildFulfillmentUserMessage(
+      candidate({
+        senator_role: 'MAJORITY_LEADER', vote: 'YEA', cloture_vote: 'YEA', passage_vote: 'NAY',
+        cloture_result: 'REJECTED', party_whip_vote: 'NAY', party_alignment: 'WITH_PARTY',
+        is_sponsor: 'true', is_cosponsor: 'false', action_date: '2025-04-01', vote_flags: 'FLOOR_LEADER',
+        role_condition: 'MAJORITY_LEADER',
+      }),
+    );
+    for (const s of ["SENATOR'S ACTION", 'MAJORITY_LEADER', 'YEA', 'NAY', 'REJECTED', 'whip', 'WITH_PARTY',
+      'Sponsor', 'FLOOR_LEADER', '2025-04-01', 'Role condition', 'senator role']) {
+      expect(msg).not.toContain(s);
+    }
+  });
+
+  it('the same bill and statement give the same message for any senator', () => {
+    const a = buildFulfillmentUserMessage(candidate({ senator_role: 'MINORITY_LEADER', vote: 'YEA', passage_vote: 'YEA' }));
+    const b = buildFulfillmentUserMessage(candidate({ senator_role: 'MAJORITY_LEADER', vote: 'NAY', passage_vote: 'NAY', is_sponsor: 'true' }));
+    expect(a).toBe(b);
   });
 
   it('sends the system prompt and routes the model through config', () => {
