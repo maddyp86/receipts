@@ -21,6 +21,9 @@ import { CLEANUP_SYSTEM_PROMPT, CLEANUP_SYSTEM_PROMPT_VERSION } from './cleanupP
 //      unless its words come from the reader's text. A rewrite that brings in
 //      a subject the reader never typed is the tool authoring the claim it
 //      then grades, so it is dropped and the text passes through unchanged.
+//      A rewrite that brings in a SIDE the reader never typed is the same
+//      failure in one word, and is caught separately (`sideNotTheirs`): the
+//      reader is asked which way, never handed one.
 //
 // FAILS OPEN, everywhere. No credential, a failed call, unparseable output, a
 // refused rewrite: the reader's text goes on exactly as typed, which is what
@@ -31,7 +34,7 @@ import { CLEANUP_SYSTEM_PROMPT, CLEANUP_SYSTEM_PROMPT_VERSION } from './cleanupP
 export type CleanupDecision =
   | { action: 'PASS'; reason: string }
   | { action: 'REWRITE'; statement: string }
-  | { action: 'ASK_SIDE'; proposition: string };
+  | { action: 'ASK_SIDE'; proposition: string; /** Set when the model asked for a rewrite and the check turned it into a question. */ why?: string };
 
 /** What the model returned, before anything is believed. */
 export interface RawCleanupOutput {
@@ -135,8 +138,87 @@ export function carriedFrom(original: string, candidate: string): number {
 const tidy = (v: unknown): string =>
   (typeof v === 'string' ? v : '').trim().replace(/\s+/g, ' ').replace(/^["“”']+|["“”']+$/g, '').replace(/[.;,]+$/, '');
 
+// ---- whose side is it? ----------------------------------------------------
+//
+// The word check above asks whether the SUBJECT is the reader's. It cannot see
+// a side, because "supports" and "opposes" are statement form, not subject:
+// "What is his stance on abortion?" → "supports abortion" carries every
+// content word and has still picked a side the reader never typed. So the
+// side is checked on its own, and a rewrite that brings one is not sent on.
+// Where what is left is a clean subject, the reader is asked which way.
+
+/** Words in the reader's text that say "for". */
+const FOR_WORD = /^(support\w*|backs?|backed|backing|favou?r\w*|wants?|wanted|endors\w*|champion\w*|pro)$/;
+/** "vote for", "is he for": "for" on its own is glue ("done for veterans"). */
+const FOR_PHRASE = /\b(vot\w+|is|he|she|they|he's|she's|he’s|she’s|are|was|were)\s+for\b/i;
+/** Words in the reader's text that say "against". */
+const AGAINST_WORD = /^(against|oppos\w*|anti|block\w*)$/;
+
+/**
+ * Verbs that give a subject a direction. One of these in a rewrite or a
+ * proposition must be the reader's own word: "assault weapons" → "ban assault
+ * weapons" is a side, however many of the other words were carried.
+ */
+const DIRECTION = [
+  /^ban(s|ned|ning)?$/, /^end(s|ed|ing)?$/, /^cut(s|ting)?$/, /^stop/, /^protect/, /^defend/, /^secur/, /^rais/,
+  /^lower/, /^expand/, /^repeal/, /^pass(es|ed|ing)?$/, /^fund/, /^defund/, /^cancel/, /^legali/, /^restrict/,
+  /^extend/, /^keep/, /^increas/, /^decreas/, /^reduc/, /^abolish/, /^eliminat/, /^strengthen/, /^weaken/,
+  /^tighten/, /^loosen/, /^limit/, /^codif/, /^overturn/, /^restor/, /^prohibit/, /^forgiv/, /^privati/,
+];
+
+/** An open question asks what the position IS. A yes/no question proposes one. */
+const OPEN_QUESTION = /^(what|whats|what's|what’s|where|wheres|where's|where’s|how|hows|how's|how’s|why|who|which|when)\b|\b(stance|position|stands?|views?|opinion|thinks?|feels?)\b/i;
+
+const directionIndexes = (text: string): number[] =>
+  words(text).flatMap((w) => DIRECTION.flatMap((re, i) => (re.test(w) ? [i] : [])));
+
+/** A direction in `candidate` that the reader's text does not have, or null. */
+function addedDirection(original: string, candidate: string): string | null {
+  const have = new Set(directionIndexes(original));
+  for (const w of words(candidate)) {
+    const i = DIRECTION.findIndex((re) => re.test(w));
+    if (i !== -1 && !have.has(i)) return w;
+  }
+  return null;
+}
+
+/** Why this rewrite's side is not the reader's, or null when it is. */
+export function sideNotTheirs(original: string, statement: string): string | null {
+  const added = addedDirection(original, statement);
+  if (added) return `"${added}" is a direction the text does not have`;
+
+  const said = words(original);
+  const saidFor = said.some((w) => FOR_WORD.test(w)) || FOR_PHRASE.test(original);
+  const saidAgainst = said.some((w) => AGAINST_WORD.test(w));
+  const against = /^(opposes?|opposed|against|voted against|voted no|promised to (oppose|block|vote against))\b/i.test(statement);
+
+  if (against) return saidAgainst ? null : 'the rewrite opposes, and the text does not';
+  if (saidAgainst && !saidFor) return 'the text opposes, and the rewrite does not';
+  // What is left reads as "for". An open question has no side unless it says
+  // one outright; a yes/no question has the side of what it proposes.
+  if (saidFor) return null;
+  if (OPEN_QUESTION.test(original.trim())) return 'an open question has no side to restate';
+  return directionIndexes(original).length ? null : 'the text has no side to restate';
+}
+
+/** The verbs a rewrite opens with that leave a clean subject behind when removed. */
+const LEADING_STANCE = /^(supports?|supported|opposes?|opposed|against|backs?|favou?rs?|voted (for|against))\s+/i;
+
 /** A rewrite must keep at least this share of its content words from the reader's text. */
 export const REWRITE_MIN_CARRIED = 0.6;
+
+/** Is this a subject we can put "Supports …" and "Opposes …" in front of? */
+function checkProposition(original: string, proposition: string): CleanupDecision {
+  if (!proposition) return { action: 'PASS', reason: 'ASK_SIDE with no proposition' };
+  if (proposition.includes('?')) return { action: 'PASS', reason: 'proposition is a question' };
+  if (proposition.length < 3 || proposition.length > 80) return { action: 'PASS', reason: 'proposition length out of range' };
+  if (carriedFrom(original, proposition) === 0 && carriedFrom(proposition, original) === 0) {
+    return { action: 'PASS', reason: 'proposition shares no subject with the text' };
+  }
+  const added = addedDirection(original, proposition);
+  if (added) return { action: 'PASS', reason: `proposition adds a direction the text does not have ("${added}")` };
+  return { action: 'ASK_SIDE', proposition };
+}
 
 /**
  * Decide what to do with the model's output. Anything not clearly usable is a
@@ -157,20 +239,23 @@ export function checkDecision(original: string, raw: RawCleanupOutput | null): C
     if (carried < REWRITE_MIN_CARRIED) {
       return { action: 'PASS', reason: `rewrite adds content the text does not have (${Math.round(carried * 100)}% carried)` };
     }
+    const notTheirs = sideNotTheirs(original, statement);
+    if (notTheirs) {
+      // Never sent on. If taking the stance off leaves a clean subject, ask
+      // which way; otherwise the text goes through as typed.
+      const subject = statement.replace(LEADING_STANCE, '');
+      const asked = subject !== statement ? checkProposition(original, subject) : null;
+      return asked?.action === 'ASK_SIDE'
+        ? { ...asked, why: `rewrite refused: ${notTheirs}` }
+        : { action: 'PASS', reason: `rewrite adds a side: ${notTheirs}` };
+    }
     return { action: 'REWRITE', statement };
   }
 
   if (action === 'ASK_SIDE') {
     // The side is ours to add, in both directions. A proposition that arrives
     // with one already on it has picked.
-    const proposition = tidy(raw.proposition).replace(/^(supports?|opposes?|supporting|opposing|for|against)\s+/i, '');
-    if (!proposition) return { action: 'PASS', reason: 'ASK_SIDE with no proposition' };
-    if (proposition.includes('?')) return { action: 'PASS', reason: 'proposition is a question' };
-    if (proposition.length < 3 || proposition.length > 80) return { action: 'PASS', reason: 'proposition length out of range' };
-    if (carriedFrom(original, proposition) === 0 && carriedFrom(proposition, original) === 0) {
-      return { action: 'PASS', reason: 'proposition shares no subject with the text' };
-    }
-    return { action: 'ASK_SIDE', proposition };
+    return checkProposition(original, tidy(raw.proposition).replace(/^(supports?|opposes?|supporting|opposing|for|against)\s+/i, ''));
   }
 
   if (action === 'PASS') return { action: 'PASS', reason: 'model: nothing to tidy' };

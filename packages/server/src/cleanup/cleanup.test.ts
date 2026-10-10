@@ -8,6 +8,7 @@ import {
   needsCleanUp,
   stubCleanupFetcher,
   type CleanupFetcher,
+  sideNotTheirs,
 } from './cleanUpInput.js';
 import { CLEANUP_SYSTEM_PROMPT } from './cleanupPrompt.js';
 
@@ -96,6 +97,47 @@ describe('a rewrite is accepted only when its words are the reader’s', () => {
     ['empty', ''],
   ])('refuses a rewrite that is %s', (_why, statement) => {
     expect(checkDecision('does he support raising the minimum wage', { action: 'REWRITE', statement }).action).toBe('PASS');
+  });
+});
+
+// The subject check cannot see a side: "supports" is statement form, so
+// "supports abortion" carries every content word of a question that had none.
+describe('a rewrite never brings a side the reader did not type', () => {
+  it.each([
+    ['an open question has no side', 'What is his stance on abortion?', 'supports abortion', 'abortion'],
+    ['a noun that sounds like a verb is not a side', 'What is his stance on the assault weapons ban?', 'supports the assault weapons ban', 'the assault weapons ban'],
+    ['a yes/no question with nothing proposed', 'Did he vote on the farm bill?', 'supports the farm bill', 'the farm bill'],
+    ['the reader said against', 'Is she against the assault weapons ban?', 'supports the assault weapons ban', 'the assault weapons ban'],
+    ['the reader did not say against', 'Did he vote to repeal the estate tax?', 'opposes repealing the estate tax', 'repealing the estate tax'],
+  ])('%s: asks which way instead', (_why, original, statement, proposition) => {
+    const d = checkDecision(original, { action: 'REWRITE', statement });
+    expect(d).toMatchObject({ action: 'ASK_SIDE', proposition });
+    expect(d.action === 'ASK_SIDE' && d.why).toMatch(/^rewrite refused: /);
+  });
+
+  // "ban" is the side. Three of the four other words being the reader's does not make it theirs.
+  it('a direction the text does not have is refused outright', () => {
+    const d = checkDecision('What has he done about assault weapons in schools?', { action: 'REWRITE', statement: 'voted to ban assault weapons in schools' });
+    expect(d).toMatchObject({ action: 'PASS' });
+    expect(d.action === 'PASS' && d.reason).toMatch(/adds a side.*"ban"/);
+    expect(checkDecision('What is his stance on assault weapons?', { action: 'ASK_SIDE', proposition: 'banning assault weapons' }).action).toBe('PASS');
+  });
+
+  it.each([
+    ['Did he vote for the farm bill?', 'voted for the farm bill'],
+    ['Why did he vote against the border bill?', 'voted against the border bill'],
+    ['Does he back the border wall?', 'supports the border wall'],
+    ['Where does he stand — does he support term limits?', 'supports term limits'],
+  ])('a side the reader did type is kept: %s → %s', (original, statement) => {
+    expect(checkDecision(original, { action: 'REWRITE', statement })).toEqual({ action: 'REWRITE', statement });
+  });
+
+  it.each([
+    ['What is his stance on abortion?', 'supports abortion'],
+    ['Did he vote on the farm bill?', 'supports the farm bill'],
+    ['Is she against the assault weapons ban?', 'supports the assault weapons ban'],
+  ])('%s → %s is named as not theirs', (original, statement) => {
+    expect(sideNotTheirs(original, statement)).toBeTruthy();
   });
 });
 
