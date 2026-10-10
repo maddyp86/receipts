@@ -141,6 +141,9 @@ app.get('/api/senators', async (_req, res) => {
     // Feedback needs somewhere to go. Without a database the control is
     // hidden rather than offered and then refused.
     feedback_available: feedbackStore.kind === 'supabase',
+    // The two prompts send kinds the table accepts only after migration 013,
+    // so they are offered only once that has been run and the flag set.
+    feedback_prompts_available: feedbackStore.kind === 'supabase' && config.features.feedbackPrompts,
   });
 });
 

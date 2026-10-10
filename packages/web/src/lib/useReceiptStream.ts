@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type {
   Interpretation,
+  QueryClarify,
   QueryHalt,
   QueryResult,
   Senator,
@@ -38,6 +39,17 @@ export interface StreamState {
    * retrying changes nothing: a STATEMENT_DATE_REQUIRED halt wants a date.
    */
   halt: QueryHalt | null;
+  /**
+   * The reader typed a question and the server checked this statement in its
+   * place. Arrives before any step, so it can be shown while the check runs.
+   */
+  rewritten: { original: string; statement: string } | null;
+  /**
+   * The reader typed a question that named a subject but no side, and the
+   * server stopped to ask which. Like a halt, a complete answer and not an
+   * error — and unlike one, a tap away from a check.
+   */
+  clarify: QueryClarify | null;
   error: ToolError | null;
   /**
    * The server-side run id for this stream. First event on every fresh run;
@@ -55,6 +67,8 @@ const EMPTY: StreamState = {
   result: null,
   uncached: null,
   halt: null,
+  rewritten: null,
+  clarify: null,
   error: null,
   traceId: null,
 };
@@ -135,6 +149,10 @@ export function useReceiptStream() {
               return { ...prev, result: event.result };
             case 'halt':
               return { ...prev, halt: event.halt };
+            case 'rewritten':
+              return { ...prev, rewritten: { original: event.original, statement: event.statement } };
+            case 'clarify':
+              return { ...prev, clarify: event.clarify };
             case 'error':
               return { ...prev, error: event.error };
             case 'done':
@@ -151,7 +169,7 @@ export function useReceiptStream() {
         setState((prev) =>
           // A drop after the result landed is just the server closing the
           // stream; only surface a connection failure that cost us an answer.
-          prev.result || prev.uncached || prev.halt || prev.error || prev.phase === 'done'
+          prev.result || prev.uncached || prev.halt || prev.clarify || prev.error || prev.phase === 'done'
             ? { ...prev, phase: 'done' }
             : {
                 ...prev,

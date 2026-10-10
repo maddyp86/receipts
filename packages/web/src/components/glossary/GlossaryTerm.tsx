@@ -18,7 +18,7 @@ export function GlossaryTerm({ id, children, className = '' }: Props) {
       type="button"
       onClick={() => openTerm(id)}
       aria-haspopup="dialog"
-      className={`inline cursor-help rounded-sm py-1 text-left underline decoration-ink-faint decoration-dotted decoration-[1.5px] underline-offset-[5px] transition-colors duration-150 hover:decoration-ink ${className}`}
+      className={`inline cursor-help rounded-sm -my-1 py-2 text-left underline decoration-ink-faint decoration-dotted decoration-[1.5px] underline-offset-[5px] transition-colors duration-150 hover:decoration-ink ${className}`}
     >
       {children}
     </button>

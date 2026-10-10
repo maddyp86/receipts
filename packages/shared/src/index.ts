@@ -950,7 +950,17 @@ export interface SearchSummary {
  * two to one evidence card. Stored for an operator's review (app.app_feedback);
  * never read back by the app, never changes a verdict.
  */
-export type FeedbackKind = 'QUESTION_MISREAD' | 'VERDICT_WRONG' | 'BILL_NOT_RELEVANT' | 'BILL_READ_BACKWARDS';
+export type FeedbackKind =
+  | 'QUESTION_MISREAD'
+  | 'VERDICT_WRONG'
+  | 'BILL_NOT_RELEVANT'
+  | 'BILL_READ_BACKWARDS'
+  // Answers to the two prompts (FEEDBACK_PROMPT_KINDS). Stored the same way
+  // and, like every kind, never read back by the app.
+  | 'ANSWERED_YES'
+  | 'ANSWERED_PARTLY'
+  | 'ANSWERED_NO'
+  | 'BILL_RELEVANT';
 export type FeedbackLevel = 'result' | 'evidence';
 
 /** The kinds offered at each level, in the order shown. */
@@ -965,7 +975,41 @@ export const FEEDBACK_KIND_LABEL: Record<FeedbackKind, string> = {
   VERDICT_WRONG: 'The verdict is wrong',
   BILL_NOT_RELEVANT: "This bill isn't relevant",
   BILL_READ_BACKWARDS: 'This bill is read backwards',
+  ANSWERED_YES: 'Yes',
+  ANSWERED_PARTLY: 'Partly',
+  ANSWERED_NO: 'No',
+  BILL_RELEVANT: 'Yes',
 };
+
+// ---------------------------------------------------------------------------
+// The two prompts — asked of every reader, where "Something look wrong?" only
+// hears from the ones who go looking.
+//
+// Without them silence is unreadable: a reader who agreed and a reader who
+// left look the same, so there is no agreement rate to compute.
+//
+// Both ask about FIT, not agreement. "Do you agree with this verdict?" mostly
+// measures whether the reader likes the member — their politics, not our
+// accuracy. "Did this answer what you asked?" and "Is this bill about what you
+// asked?" are questions a reader of either party answers the same way.
+//
+// Kept apart from FEEDBACK_KINDS, which is the list under "What looks wrong?".
+// A bill's "No" is BILL_NOT_RELEVANT, the kind that list already has.
+// ---------------------------------------------------------------------------
+
+/** Under the answer. */
+export const FEEDBACK_PROMPT_RESULT = 'Did this answer what you asked?';
+/** Under each bill. */
+export const FEEDBACK_PROMPT_BILL = 'Is this bill about what you asked?';
+
+/** The kinds a prompt can send that "What looks wrong?" does not list. */
+export const FEEDBACK_PROMPT_KINDS: Record<FeedbackLevel, FeedbackKind[]> = {
+  result: ['ANSWERED_YES', 'ANSWERED_PARTLY', 'ANSWERED_NO'],
+  evidence: ['BILL_RELEVANT'],
+};
+
+/** Shown after a prompt is answered. Like FEEDBACK_THANKS, says it changes nothing on screen. */
+export const FEEDBACK_PROMPT_THANKS = "Thanks — noted. It doesn't change this answer.";
 
 /** What the browser sends. The run id ties it to the trace of what was shown. */
 export interface FeedbackRequest {
@@ -1148,6 +1192,82 @@ export interface DoneEvent {
   type: 'done';
 }
 
+// ---------------------------------------------------------------------------
+// Input clean-up — what happens when a reader types a question.
+//
+// The checker tests a STATEMENT THAT TAKES A SIDE against the record. A
+// question gives it nothing to measure a vote against, and before this it was
+// either stopped as "rhetorical" or run in full and discarded.
+//
+// Two outcomes, split by one rule: the tool may change the WORDING by itself,
+// and must ASK before adding anything the reader did not say.
+//
+//   REWRITE   the text names a policy and a side ("Did he vote to repeal X?").
+//             Restated as a statement and checked; the reader is shown both.
+//   ASK_SIDE  the text names a subject but no side ("What is his stance on
+//             abortion?"). The tool never picks one — the side inverts the
+//             answer — so it offers both, built from one neutral proposition.
+// ---------------------------------------------------------------------------
+
+/**
+ * The reader's text was a question; this is the statement checked in its
+ * place. Sent right after `trace`, before any step, so the reader sees what is
+ * being checked while it is checked. From here on `interpretation.raw` is the
+ * statement, not what was typed.
+ */
+export interface RewrittenEvent {
+  type: 'rewritten';
+  /** What the reader typed, unmodified. */
+  original: string;
+  /** The statement the query ran on. */
+  statement: string;
+}
+
+/** One side of a question that named a subject but no side. */
+export interface ClarifyOption {
+  /** Button text, e.g. "Supports legal access to abortion". */
+  label: string;
+  /** The statement to check if the reader picks it. */
+  statement: string;
+}
+
+/**
+ * The query stopped before anything was checked, to ask which side.
+ *
+ * Like a halt, a complete answer and not an error: nothing was retrieved or
+ * scored. Unlike a halt, the reader can go on with one tap.
+ */
+export interface QueryClarify {
+  reason: 'SIDE_REQUIRED';
+  /** The neutral proposition both options are built from. */
+  proposition: string;
+  /** User-facing copy. Safe to render verbatim. */
+  message: string;
+  /** Always both sides, "supports" first — a fixed order, never chosen per member. */
+  options: ClarifyOption[];
+}
+
+export interface ClarifyEvent {
+  type: 'clarify';
+  clarify: QueryClarify;
+}
+
+/** Both sides of a proposition, in the fixed order. The only place they are built. */
+export function clarifyFor(proposition: string): QueryClarify {
+  const p = proposition.trim();
+  return {
+    reason: 'SIDE_REQUIRED',
+    proposition: p,
+    message:
+      'That reads as a question about a subject, without a side. We check a position against the record, ' +
+      'so we need to know which one. We won’t guess: the side changes the answer.',
+    options: [
+      { label: `Supports ${p}`, statement: `supports ${p}` },
+      { label: `Opposes ${p}`, statement: `opposes ${p}` },
+    ],
+  };
+}
+
 /**
  * The id of this run's trace. FIRST event on every fresh stream, so a result
  * that looks wrong can be walked back gate by gate: /api/trace/:run_id. A
@@ -1166,6 +1286,8 @@ export type StreamEvent =
   | UncachedEvent
   | ResultEvent
   | HaltEvent
+  | RewrittenEvent
+  | ClarifyEvent
   | StreamErrorEvent
   | DoneEvent;
 

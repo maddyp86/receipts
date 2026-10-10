@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react';
-import { TriangleAlertIcon } from 'lucide-react';
+import { ArrowRightIcon, TriangleAlertIcon } from 'lucide-react';
 import {
   coverageSentence,
   enrichmentGapSentence,
   type CoverageWindow,
   type EnrichmentGap,
+  type QueryClarify,
   type QueryHalt,
   type Senator,
   type ToolError,
@@ -324,6 +325,50 @@ export function HaltState({
         {halt.scope.speech_act.toLowerCase().replace('_', ' ')} statement
         {halt.scope.anchor_entity ? ` about ${halt.scope.anchor_entity}` : ''}. {halt.scope.reasoning}
       </p>
+    </Notice>
+  );
+}
+
+/**
+ * The reader asked about a subject without a side, and we stopped to ask
+ * which.
+ *
+ * Not an error and not a dead end: nothing was checked, and either button
+ * starts a check. Both sides are always offered, in the same order, built
+ * from one neutral proposition — the tool never picks a side for a member.
+ */
+export function ClarifyState({
+  clarify,
+  onPick,
+  onReset,
+}: {
+  clarify: QueryClarify;
+  /** Check the statement the reader picked. */
+  onPick: (statement: string) => void;
+  onReset: () => void;
+}) {
+  return (
+    <Notice label="Which position do you want to check?" title="Which do you want to check?">
+      <p>{clarify.message}</p>
+      <div className="grid gap-3 pt-1 sm:grid-cols-2">
+        {clarify.options.map((o) => (
+          <button
+            key={o.statement}
+            type="button"
+            onClick={() => onPick(o.statement)}
+            className="flex min-h-[64px] items-center justify-between gap-3 rounded-card border border-rule bg-card px-4 py-3 text-left text-[17px] font-medium text-ink shadow-soft transition-colors duration-150 hover:border-ink"
+          >
+            <span>{o.label}</span>
+            <ArrowRightIcon className="h-5 w-5 shrink-0 text-ink-soft" aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+      <p className="text-[15px]">Each one is a separate check of the record.</p>
+      <div className="flex flex-wrap gap-3 border-t border-rule pt-4">
+        <button type="button" className={BTN_SECONDARY} onClick={onReset}>
+          Write my own instead
+        </button>
+      </div>
     </Notice>
   );
 }

@@ -8,7 +8,7 @@ import { Entry } from './components/Entry.js';
 import type { StatementKind } from './components/entry/PromiseInput.js';
 import { Waiting } from './components/Waiting.js';
 import { EvidenceList, HowWeGotHereToggle, VerdictCard } from './components/Verdict.js';
-import { DemoBanner, ErrorState, HaltState, ThinResultActions, UncachedState } from './components/States.js';
+import { ClarifyState, DemoBanner, ErrorState, HaltState, ThinResultActions, UncachedState } from './components/States.js';
 import {
   AppliedCorrections,
   AssertedPremiseBadge,
@@ -44,7 +44,7 @@ function Page({ width, children }: { width: 'narrow' | 'wide'; children: ReactNo
 
 export default function App() {
   const [senators, setSenators] = useState<Senator[]>([]);
-  const [modes, setModes] = useState({ demo: false, fixture: false, override: false, followups: false, feedback: false });
+  const [modes, setModes] = useState({ demo: false, fixture: false, override: false, followups: false, feedback: false, prompts: false });
   const [taxonomy, setTaxonomy] = useState<TaxonomyEntry[]>([]);
   // Nobody is preselected: with a short list, a default is a nudge.
   const [selected, setSelected] = useState('');
@@ -67,6 +67,7 @@ export default function App() {
           override: Boolean(d.campaign_promise_override),
           followups: Boolean(d.followups_available),
           feedback: Boolean(d.feedback_available),
+          prompts: Boolean(d.feedback_prompts_available),
         });
       })
       .catch(() => {
@@ -108,6 +109,16 @@ export default function App() {
 
   /** Back to the entry screen with the words kept, to reword them. */
   const reword = () => stream.reset();
+  /** The reader picked a side: that statement is now what they are asking. */
+  const checkStatement = (statement: string) => {
+    setPromise(statement);
+    stream.run(selected, statement, baseCorrections());
+  };
+  /** Back to the entry screen with the statement we checked, to change it. */
+  const editStatement = (statement: string) => {
+    setPromise(statement);
+    stream.reset();
+  };
   /** A new question about the same member. */
   const askAnother = () => {
     stream.reset();
@@ -159,6 +170,7 @@ export default function App() {
               promise={promise.trim()}
               steps={stream.steps}
               interpretation={stream.interpretation}
+              rewritten={stream.rewritten}
               onCancel={reword}
             />
           </Page>
@@ -181,8 +193,9 @@ export default function App() {
               ) : null}
               {stream.error ? <ErrorState error={stream.error} onRetry={submit} onReset={reword} /> : null}
               {stream.halt ? <HaltState halt={stream.halt} onReset={reword} onRetryWithDate={rerunWithDate} /> : null}
+              {stream.clarify ? <ClarifyState clarify={stream.clarify} onPick={checkStatement} onReset={reword} /> : null}
               {/* The stream closed with nothing at all. Say so rather than show an empty page. */}
-              {!stream.uncached && !stream.error && !stream.halt ? (
+              {!stream.uncached && !stream.error && !stream.halt && !stream.clarify ? (
                 <ErrorState
                   error={{
                     code: 'UPSTREAM_UNAVAILABLE',
@@ -210,6 +223,23 @@ export default function App() {
                 {member ? <SelectedMember member={member} onChange={changeMember} compact /> : null}
 
                 <section aria-label="How we read your statement" className="rounded-card border border-rule bg-card px-4 py-3">
+                  {/* A question was restated before it was checked. Both are
+                      shown: the answer below is about the second. */}
+                  {stream.rewritten ? (
+                    <div className="mb-3 border-b border-rule pb-3">
+                      <p className="text-[14px] font-medium text-ink-soft">You typed</p>
+                      <p className="mt-0.5 text-[16px] leading-snug text-ink-soft">“{stream.rewritten.original}”</p>
+                      <p className="mt-2 text-[14px] font-medium text-ink-soft">We checked it as</p>
+                      <p className="mt-0.5 text-[16px] font-medium leading-snug text-ink">“{stream.rewritten.statement}”</p>
+                      <button
+                        type="button"
+                        onClick={() => editStatement(stream.rewritten!.statement)}
+                        className="mt-1 inline-flex min-h-[44px] items-center text-[15px] font-medium text-focus underline underline-offset-4"
+                      >
+                        Not what you meant? Change it
+                      </button>
+                    </div>
+                  ) : null}
                   <p className="text-[14px] font-medium text-ink-soft">How we read it</p>
                   <p className="mt-0.5 text-[16px] leading-snug text-ink">“{stream.interpretation.restated}”</p>
                 </section>
@@ -220,7 +250,12 @@ export default function App() {
                 </div>
 
                 <h1 className="sr-only">Answer for {memberName}</h1>
-                <VerdictCard result={stream.result} traceId={stream.traceId} feedbackAvailable={modes.feedback} />
+                <VerdictCard
+                  result={stream.result}
+                  traceId={stream.traceId}
+                  feedbackAvailable={modes.feedback}
+                  feedbackPrompts={modes.prompts}
+                />
 
                 <div className="hidden lg:block">
                   <ThinResultActions onReset={askAnother} onChangeMember={changeMember} senatorName={memberName} />
@@ -229,7 +264,12 @@ export default function App() {
 
               {/* The receipts. */}
               <div className="min-w-0 space-y-8">
-                <EvidenceList result={stream.result} traceId={stream.traceId} feedbackAvailable={modes.feedback} />
+                <EvidenceList
+                  result={stream.result}
+                  traceId={stream.traceId}
+                  feedbackAvailable={modes.feedback}
+                  feedbackPrompts={modes.prompts}
+                />
 
                 <div className="space-y-6 border-t border-rule pt-6">
                   <HowWeGotHereToggle result={stream.result} />

@@ -82,10 +82,12 @@ interface Props {
   promise: string;
   steps: StepEvent[];
   interpretation: Interpretation | null;
+  /** Set when the reader typed a question and a statement is being checked in its place. */
+  rewritten?: { original: string; statement: string } | null;
   onCancel: () => void;
 }
 
-export function Waiting({ member, promise, steps, interpretation, onCancel }: Props) {
+export function Waiting({ member, promise, steps, interpretation, rewritten = null, onCancel }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [tip, setTip] = useState(0);
   const statuses = stageStatuses(steps);
@@ -131,9 +133,22 @@ export function Waiting({ member, promise, steps, interpretation, onCancel }: Pr
         <h1 className="font-serif text-[28px] leading-tight text-ink sm:text-[32px]">
           Checking {member.name}’s record
         </h1>
-        <p className="mt-3 text-[17px] text-ink-soft">
-          You asked about: <span className="text-ink">“{promise}”</span>
-        </p>
+        {rewritten ? (
+          <div className="mt-3 animate-rise-in rounded-card border border-rule bg-card p-4 shadow-soft">
+            <p className="text-[14px] font-medium text-ink-soft">You typed</p>
+            <p className="mt-0.5 text-[16px] leading-snug text-ink-soft">“{rewritten.original}”</p>
+            <p className="mt-3 text-[14px] font-medium text-ink-soft">We’re checking it as</p>
+            <p className="mt-0.5 font-serif text-[20px] leading-snug text-ink">“{rewritten.statement}”</p>
+            <p className="mt-3 text-[14px] text-ink-soft">
+              A question has no side to check, so we check the statement it asks about. Not what you meant? Go back
+              and reword it.
+            </p>
+          </div>
+        ) : (
+          <p className="mt-3 text-[17px] text-ink-soft">
+            You asked about: <span className="text-ink">“{promise}”</span>
+          </p>
+        )}
         <p className="mt-2 text-[15px] text-ink-soft">
           This usually takes about a minute. <span className="tabular-nums">{elapsed}s</span> so far.
         </p>

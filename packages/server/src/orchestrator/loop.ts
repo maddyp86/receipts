@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { GatedAction, QueryResult, StepId, StreamEvent, ToolError } from '@receipts/shared';
+import { clarifyFor } from '@receipts/shared';
+import type { GatedAction, QueryResult, RewrittenEvent, StepId, StreamEvent, ToolError } from '@receipts/shared';
 import { config } from '../config.js';
 import { dispatchTool, newSession, type QuerySession } from './dispatch.js';
 import { queryStore, traceSinks } from '../services.js';
@@ -15,6 +16,7 @@ import {
 import type { AuditEvent, StoredAlignment, StoredMatch } from '../data/QueryStore.js';
 import { derivePartialSubtype, describeExclusions } from '../evaluation/evidenceGate.js';
 import { classifyScope, haltForScope } from '../scope/classifyScope.js';
+import { cleanUpInput, needsCleanUp } from '../cleanup/cleanUpInput.js';
 import { describeCoverage } from '../scoring/coverage.js';
 import { cacheKey, isCacheable, resultCache } from '../data/ResultCache.js';
 import { answerCache, answerKey, stampReused } from '../data/AnswerCache.js';
@@ -1159,6 +1161,63 @@ export async function runQuery(
     return;
   }
 
+  // ---- INPUT CLEAN-UP (cleanup/cleanUpInput.ts) ------------------------------
+  //
+  // A reader who types a question. Only when the feature is on AND the text is
+  // shaped like a question; for a statement this block does nothing at all, so
+  // the query below is exactly what it has always been.
+  //
+  // After the session replay (an identical request replays what it got,
+  // rewrite included, without another call) and BEFORE answer reuse, so a
+  // rewritten question finds the stored answer to its statement.
+  //
+  // It has a short trace run of its own: the model call needs a trace to
+  // record into, and the run below is created for the statement, not for what
+  // was typed. The two are linked both ways (`cleanup_run_id`, `rewritten_from`).
+  let rewritten: RewrittenEvent | null = null;
+  let cleanupRunId: string | null = null;
+  if (config.features.queryCleanup && needsCleanUp(promiseText)) {
+    const cleanupTrace = new QueryTrace(traceSinks, { politicianId, promiseText, meta: { ...traceMeta, cleanup: true } });
+    cleanupRunId = cleanupTrace.runId;
+    cleanupTrace.record({
+      stage: 'REQUEST', kind: 'control',
+      label: `input clean-up · "${promiseText.slice(0, 80)}${promiseText.length > 80 ? '…' : ''}"`,
+      input: { politician_id: politicianId, promise_text: promiseText, ...traceMeta },
+    });
+    const decision = await withTrace(cleanupTrace, () => cleanUpInput(promiseText));
+
+    if (decision.action === 'ASK_SIDE') {
+      // Stop and ask. Nothing is retrieved, scored or stored as a query: there
+      // is no statement yet, only a subject.
+      const clarify = clarifyFor(decision.proposition);
+      const events: StreamEvent[] = [{ type: 'trace', run_id: cleanupTrace.runId }, { type: 'clarify', clarify }, { type: 'done' }];
+      cleanupTrace.record({
+        stage: 'CLARIFY', kind: 'control',
+        label: `asked which side of "${clarify.proposition}" — nothing was checked`,
+        output: clarify,
+      });
+      console.info(`[cleanup] asked which side of "${clarify.proposition}"`);
+      for (const event of events) emit(event);
+      resultCache.set(key, events);
+      await cleanupTrace.close('clarify');
+      return;
+    }
+
+    if (decision.action === 'REWRITE') {
+      rewritten = { type: 'rewritten', original: promiseText, statement: decision.statement };
+      cleanupTrace.record({
+        stage: 'CLEANUP', kind: 'control',
+        label: `handing on: checking "${decision.statement}" in place of what was typed`,
+        output: rewritten,
+      });
+      console.info(`[cleanup] "${promiseText.slice(0, 60)}" → "${decision.statement}"`);
+      // From here on the statement IS the query: reuse key, session, trace,
+      // classification, search and the stored row all use it.
+      promiseText = decision.statement;
+    }
+    await cleanupTrace.close('cleanup');
+  }
+
   // ---- ANSWER REUSE (data/AnswerCache.ts) -----------------------------------
   //
   // Across sessions: the same senator and question get the stored answer. The
@@ -1183,7 +1242,7 @@ export async function runQuery(
         input: { original_run_id: reused.runId, produced_at: reused.producedAt, fingerprint, corrections: corrections ?? null },
         output: { event_types: reused.events.map((e) => e.type) },
       });
-      for (const event of stampReused(reused)) emit(event);
+      for (const event of withRewritten(stampReused(reused), rewritten)) emit(event);
       await reuseTrace.close('replay');
       return;
     }
@@ -1212,11 +1271,15 @@ export async function runQuery(
   // The trace id is the FIRST event, so even a stream that dies in its first
   // second has told the browser where its record is.
   record({ type: 'trace', run_id: trace.runId });
+  // Before any step, so the reader sees what is being checked while it is.
+  if (rewritten) record(rewritten);
   trace.record({
     stage: 'REQUEST', kind: 'control', label: `${politicianId} · "${promiseText.slice(0, 80)}${promiseText.length > 80 ? '…' : ''}"`,
     input: {
       politician_id: politicianId,
       promise_text: promiseText,
+      // Set only when input clean-up restated a question as this statement.
+      ...(rewritten ? { rewritten_from: rewritten.original, cleanup_run_id: cleanupRunId } : {}),
       corrections: corrections ?? null,
       statement_date: meta.statementDate ?? null,
       user_agent: meta.userAgent ?? null,
@@ -1262,7 +1325,11 @@ export async function runQuery(
       if (cacheable) resultCache.set(key, recorded);
       // Stored for reuse only if it is a clean answer (isReusable) and the
       // mirror version was readable when it started.
-      const reusable = reuseKey ? answerCache.set(reuseKey, recorded, fingerprint) : false;
+      // Without the `rewritten` event: the stored answer is the statement's,
+      // and the next reader to ask it may have typed the statement itself.
+      const reusable = reuseKey
+        ? answerCache.set(reuseKey, recorded.filter((e) => e.type !== 'rewritten'), fingerprint)
+        : false;
       // After `done`, so persistence never delays the answer.
       const queryId = await persist(session, sessionId);
       trace.setQueryId(queryId);
@@ -1274,6 +1341,17 @@ export async function runQuery(
       await trace.close(concludedAs(recorded));
     }
   });
+}
+
+/**
+ * A stored answer, served to a reader whose question was restated to reach it:
+ * the same events, with this reader's `rewritten` event after the trace id,
+ * where a fresh run puts it.
+ */
+export function withRewritten(events: StreamEvent[], rewritten: RewrittenEvent | null): StreamEvent[] {
+  if (!rewritten) return events;
+  const at = events[0]?.type === 'trace' ? 1 : 0;
+  return [...events.slice(0, at), rewritten, ...events.slice(at)];
 }
 
 /** How a run ended, from the events it emitted. Error wins over everything. */

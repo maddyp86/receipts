@@ -132,6 +132,8 @@ otherwise leave the server unable to boot. The server binds
 | `CORS_ORIGIN` | the Vercel frontend origin(s), comma-separated |
 | `TRACE_DIR` | optional. Per-run trace files; default `.data/traces` on the container disk, pruned to `TRACE_MAX_FILES` (200). Traces also go to Supabase once migration 009 is applied. `off` disables the files. See `docs/trace-log.md` |
 | `ENABLE_CAMPAIGN_PROMISE_OVERRIDE` | `false` until copy review |
+| `ENABLE_QUERY_CLEANUP` | `false` until the clean-up prompt has been run against real typed input. On: a question is restated as a checkable statement (and shown to the reader), and a subject with no side gets "which way?" instead of a guess. One extra `CLASSIFY_MODEL` call, only for input that looks like a question or a bare topic |
+| `ENABLE_FEEDBACK_PROMPTS` | `false` until migration 013 is applied — before that the table refuses the new kinds and every prompt answer fails. On: "Did this answer what you asked?" under the answer, "Is this bill about what you asked?" under each bill |
 
 ⚠️ **`CORS_ORIGIN` blank means any origin.** Every request spends money at three
 vendors, so an open policy is an open invoice as much as a data question. The

@@ -4,6 +4,9 @@ import {
   FEEDBACK_KINDS,
   FEEDBACK_KIND_LABEL,
   FEEDBACK_CONTROL_LABEL,
+  FEEDBACK_PROMPT_BILL,
+  FEEDBACK_PROMPT_RESULT,
+  FEEDBACK_PROMPT_THANKS,
   FEEDBACK_THANKS,
   type FeedbackKind,
   type FeedbackLevel,
@@ -25,6 +28,125 @@ export interface FeedbackContext {
   politicianId: string;
   promiseText: string;
   verdictShown: string;
+  /**
+   * Whether to ASK ("Did this answer what you asked?"), not only offer
+   * "Something look wrong?". The server says when it can store the answers.
+   */
+  prompts?: boolean;
+}
+
+/** Send one piece of feedback. Resolves to an error message, or null when it was stored. */
+async function sendFeedback(body: FeedbackRequest): Promise<string | null> {
+  try {
+    const res = await fetch(apiUrl('/api/feedback'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) return null;
+    const j = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+    return j.error?.message ?? "Your feedback couldn't be saved just now.";
+  } catch {
+    return 'Could not reach the server.';
+  }
+}
+
+// ===========================================================================
+// The prompts — one question, one tap.
+//
+// "Something look wrong?" only hears from readers who go looking, so on its
+// own it cannot tell a reader who agreed from one who left. These ask
+// everyone. They ask whether the answer FITS what was asked, never whether the
+// reader agrees with it: agreement mostly measures whether they like the
+// member.
+//
+// Like all feedback: stored for a person to review, never read back by the
+// app, and the thanks says nothing on screen will change.
+// ===========================================================================
+
+type PromptChoice = { kind: FeedbackKind; label: string; opensReasons?: boolean };
+
+const RESULT_CHOICES: PromptChoice[] = [
+  { kind: 'ANSWERED_YES', label: 'Yes' },
+  { kind: 'ANSWERED_PARTLY', label: 'Partly', opensReasons: true },
+  { kind: 'ANSWERED_NO', label: 'No', opensReasons: true },
+];
+// A bill's "No" is the kind "What looks wrong?" already has.
+const BILL_CHOICES: PromptChoice[] = [
+  { kind: 'BILL_RELEVANT', label: 'Yes' },
+  { kind: 'BILL_NOT_RELEVANT', label: 'No' },
+];
+
+export function FeedbackPrompt({ level, context, actionUid, billId }: Props) {
+  const [state, setState] = useState<'idle' | 'sending' | 'error'>('idle');
+  const [answered, setAnswered] = useState<PromptChoice | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const question = level === 'result' ? FEEDBACK_PROMPT_RESULT : FEEDBACK_PROMPT_BILL;
+  const choices = level === 'result' ? RESULT_CHOICES : BILL_CHOICES;
+
+  async function answer(choice: PromptChoice) {
+    if (state === 'sending') return;
+    setState('sending');
+    setError(null);
+    const failed = await sendFeedback({
+      run_id: context.runId,
+      kind: choice.kind,
+      politician_id: context.politicianId,
+      promise_text: context.promiseText,
+      verdict_shown: context.verdictShown,
+      ...(level === 'evidence' ? { action_uid: actionUid, bill_id: billId } : {}),
+    });
+    if (failed) {
+      setError(failed);
+      setState('error');
+      return;
+    }
+    setState('idle');
+    setAnswered(choice);
+  }
+
+  return (
+    <div className="feedback-prompt" data-answered={answered?.kind}>
+      {answered ? (
+        <p className="flex min-h-[44px] items-center text-[15px] text-ink-soft" role="status">
+          {FEEDBACK_PROMPT_THANKS}
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2">
+          <p className="text-[15px] font-medium text-ink">{question}</p>
+          <div className="flex gap-2" role="group" aria-label={question}>
+            {choices.map((c) => (
+              <button
+                key={c.kind}
+                type="button"
+                onClick={() => answer(c)}
+                disabled={state === 'sending'}
+                className="min-h-[44px] min-w-[64px] rounded-full border border-rule bg-card px-4 text-[15px] font-medium text-ink transition-colors duration-150 hover:border-ink-faint disabled:text-ink-faint"
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {error ? (
+        <p className="pb-2 text-[14px] text-broken" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {/* "Something look wrong?" stays, for what a yes/no cannot say. After
+          "Partly" or "No" it is already open on the reasons. */}
+      <FeedbackControl
+        key={answered?.opensReasons ? 'open' : 'closed'}
+        level={level}
+        context={context}
+        actionUid={actionUid}
+        billId={billId}
+        startOpen={Boolean(answered?.opensReasons)}
+      />
+    </div>
+  );
 }
 
 interface Props {
@@ -33,12 +155,14 @@ interface Props {
   /** The bill, for an evidence card. */
   actionUid?: string;
   billId?: string;
+  /** Open on the reasons straight away — after a prompt answered "Partly" or "No". */
+  startOpen?: boolean;
 }
 
 const COMMENT_MAX = 1000;
 
-export function FeedbackControl({ level, context, actionUid, billId }: Props) {
-  const [open, setOpen] = useState(false);
+export function FeedbackControl({ level, context, actionUid, billId, startOpen = false }: Props) {
+  const [open, setOpen] = useState(startOpen);
   const [kind, setKind] = useState<FeedbackKind | null>(null);
   const [comment, setComment] = useState('');
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
@@ -78,23 +202,13 @@ export function FeedbackControl({ level, context, actionUid, billId }: Props) {
       ...(level === 'evidence' ? { action_uid: actionUid, bill_id: billId } : {}),
       ...(comment.trim() ? { comment: comment.trim() } : {}),
     };
-    try {
-      const res = await fetch(apiUrl('/api/feedback'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-        setError(j.error?.message ?? "Your feedback couldn't be saved just now.");
-        setState('error');
-        return;
-      }
-      setState('sent');
-    } catch {
-      setError('Could not reach the server.');
+    const failed = await sendFeedback(body);
+    if (failed) {
+      setError(failed);
       setState('error');
+      return;
     }
+    setState('sent');
   }
 
   const name = `feedback-${level}-${actionUid ?? 'result'}`;
