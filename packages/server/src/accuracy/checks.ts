@@ -1,4 +1,4 @@
-import { evidenceTallySentence, type Direction, type QueryResult } from '@receipts/shared';
+import { evidenceTallySentence, surnameOf, type Direction, type QueryResult } from '@receipts/shared';
 
 // ===========================================================================
 // THE ACCURACY SET — the checks, pure.
@@ -111,14 +111,27 @@ export function verdictLabel(r: QueryResult): string {
  * was complete. Sentences that state the opposite ("is not a finding that
  * the senator has no record", "isn't proof there are none") are the guard
  * itself, and are skipped.
+ *
+ * About the SENATOR only: the inaction has to be said of the senator — a
+ * pronoun, "the senator", or their surname — so "the bills were never voted
+ * on by the full Senate" (a fact about the bills) is not caught.
  */
-const DID_NOTHING = /\b(did nothing|done nothing|has no record|have no record|no record (on|of)|never (voted|acted|did|supported|sponsored)|took no action|failed to act|hasn['’]t (done|acted)|nothing to (show|lower|address)|every (bill|vote|action) (he|she|they)|complete record|full record)\b/i;
+const INACTION =
+  "(did nothing|has done nothing|have done nothing|has no record|have no record|never (voted|acted|did|supported|sponsored)|took no action|has taken no action|failed to act|hasn['’]t (done|acted)|didn['’]t (do|act))";
+const COMPLETENESS = /\b(every (bill|vote|action) (he|she|they)|complete record|full record)\b/i;
 const NEGATED = /(not a finding|isn['’]t proof|not proof|can miss|may not be)/i;
 
-export function didNothingSentences(text: string): string[] {
+export function didNothingSentences(text: string, surname?: string): string[] {
+  const who = ['he', 'she', 'they', 'the senator', 'this senator', ...(surname ? [surname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')] : [])];
+  // The subject, then up to three words ("he has simply never voted"), then the inaction.
+  const aboutSenator = new RegExp(`\\b(${who.join('|')})\\b(\\s+[\\w’']+){0,3}\\s+${INACTION}\\b`, 'i');
+  const noRecordOf = new RegExp(`\\bno record (on|of) (him|her|them|the senator${surname ? `|${surname}` : ''})\\b`, 'i');
   return text
     .split(/(?<=[.!?])\s+/)
-    .filter((s) => DID_NOTHING.test(s) && !NEGATED.test(s));
+    // A passive "was/were never voted on" is said of a bill, never of a senator.
+    .map((s) => ({ s, active: s.replace(/\b(was|were|been|being)\s+never\s+voted\s+on\b/gi, '') }))
+    .filter(({ s, active }) => (aboutSenator.test(active) || noRecordOf.test(active) || COMPLETENESS.test(active)) && !NEGATED.test(s))
+    .map(({ s }) => s);
 }
 
 /**
@@ -231,7 +244,7 @@ export function checkCase(c: EvalCase, r: QueryResult, readerText: string): Case
     if (f === 'TALLY_ON_NOT_DETERMINABLE' && nd && tally) fb.push(`count line on a not-determinable answer: "${tally}"`);
     if (f === 'TALLY_SHOWN' && tally) fb.push(`count line shown: "${tally}"`);
     if (f === 'DID_NOTHING_WORDING') {
-      for (const s of didNothingSentences(readerText)) fb.push(`wording: "${s}"`);
+      for (const s of didNothingSentences(readerText, surnameOf(r.senator.name))) fb.push(`wording: "${s}"`);
     }
   }
   const forbidden: CheckResult = { pass: fb.length === 0, detail: fb };
