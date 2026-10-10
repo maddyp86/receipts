@@ -92,7 +92,7 @@ Counts are as read on 10 October 2026, after the partial Ossoff load was rolled 
 | G3 End to end | The 18-case eval set on the new store | Same pass rate as the old store |
 | G4 Daily run | New pipeline for three consecutive days | Clean runs, no drift against the old pipeline |
 
-Rollback is one environment variable. Pinecone and the mirror stay untouched for two weeks after cutover.
+Rollback is two settings on the server. Pinecone and the mirror stay untouched for two weeks after cutover.
 
 ## Order of work
 
@@ -100,12 +100,94 @@ Rollback is one environment variable. Pinecone and the mirror stay untouched for
 |---|---|---|
 | 0 | Decisions, database access, Ossoff load rolled back | Access works |
 | 1 | Schema, members, imports, roll calls, vectors | G1 passes |
-| 2 | Query tool: new search store and compatibility views behind a switch | G2 and G3 pass; reads cut over |
-| 3 | The five new workflows go live; old pipeline, Mirror Sync and Sheets retired | G4 passes |
+| 2 | Query tool: new search store and compatibility views, built behind a switch that stays off | G2 and G3 pass |
+| 3 | The five new workflows run daily into `core` beside the old pipeline; then the switch is flipped and the old pipeline, Mirror Sync and Sheets are retired | G4 passes, then cutover |
 | 4 | Senators: set `in_scope`, load, review, set `live`. Ossoff first | Each member reviewed before `live` |
 | 5 | House: resolutions in the scraper, House vote categories, chamber-aware wording in the tool | First House member live |
 
-Until Phase 3, the old pipeline keeps running for Schumer and Thune so the live tool stays current.
+The live tool keeps reading the old system until the cutover at the end of Phase 3. The switch is not flipped at the end of Phase 2, because `core` is loaded once in Phase 1 and would go stale until the new pipeline is filling it every day.
+
+## Phase by phase
+
+### Phase 1: foundation
+
+The task list is in `phase-1-prompt.md`. In short: migration 014 creates `core`; members, bills, impact statements, sponsorships and donor tables are imported from Sheets; roll calls are re-read from source; bill vectors are copied from Pinecone, one per bill.
+
+**Done when** gate G1 passes: the derived votes match the mirror for both senators except the five known corrections.
+
+### Phase 2: the query tool, built but not switched
+
+**Starts when** G1 has passed.
+
+1. **One place for the schema name.** The server names `mirror.mirror_*` directly in 15 places across four files (`enrichment.ts`, `SenatorCache.ts`, `textVersions.ts`, `summaryReview.ts`). Read the schema from one setting, `RECORD_SCHEMA`, default `mirror`.
+2. **Compatibility views.** A new schema `compat` with one view per mirror table the tool reads (ten of them), with the same column names and the same keys inside `row`. Migration 015.
+3. **New search store.** `SupabaseActionStore`, implementing the existing `ActionStore` interface and chosen by a setting, `ACTION_STORE`, default `pinecone`. It returns the same fields, applies the same similarity floor, and reports the same near-miss counts. It keeps today's Action UIDs, so stored queries, traces and reused answers still line up.
+4. **Picker.** A member is listed when `in_scope` and `live` are both true and a record exists. The coverage sentence uses the congresses collected for that member. The parked branch `feat/live-flag-and-member-coverage` already has this logic and its tests.
+5. **Gate G2.** Extend `tools/rank-check.mts` to run each saved eval query vector against both stores and compare. Pinecone can return a bill more than once; compare on each bill's best rank.
+6. **Gate G3.** Run `npm run eval` once per store and compare case by case.
+
+**Done when** G2 and G3 pass and the pull request is merged with both settings at their defaults. Production behaviour is unchanged.
+
+**Not in this phase:** flipping either setting in production, or any change to prompts, checks or voter-facing copy.
+
+**Cost:** two eval runs, about $4 to $12.
+
+### Phase 3: the new pipeline, then cutover
+
+**Starts when** Phase 1 is done. It can overlap Phase 2.
+
+**Build.** A new n8n folder `v2` with five workflows and a daily orchestrator that runs an hour after the old one. Every workflow upserts into `core` and writes one `ingest_runs` row with what it read, what it wrote, errors, and model tokens used.
+
+1. **Members.** Weekly. Refreshes names, parties, districts and terms. Never touches `in_scope`, `live` or the congresses collected.
+2. **Roll calls.** Lists the storage bucket for vote files changed since the last run. Keeps the filter used today (passage and cloture votes on a bill) and loads each one whole.
+3. **Sponsorships and bills.** For each `in_scope` member, reads their sponsored and cosponsored bills, stopping once the list passes the congresses collected for that member and failing loudly if it is cut off early. New bills get their detail from the bucket. The progress rules come from the current progress workflow. True cosponsor dates and withdrawals come from the bill file.
+4. **Impact statements.** Bills linked to an `in_scope` member that have no statement. Same prompt and bill-context builder as today, same cap of 60 a run, plus a monthly budget stop. A statement written from the title alone, because the text is not published yet, is marked and redone when the text appears. Bills whose text changed get a statement per text version.
+5. **Embeddings.** Statements with no embedding, or whose text changed. Same recipe as today.
+
+A failure in any of them emails Matt.
+
+**Run in parallel.** The old pipeline stays the source for the live tool.
+
+- Impact statements are generated once, by the old pipeline, and copied into `core` each day by the Phase 1 import. The new statement workflow runs in dry-run on the same bills. This avoids paying twice and keeps the two systems comparable.
+- A daily report compares `core` with the Sheets for Schumer and Thune: bills, sponsorships, roll calls and derived votes.
+- **Gate G4:** three consecutive days with clean runs and no differences.
+
+**Cutover, in one sitting and in this order.**
+
+1. Confirm G2, G3 and G4.
+2. Switch the new statement workflow from dry-run to live and stop the daily copy.
+3. On Render, set `ACTION_STORE=supabase` and `RECORD_SCHEMA=compat`.
+4. Run the eval set once on the production settings.
+5. Unschedule the old orchestrator and the Mirror Sync. Do not delete them.
+6. Set the four workbooks to view-only.
+
+**Rollback** for two weeks: set the two Render settings back and reschedule the old orchestrator and the Mirror Sync.
+
+**After two clean weeks:** delete the old workflows, drop the `mirror` schema, remove the Pinecone code path, and delete the Pinecone bill namespaces.
+
+**Done when** the cutover has held for two weeks.
+
+### Phase 4: senators
+
+One member at a time, with the same checklist:
+
+1. Set `in_scope` and the congresses to collect (119th first, 118th after).
+2. Run the sponsorship pull. Votes are already in `core`.
+3. Show the count of new bills and the estimated statement cost before spending anything.
+4. Run statements and embeddings.
+5. Review: five bills checked by hand for sponsorship, vote and statement, plus three test queries.
+6. Set `live`.
+
+Order: Ossoff (41 of his statements can be reused from the backup), Collins, Sullivan, Marshall, Warner, Luján.
+
+### Phase 5: House members
+
+1. **Scraper.** Add House simple resolutions (`hres`) to the bill upload.
+2. **Roll calls.** Take House vote files, which identify members by bioguide id. Decide which House categories count as a bill vote (`passage` and `passage-suspension` at least) and test the choice on one member.
+3. **Party-line checks.** The tool's checks use the Senate whip's vote. Add the House equivalent.
+4. **Wording.** The voter-facing copy says "senator" in 46 places. Make it follow the member's chamber. This needs copy sign-off.
+5. **Picker.** By chamber, state and district. The web roster already carries this.
+6. **First members:** Lawler, Valadao, Perry, Gluesenkamp Perez, Kaptur, Gonzalez.
 
 ## Decisions taken by default
 
