@@ -16,6 +16,6 @@ The rebuild of the record pipeline on Supabase. Start with `plan.md`.
 
 1. **This repo**, with these files on the branch it is working from.
 2. **Connections:** Supabase (the account that holds the Receipts database, the one with schemas `mirror` and `app`), n8n, Google Sheets, GitHub.
-3. **Two keys in the environment:** `PINECONE_API_KEY`, to copy stored vectors, and `OPENAI_API_KEY` with a few dollars of credit, for a five-bill embedding check.
+3. **No API keys.** The imports run as n8n workflows, and n8n already holds the Google Sheets, Postgres, Pinecone and OpenAI credentials. The OpenAI account needs a few dollars of credit for a five-bill embedding check.
 4. **A database owner** for migration 014, which creates a schema and enables an extension. If the Supabase connection cannot apply migrations, run the file in the Supabase SQL editor.
 5. **The n8n editor closed** whenever the session writes to n8n.
