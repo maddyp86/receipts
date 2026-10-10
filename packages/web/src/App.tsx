@@ -1,34 +1,55 @@
-import { useEffect, useState } from 'react';
-import type { Senator } from '@receipts/shared';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ArrowLeftIcon, RotateCcwIcon } from 'lucide-react';
+import type { Corrections, Senator } from '@receipts/shared';
 import { useReceiptStream } from './lib/useReceiptStream.js';
-import { Entry, type ExamplePromise } from './components/Entry.js';
-import { ReasoningStream } from './components/ReasoningStream.js';
-import { Verdict } from './components/Verdict.js';
-import {
-  DemoBanner,
-  ErrorState,
-  HaltState,
-  ThinResultActions,
-  UncachedState,
-} from './components/States.js';
+import { apiUrl } from './lib/api.js';
+import { buildRoster, type Member } from './data/roster.js';
+import { Entry } from './components/Entry.js';
+import type { StatementKind } from './components/entry/PromiseInput.js';
+import { Waiting } from './components/Waiting.js';
+import { EvidenceList, HowWeGotHereToggle, VerdictCard } from './components/Verdict.js';
+import { DemoBanner, ErrorState, HaltState, ThinResultActions, UncachedState } from './components/States.js';
 import {
   AppliedCorrections,
   AssertedPremiseBadge,
   CorrectionPanel,
   type TaxonomyEntry,
 } from './components/CorrectionPanel.js';
-import type { Corrections } from '@receipts/shared';
-import { apiUrl } from './lib/api.js';
 import { FollowUp } from './components/FollowUp.js';
+import { GlossaryProvider } from './components/glossary/GlossaryContext.js';
+import { SelectedMember } from './components/members/SelectedMember.js';
+
+// ===========================================================================
+// Three screens, chosen by where the query is:
+//
+//   entry    nothing running — pick who, say what
+//   waiting  the stream is open and there is no answer yet
+//   result   an answer arrived
+//
+// plus "stopped": the stream ended without an answer, on purpose (a statement
+// no vote can settle, a member not analysed) or not (an error, a limit).
+// ===========================================================================
+
+function Page({ width, children }: { width: 'narrow' | 'wide'; children: ReactNode }) {
+  return (
+    <main
+      className={`mx-auto px-5 sm:px-8 ${
+        width === 'wide' ? 'max-w-6xl pb-20 pt-6 sm:pt-10' : 'max-w-2xl pb-16 pt-8 sm:pt-12'
+      }`}
+    >
+      {children}
+    </main>
+  );
+}
 
 export default function App() {
   const [senators, setSenators] = useState<Senator[]>([]);
   const [modes, setModes] = useState({ demo: false, fixture: false, override: false, followups: false, feedback: false });
   const [taxonomy, setTaxonomy] = useState<TaxonomyEntry[]>([]);
-  // Nobody is preselected until the list arrives: the list is the pipeline's,
-  // and the first covered senator is whoever it says.
+  // Nobody is preselected: with a short list, a default is a nudge.
   const [selected, setSelected] = useState('');
   const [promise, setPromise] = useState('');
+  const [kind, setKind] = useState<StatementKind>('position');
 
   const stream = useReceiptStream();
 
@@ -38,7 +59,8 @@ export default function App() {
       .then((d) => {
         const list: Senator[] = d.senators ?? [];
         setSenators(list);
-        setSelected((cur) => (list.some((s) => s.politician_id === cur) ? cur : (list[0]?.politician_id ?? '')));
+        // A selection the list no longer covers is dropped, not kept.
+        setSelected((cur) => (list.some((s) => s.politician_id === cur && s.cached) ? cur : ''));
         setModes({
           demo: Boolean(d.demo_mode),
           fixture: Boolean(d.fixture_mode),
@@ -48,7 +70,7 @@ export default function App() {
         });
       })
       .catch(() => {
-        /* The entry screen still renders; submitting will surface the error. */
+        /* The entry screen still renders, and says the list could not be loaded. */
       });
   }, []);
 
@@ -61,114 +83,226 @@ export default function App() {
       });
   }, []);
 
-  const submit = () => stream.run(selected, promise.trim());
+  // Coverage is the server's. The roster only adds chamber and district for
+  // members it knows, and the planned members the server does not cover yet.
+  const roster = useMemo(() => buildRoster(senators), [senators]);
+  const member: Member | null = roster.find((m) => m.politician_id === selected && m.cached) ?? null;
+
+  // "This was a campaign promise" is the reader's assertion, sent as a
+  // correction so the premise stays attributed to them. Only where the server
+  // accepts it.
+  const baseCorrections = (): Corrections | undefined =>
+    modes.override && kind === 'promise' ? { assert_campaign_promise: true } : undefined;
+
+  const submit = () => stream.run(selected, promise.trim(), baseCorrections());
 
   // A correction re-runs the ENTIRE query from embedding. `stream.run` resets
   // state first, so the previous verdict is gone before the new one starts —
   // there is no window in which an old verdict sits beside corrected values.
-  const rerunWithCorrections = (corrections: Corrections) =>
-    stream.run(selected, promise.trim(), corrections);
+  const rerunWithCorrections = (corrections: Corrections) => stream.run(selected, promise.trim(), corrections);
 
   // A STATEMENT_DATE_REQUIRED halt is resolved by supplying the date, which
   // re-runs the whole query — the date changes `valid_until`, which is what the
   // scope gates test against.
-  const rerunWithDate = (isoDate: string) =>
-    stream.run(selected, promise.trim(), undefined, isoDate);
+  const rerunWithDate = (isoDate: string) => stream.run(selected, promise.trim(), baseCorrections(), isoDate);
 
-  const runExample = (example: ExamplePromise) => {
-    setSelected(example.senatorId);
-    setPromise(example.text);
-    stream.run(example.senatorId, example.text);
-  };
-
-  const startOver = () => {
+  /** Back to the entry screen with the words kept, to reword them. */
+  const reword = () => stream.reset();
+  /** A new question about the same member. */
+  const askAnother = () => {
     stream.reset();
     setPromise('');
   };
+  /** Back to the picker. */
+  const changeMember = () => {
+    stream.reset();
+    setSelected('');
+  };
+
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [stream.phase, Boolean(stream.result)]);
 
   const busy = stream.phase === 'streaming';
-  const showEntry = stream.phase === 'idle';
-  const senatorName =
-    senators.find((s) => s.politician_id === selected)?.name ?? 'this senator';
+  const hasResult = Boolean(stream.result && stream.interpretation);
+  const screen: 'entry' | 'waiting' | 'result' | 'stopped' =
+    stream.phase === 'idle' ? 'entry' : hasResult ? 'result' : busy ? 'waiting' : 'stopped';
+  const memberName = member?.name ?? stream.result?.senator.name ?? 'this member';
 
   return (
-    <main className="shell">
-      <header className="masthead">
-        <h1 className="wordmark">Receipts</h1>
-      </header>
-      <p className="explainer">
-        Check whether a senator kept a campaign promise — matched against their real votes and
-        bills.
-      </p>
+    <GlossaryProvider>
+      <div className="min-h-screen w-full bg-paper">
+        <DemoBanner demo={modes.demo} fixture={modes.fixture} />
 
-      <DemoBanner demo={modes.demo} fixture={modes.fixture} />
-
-      {showEntry ? (
-        <Entry
-          senators={senators}
-          selected={selected}
-          promise={promise}
-          busy={busy}
-          onSelect={setSelected}
-          onPromiseChange={setPromise}
-          onSubmit={submit}
-          onExample={runExample}
-          showScopeNote={modes.feedback}
-        />
-      ) : (
-        <>
-          <ReasoningStream
-            steps={stream.steps}
-            interpretation={stream.interpretation}
-            traceId={stream.traceId}
-          />
-
-          {stream.uncached ? (
-            <UncachedState
-              senator={stream.uncached.senator}
-              queued={stream.uncached.queued}
-              onReset={startOver}
-            />
-          ) : null}
-
-          {stream.error ? <ErrorState error={stream.error} onRetry={submit} /> : null}
-
-          {stream.halt ? (
-            <HaltState halt={stream.halt} onReset={startOver} onRetryWithDate={rerunWithDate} />
-          ) : null}
-
-          {stream.result && stream.interpretation ? (
-            <>
-              <AssertedPremiseBadge interpretation={stream.interpretation} />
-              <AppliedCorrections interpretation={stream.interpretation} />
-              <Verdict result={stream.result} traceId={stream.traceId} feedbackAvailable={modes.feedback} />
-            </>
-          ) : null}
-
-          {/* Offered only once a result exists: correcting a classification
-              mid-flight would stage edits against values still changing. */}
-          {stream.phase === 'done' && stream.interpretation && !stream.uncached && !stream.halt ? (
-            <CorrectionPanel
-              interpretation={stream.interpretation}
-              taxonomy={taxonomy}
-              overrideEnabled={modes.override}
+        {screen === 'entry' ? (
+          <Page width="narrow">
+            <Entry
+              senators={roster}
+              selected={selected}
+              promise={promise}
               busy={busy}
-              onRerun={rerunWithCorrections}
+              onSelect={setSelected}
+              onPromiseChange={setPromise}
+              onSubmit={submit}
+              showScopeNote={modes.feedback}
+              kindEnabled={modes.override}
+              kind={kind}
+              onKindChange={setKind}
             />
-          ) : null}
+          </Page>
+        ) : null}
 
-          {/* After the result, before "ask something else": questions about
-              THIS result are answered from its own record and cannot change
-              it; a new statement is a new query. */}
-          {stream.phase === 'done' && stream.result && stream.traceId ? (
-            <FollowUp traceId={stream.traceId} available={modes.followups} senatorName={senatorName} />
-          ) : null}
+        {screen === 'waiting' && member ? (
+          <Page width="narrow">
+            <Waiting
+              member={member}
+              promise={promise.trim()}
+              steps={stream.steps}
+              interpretation={stream.interpretation}
+              onCancel={reword}
+            />
+          </Page>
+        ) : null}
 
-          {stream.phase === 'done' && !stream.uncached && !stream.error && !stream.halt ? (
-            <ThinResultActions onReset={startOver} senatorName={senatorName} />
-          ) : null}
-        </>
-      )}
-    </main>
+        {screen === 'stopped' ? (
+          <Page width="narrow">
+            <TopBar onBack={reword} backLabel="Go back" />
+            {member ? (
+              <div className="mt-6">
+                <SelectedMember member={member} onChange={changeMember} compact />
+              </div>
+            ) : null}
+            <p className="mt-6 text-[17px] text-ink-soft">
+              You asked about: <span className="text-ink">“{promise.trim()}”</span>
+            </p>
+            <div className="mt-5 space-y-5">
+              {stream.uncached ? (
+                <UncachedState senator={stream.uncached.senator} queued={stream.uncached.queued} onReset={changeMember} />
+              ) : null}
+              {stream.error ? <ErrorState error={stream.error} onRetry={submit} onReset={reword} /> : null}
+              {stream.halt ? <HaltState halt={stream.halt} onReset={reword} onRetryWithDate={rerunWithDate} /> : null}
+              {/* The stream closed with nothing at all. Say so rather than show an empty page. */}
+              {!stream.uncached && !stream.error && !stream.halt ? (
+                <ErrorState
+                  error={{
+                    code: 'UPSTREAM_UNAVAILABLE',
+                    message: 'The check ended without an answer.',
+                    recoverable: true,
+                  }}
+                  onRetry={submit}
+                  onReset={reword}
+                />
+              ) : null}
+            </div>
+            <TraceLine traceId={stream.traceId} />
+          </Page>
+        ) : null}
+
+        {screen === 'result' && stream.result && stream.interpretation ? (
+          <Page width="wide">
+            <TopBar onBack={askAnother} backLabel="New question" icon="new" />
+
+            <div className="mt-6 grid gap-10 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] lg:gap-14">
+              {/* The answer, beside the bills on a wide screen. Not pinned: the
+                  explanation is the longest thing on the page, and pinning the
+                  column would cut it off or make it scroll inside itself. */}
+              <div className="min-w-0 space-y-5">
+                {member ? <SelectedMember member={member} onChange={changeMember} compact /> : null}
+
+                <section aria-label="How we read your statement" className="rounded-card border border-rule bg-card px-4 py-3">
+                  <p className="text-[14px] font-medium text-ink-soft">How we read it</p>
+                  <p className="mt-0.5 text-[16px] leading-snug text-ink">“{stream.interpretation.restated}”</p>
+                </section>
+
+                <div className="legacy">
+                  <AssertedPremiseBadge interpretation={stream.interpretation} />
+                  <AppliedCorrections interpretation={stream.interpretation} />
+                </div>
+
+                <h1 className="sr-only">Answer for {memberName}</h1>
+                <VerdictCard result={stream.result} traceId={stream.traceId} feedbackAvailable={modes.feedback} />
+
+                <div className="hidden lg:block">
+                  <ThinResultActions onReset={askAnother} onChangeMember={changeMember} senatorName={memberName} />
+                </div>
+              </div>
+
+              {/* The receipts. */}
+              <div className="min-w-0 space-y-8">
+                <EvidenceList result={stream.result} traceId={stream.traceId} feedbackAvailable={modes.feedback} />
+
+                <div className="space-y-6 border-t border-rule pt-6">
+                  <HowWeGotHereToggle result={stream.result} />
+
+                  {/* Offered only once the answer is complete: correcting a
+                      classification mid-flight would stage edits against
+                      values still changing. */}
+                  {stream.phase === 'done' ? (
+                    <div className="legacy">
+                      <CorrectionPanel
+                        interpretation={stream.interpretation}
+                        taxonomy={taxonomy}
+                        overrideEnabled={modes.override}
+                        busy={busy}
+                        onRerun={rerunWithCorrections}
+                      />
+                    </div>
+                  ) : null}
+
+                  {/* Questions about THIS result are answered from its own
+                      record and cannot change it; a new statement is a new
+                      query. */}
+                  {stream.phase === 'done' && stream.traceId ? (
+                    <div className="legacy">
+                      <FollowUp traceId={stream.traceId} available={modes.followups} senatorName={memberName} />
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="border-t border-rule pt-6 lg:hidden">
+                  <ThinResultActions onReset={askAnother} onChangeMember={changeMember} senatorName={memberName} />
+                </div>
+
+                <TraceLine traceId={stream.traceId} />
+              </div>
+            </div>
+          </Page>
+        ) : null}
+      </div>
+    </GlossaryProvider>
+  );
+}
+
+function TopBar({ onBack, backLabel, icon = 'back' }: { onBack: () => void; backLabel: string; icon?: 'back' | 'new' }) {
+  const Icon = icon === 'new' ? RotateCcwIcon : ArrowLeftIcon;
+  return (
+    <div className="flex items-center justify-between">
+      <p className="font-serif text-[24px] text-ink">Receipts</p>
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md px-2 text-[16px] font-medium text-focus"
+      >
+        <Icon className="h-4 w-4" aria-hidden="true" />
+        {backLabel}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The run id. Deliberately quiet — it is for whoever is repairing the
+ * pipeline, not for the voter — but it has to be ON the page, because a wrong
+ * answer with no id is a wrong answer nobody can trace.
+ */
+function TraceLine({ traceId }: { traceId: string | null }) {
+  if (!traceId) return null;
+  return (
+    <p className="mt-6 text-[13px] text-ink-faint">
+      Trace{' '}
+      <a href={apiUrl(`/api/trace/${traceId}`)} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+        <code className="font-mono">{traceId}</code>
+      </a>
+    </p>
   );
 }

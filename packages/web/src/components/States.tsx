@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { TriangleAlertIcon } from 'lucide-react';
 import {
   coverageSentence,
   enrichmentGapSentence,
@@ -22,6 +23,34 @@ function article(word: string): string {
   return /^[AEIOU]/i.test(word) ? 'an' : 'a';
 }
 
+/** The card every stop state sits in. Calm by default; `tone="error"` only for a real failure. */
+function Notice({
+  label,
+  title,
+  tone = 'plain',
+  children,
+}: {
+  label: string;
+  title: string;
+  tone?: 'plain' | 'error';
+  children: ReactNode;
+}) {
+  return (
+    <section
+      aria-label={label}
+      className={`notice rounded-card border bg-card p-6 shadow-soft ${tone === 'error' ? 'border-broken/40' : 'border-rule'}`}
+    >
+      <h2 className="font-serif text-[26px] leading-tight text-ink">{title}</h2>
+      <div className="mt-3 space-y-3 text-[17px] leading-relaxed text-ink-soft">{children}</div>
+    </section>
+  );
+}
+
+const BTN_PRIMARY =
+  'inline-flex min-h-[48px] items-center justify-center rounded-card bg-ink px-5 text-[16px] font-semibold text-paper transition-colors duration-150 hover:bg-[#33312D] disabled:bg-rule disabled:text-ink-soft';
+const BTN_SECONDARY =
+  'inline-flex min-h-[48px] items-center justify-center rounded-card border border-rule bg-card px-5 text-[16px] font-medium text-ink transition-colors duration-150 hover:border-ink-faint disabled:text-ink-faint';
+
 export function DemoBanner({ demo, fixture }: { demo: boolean; fixture: boolean }) {
   if (!demo && !fixture) return null;
 
@@ -43,12 +72,14 @@ export function DemoBanner({ demo, fixture }: { demo: boolean; fixture: boolean 
         : 'No language-model key is configured';
 
   return (
-    <div className="banner" role="status">
-      <span aria-hidden="true">▲</span>
-      <span>
-        <strong>{label}</strong> {cause}, so {parts.join(', and ')}. Nothing here is a real
-        accountability finding.
-      </span>
+    <div className="border-b border-rule bg-cantsay-wash" role="status">
+      <p className="mx-auto flex max-w-6xl items-start gap-2 px-5 py-3 text-[15px] leading-snug text-ink sm:px-8">
+        <TriangleAlertIcon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <span>
+          <strong className="font-semibold">{label}</strong> {cause}, so {parts.join(', and ')}. Nothing here is a real
+          accountability finding.
+        </span>
+      </p>
     </div>
   );
 }
@@ -77,7 +108,10 @@ export function CoverageNote({ coverage }: { coverage?: CoverageWindow }) {
   if (!coverage) return null;
 
   return (
-    <p className="coverage-note" data-unknown={coverage.unknown ? 'true' : undefined}>
+    <p
+      className="coverage-note border-t border-rule pt-4 text-[15px] leading-relaxed text-ink-soft"
+      data-unknown={coverage.unknown ? 'true' : undefined}
+    >
       {coverageSentence(coverage)}
     </p>
   );
@@ -96,7 +130,10 @@ export function EnrichmentGapNote({ gaps }: { gaps?: EnrichmentGap[] }) {
   const sentence = enrichmentGapSentence(gaps);
   if (!sentence) return null;
   return (
-    <p className="degraded-note" role="note">
+    <p
+      className="degraded-note rounded-lg border border-broken/30 bg-broken-wash px-3.5 py-3 text-[15px] leading-relaxed text-ink"
+      role="note"
+    >
       {sentence}
     </p>
   );
@@ -112,8 +149,7 @@ export function UncachedState({
   onReset: () => void;
 }) {
   return (
-    <section className="notice" aria-label="Senator not analyzed">
-      <h2>We haven’t analyzed {senator.name} yet</h2>
+    <Notice label="Senator not analyzed" title={`We haven’t analyzed ${senator.name} yet`}>
       <p>
         We only answer for senators whose Senate record we’ve already been through. Giving
         you a guess for {senator.name} would be worse than giving you nothing.
@@ -124,12 +160,12 @@ export function UncachedState({
           next, so this genuinely moves them up the list.
         </p>
       ) : null}
-      <div className="actions">
-        <button type="button" className="secondary" onClick={onReset}>
+      <div className="flex flex-wrap gap-3 pt-2">
+        <button type="button" className={BTN_PRIMARY} onClick={onReset}>
           Try an analyzed senator
         </button>
       </div>
-    </section>
+    </Notice>
   );
 }
 
@@ -143,11 +179,23 @@ const LIMIT_HEADLINE: Partial<Record<ToolError['code'], string>> = {
   CAPACITY_REACHED: 'Receipts has reached today’s limit',
 };
 
-export function ErrorState({ error, onRetry }: { error: ToolError; onRetry: () => void }) {
+export function ErrorState({
+  error,
+  onRetry,
+  onReset,
+}: {
+  error: ToolError;
+  onRetry: () => void;
+  /** Back to the entry screen. A limit has no retry, so without this it would be a dead end. */
+  onReset?: () => void;
+}) {
   const limitHeadline = LIMIT_HEADLINE[error.code];
   return (
-    <section className="notice error" aria-label={limitHeadline ?? 'Something went wrong'}>
-      <h2>{limitHeadline ?? 'We couldn’t finish checking this'}</h2>
+    <Notice
+      label={limitHeadline ?? 'Something went wrong'}
+      title={limitHeadline ?? 'We couldn’t finish checking this'}
+      tone={limitHeadline ? 'plain' : 'error'}
+    >
       <p>{error.message}</p>
       {limitHeadline ? null : (
         <p>
@@ -155,32 +203,45 @@ export function ErrorState({ error, onRetry }: { error: ToolError; onRetry: () =
           partial verdict hiding behind it.
         </p>
       )}
-      {error.recoverable ? (
-        <div className="actions">
-          <button type="button" className="secondary" onClick={onRetry}>
+      <div className="flex flex-wrap gap-3 pt-2">
+        {error.recoverable ? (
+          <button type="button" className={BTN_PRIMARY} onClick={onRetry}>
             Try again
           </button>
-        </div>
-      ) : null}
-    </section>
+        ) : null}
+        {onReset ? (
+          <button type="button" className={BTN_SECONDARY} onClick={onReset}>
+            Go back
+          </button>
+        ) : null}
+      </div>
+    </Notice>
   );
 }
 
 export function ThinResultActions({
   onReset,
+  onChangeMember,
   senatorName,
 }: {
   onReset: () => void;
+  /** Back to the picker. Omitted where there is nobody else to pick. */
+  onChangeMember?: () => void;
   senatorName: string;
 }) {
   return (
-    <div className="actions">
-      <button type="button" className="secondary" onClick={onReset}>
-        Ask something else
+    <div className="space-y-3">
+      <button type="button" className={`${BTN_PRIMARY} w-full`} onClick={onReset}>
+        Check something else about {senatorName}
       </button>
-      <span className="trust-cue" style={{ alignSelf: 'center' }}>
+      {onChangeMember ? (
+        <button type="button" className={`${BTN_SECONDARY} w-full`} onClick={onChangeMember}>
+          Check someone else
+        </button>
+      ) : null}
+      <p className="text-center text-[14px] leading-snug text-ink-soft">
         Broadening the promise sometimes finds more of {senatorName}’s record.
-      </span>
+      </p>
     </div>
   );
 }
@@ -209,17 +270,28 @@ export function HaltState({
   const [date, setDate] = useState('');
 
   return (
-    <section className="notice" aria-label="This statement can’t be checked against legislation">
-      <h2>
-        {halt.reason === 'STATEMENT_DATE_REQUIRED'
+    <Notice
+      label="This statement can’t be checked against legislation"
+      title={
+        halt.reason === 'STATEMENT_DATE_REQUIRED'
           ? 'When was this said?'
-          : 'This doesn’t look like something a vote can settle'}
-      </h2>
+          : 'This doesn’t look like something a vote can settle'
+      }
+    >
       <p>{halt.message}</p>
 
+      {/* What to do about it. A question or a bare topic is the usual cause, and
+          neither names a side for a vote to be checked against. */}
+      {halt.reason === 'NON_TESTABLE_SPEECH_ACT' ? (
+        <p>
+          Try it as a statement that takes a side — for example “supports expanding background checks” or “opposes
+          cuts to Social Security.”
+        </p>
+      ) : null}
+
       {halt.recoverable_with_date ? (
-        <div className="actions">
-          <label className="visually-hidden" htmlFor="statement-date">
+        <div className="flex flex-wrap items-center gap-3 pt-2">
+          <label className="sr-only" htmlFor="statement-date">
             Date the statement was made
           </label>
           <input
@@ -227,23 +299,19 @@ export function HaltState({
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
+            className="min-h-[48px] rounded-card border border-rule bg-card px-3 text-[16px] text-ink focus:border-focus focus:outline-none focus:ring-1 focus:ring-focus"
           />
-          <button
-            type="button"
-            className="secondary"
-            disabled={!date}
-            onClick={() => onRetryWithDate(date)}
-          >
+          <button type="button" className={BTN_PRIMARY} disabled={!date} onClick={() => onRetryWithDate(date)}>
             Check with this date
           </button>
-          <button type="button" className="secondary" onClick={onReset}>
-            Ask something else
+          <button type="button" className={BTN_SECONDARY} onClick={onReset}>
+            Reword it
           </button>
         </div>
       ) : (
-        <div className="actions">
-          <button type="button" className="secondary" onClick={onReset}>
-            Ask something else
+        <div className="flex flex-wrap gap-3 pt-2">
+          <button type="button" className={BTN_PRIMARY} onClick={onReset}>
+            Reword it
           </button>
         </div>
       )}
@@ -251,11 +319,11 @@ export function HaltState({
       {/* The classification is shown because it is the reason. A user who
           disagrees that this was a scheduling remark can see what we decided
           and why, rather than being told the tool declined. */}
-      <p className="trust-cue">
+      <p className="border-t border-rule pt-3 text-[14px] leading-snug text-ink-soft">
         Read as {article(halt.scope.speech_act)}{' '}
         {halt.scope.speech_act.toLowerCase().replace('_', ' ')} statement
         {halt.scope.anchor_entity ? ` about ${halt.scope.anchor_entity}` : ''}. {halt.scope.reasoning}
       </p>
-    </section>
+    </Notice>
   );
 }

@@ -1,6 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.js';
+// Order matters: utilities first, then the hand-written rules that must win.
+import './tailwind.css';
 import './styles.css';
 
 const root = document.getElementById('root');
