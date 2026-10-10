@@ -30,8 +30,15 @@ export { coverageSentence } from '@receipts/shared';
 // silently, because nothing would fail.
 // ===========================================================================
 
-export function describeCoverage(candidates: MatchedAction[]): CoverageWindow {
-  const declared = config.coverage.congresses;
+/**
+ * `memberCongresses` is the window collected for the member being checked, when
+ * the pipeline records one. It wins over the configured default: a member
+ * loaded for the 119th only must not be described as searched across the
+ * 118th and 119th, which would turn "we never collected it" into "we looked
+ * and found nothing".
+ */
+export function describeCoverage(candidates: MatchedAction[], memberCongresses?: readonly number[]): CoverageWindow {
+  const declared = memberCongresses?.length ? [...memberCongresses].sort((a, b) => a - b) : config.coverage.congresses;
 
   const seen = candidates
     .map((c) => c.congress)

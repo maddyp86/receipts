@@ -271,6 +271,11 @@ export interface Senator {
   cached: boolean;
   party?: 'D' | 'R' | 'I';
   state?: string;
+  /**
+   * The congresses collected for THIS member, when that differs from the
+   * default window. Absent means the default applies.
+   */
+  coverage_congresses?: number[];
 }
 
 /**

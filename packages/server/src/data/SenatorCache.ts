@@ -15,6 +15,18 @@ const { Pool } = pg;
 // most dangerous sentence. So a senator added through the pipeline appears
 // here once their record has synced, with no code change.
 //
+// LOADING IS NOT PUBLISHING. `In Scope` is also what makes the pipeline collect
+// a member, so on its own it publishes a record while it is still half loaded:
+// sponsorships in, votes not yet. Once the Politicians tab has a `Live` column,
+// a member is covered only when `Live` is TRUE as well. A blank cell is not
+// live, so a member being loaded stays out of the picker until someone says
+// otherwise. Until the column exists the rule is unchanged.
+//
+// `Coverage Congresses` (e.g. "119") says which congresses were collected for
+// one member, when that differs from COVERAGE_CONGRESSES. Blank means the
+// default. It feeds the coverage sentence, which must not claim a congress
+// that was never loaded for the member in front of the reader.
+//
 // The picker lists covered senators only. The beta note says "the senators
 // covered so far are the ones you can pick below", and a pickable senator we
 // have not analysed would make that false.
@@ -50,6 +62,8 @@ export interface PoliticianRow {
   party: string | null;
   state: string | null;
   covered: boolean;
+  /** The `Coverage Congresses` cell as written, e.g. "119" or "118, 119". */
+  coverage_congresses?: string | null;
 }
 
 export type LoadPoliticians = () => Promise<PoliticianRow[]>;
@@ -59,13 +73,28 @@ const SQL = `
          coalesce(nullif(p.row->>'Full Name', ''), p.full_name) as name,
          p.row->>'Party' as party,
          p.row->>'State' as state,
+         p.row->>'Coverage Congresses' as coverage_congresses,
          coalesce(lower(p.row->>'In Scope') = 'true', false)
+           and (not (p.row ? 'Live') or coalesce(lower(p.row->>'Live') = 'true', false))
            and exists (select 1 from mirror.mirror_politician_bill_actions a
                         where a.politician_id = p.politician_id) as covered
     from mirror.mirror_politicians p
    where p.row->>'Chamber' = 'Senate'`;
 
 const PARTY: Record<string, Senator['party']> = { democrat: 'D', republican: 'R', independent: 'I' };
+
+/**
+ * "119" / "118, 119" → [119] / [118, 119]. Anything that is not a plausible
+ * congress number is dropped, and an empty result means "use the default":
+ * a typo in the sheet must not shrink or invent a coverage window.
+ */
+export function parseCongresses(cell: string | null | undefined): number[] {
+  const found = String(cell ?? '')
+    .split(/[^0-9]+/)
+    .map((c) => Number.parseInt(c, 10))
+    .filter((c) => Number.isFinite(c) && c >= 93 && c <= 200);
+  return [...new Set(found)].sort((a, b) => a - b);
+}
 
 /** One mirror row as the picker shows it. */
 export function toSenator(r: PoliticianRow): Senator | null {
@@ -74,7 +103,15 @@ export function toSenator(r: PoliticianRow): Senator | null {
   if (!id || !name) return null;
   const party = PARTY[(r.party ?? '').trim().toLowerCase()];
   const state = (r.state ?? '').trim();
-  return { politician_id: id, name, cached: Boolean(r.covered), ...(party ? { party } : {}), ...(state ? { state } : {}) };
+  const congresses = parseCongresses(r.coverage_congresses);
+  return {
+    politician_id: id,
+    name,
+    cached: Boolean(r.covered),
+    ...(party ? { party } : {}),
+    ...(state ? { state } : {}),
+    ...(congresses.length ? { coverage_congresses: congresses } : {}),
+  };
 }
 
 /** By surname, then full name: a stable order that does not favour anyone. */

@@ -167,7 +167,7 @@ export function finish(session: QuerySession, emit: Emit): boolean {
     // `session.matches` is the pre-gate candidate set, which is the right input:
     // the question is what the SEARCH covered, and a row the gates later closed
     // was still inside the window that was searched.
-    coverage: describeCoverage(session.matches ?? []),
+    coverage: describeCoverage(session.matches ?? [], session.senator.coverage_congresses),
     // Reads that failed on this run, grouped as a reader would recognise them.
     // Set only when something failed, so every clean result is unchanged.
     ...(session.enrichmentFailures?.length

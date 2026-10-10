@@ -30,6 +30,30 @@ describe('the observed window is derived, not asserted', () => {
   });
 });
 
+describe('a member loaded for fewer congresses than the default', () => {
+  it('is described by what was collected for that member', () => {
+    // Loaded for the 119th only. Saying "the 118th and 119th" here would turn
+    // "we never collected it" into "we looked and found nothing".
+    const c = describeCoverage([match(119)], [119]);
+    expect(c.congresses).toEqual([119]);
+    expect(c.unknown).toBe(false);
+    const s = coverageSentence(c);
+    expect(s).toContain('the 119th Congress');
+    expect(s).not.toContain('118th');
+  });
+
+  it('holds with nothing retrieved, which is when the sentence matters most', () => {
+    const c = describeCoverage([], [119]);
+    expect(c.observed).toBeNull();
+    expect(c.unknown).toBe(false);
+    expect(coverageSentence(c)).toContain('the 119th Congress');
+  });
+
+  it('an empty member window falls back to the configured default', () => {
+    expect(describeCoverage([], [])).toEqual(describeCoverage([]));
+  });
+});
+
 describe('the sentence talks about the SEARCH, never the senator', () => {
   it('states the window and refuses the stronger claim', () => {
     const s = coverageSentence(describeCoverage([match(118)]));

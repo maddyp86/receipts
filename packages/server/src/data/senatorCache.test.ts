@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { surnameOf } from '@receipts/shared';
-import { SEED, SenatorCache, type PoliticianRow } from './SenatorCache.js';
+import { SEED, SenatorCache, parseCongresses, toSenator, type PoliticianRow } from './SenatorCache.js';
 
 // ===========================================================================
 // THE PICKER IS THE PIPELINE'S LIST.
@@ -65,6 +65,38 @@ describe('who is listed', () => {
     const listed = await c.list();
     expect(listed.map((s) => s.politician_id)).toEqual(['S000148', 'T000250', 'X000002']);
     expect(listed.find((s) => s.politician_id === 'X000002')).not.toHaveProperty('party');
+  });
+});
+
+describe('the congresses collected for one member', () => {
+  // The SQL gate on `Live` is exercised against the database, not here: these
+  // tests feed rows as the query returns them, with `covered` already decided.
+  it('reads the cell as written', () => {
+    expect(parseCongresses('119')).toEqual([119]);
+    expect(parseCongresses('119, 118')).toEqual([118, 119]);
+    expect(parseCongresses('118;119;119')).toEqual([118, 119]);
+  });
+
+  it('a blank or unreadable cell means the default window, never an invented one', () => {
+    expect(parseCongresses('')).toEqual([]);
+    expect(parseCongresses(null)).toEqual([]);
+    expect(parseCongresses(undefined)).toEqual([]);
+    expect(parseCongresses('all')).toEqual([]);
+    expect(parseCongresses('2025')).toEqual([]);
+  });
+
+  it('rides on the senator only when the pipeline recorded one', () => {
+    expect(toSenator({ ...row('O000174', 'Jon Ossoff', true, 'Democrat', 'GA'), coverage_congresses: '119' })).toEqual({
+      politician_id: 'O000174',
+      name: 'Jon Ossoff',
+      cached: true,
+      party: 'D',
+      state: 'GA',
+      coverage_congresses: [119],
+    });
+    expect(toSenator({ ...row('T000250', 'John Thune', true, 'Republican', 'SD'), coverage_congresses: '' })).not.toHaveProperty(
+      'coverage_congresses',
+    );
   });
 });
 
