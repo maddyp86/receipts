@@ -24,7 +24,8 @@ export type VerdictToken =
 export type ForbiddenToken = 'BROKE_WITHOUT_JUDGE' | 'TALLY_ON_NOT_DETERMINABLE' | 'TALLY_SHOWN' | 'DID_NOTHING_WORDING';
 
 export type MustHave =
-  | { bill: string; direction: CaseDirection; outcome?: string }
+  /** A list of directions means any one of them passes. */
+  | { bill: string; direction: CaseDirection | CaseDirection[]; outcome?: string }
   | { any_of: string[]; min: number; direction: CaseDirection };
 
 export type Forbidden = ForbiddenToken | { bill_direction: { bill: string; direction: CaseDirection } };
@@ -165,10 +166,11 @@ export function checkCase(c: EvalCase, r: QueryResult, readerText: string): Case
   const dir: string[] = [];
   let mhOk = true;
   let dirOk = true;
-  const directionMatches = (bill: string, want: CaseDirection, outcome?: string) => {
+  const directionMatches = (bill: string, want: CaseDirection | CaseDirection[], outcome?: string) => {
     const e = evidence.get(norm(bill));
     if (!e) return false;
-    if (want !== 'any' && WORD[e.direction] !== want) return false;
+    const wants = Array.isArray(want) ? want : [want];
+    if (!wants.includes('any') && !wants.includes(WORD[e.direction])) return false;
     return !outcome || e.outcome === outcome;
   };
   for (const m of c.must_have) {
@@ -181,7 +183,7 @@ export function checkCase(c: EvalCase, r: QueryResult, readerText: string): Case
       }
       if (!directionMatches(m.bill, m.direction, m.outcome)) {
         dirOk = false;
-        dir.push(`${m.bill}: ${readings[m.bill]}, expected ${m.direction}${m.outcome ? ` (${m.outcome})` : ''}`);
+        dir.push(`${m.bill}: ${readings[m.bill]}, expected ${[m.direction].flat().join(' or ')}${m.outcome ? ` (${m.outcome})` : ''}`);
       }
     } else {
       for (const b of m.any_of) readings[b] = describe(b);

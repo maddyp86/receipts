@@ -1,12 +1,12 @@
 {
   "$comment": [
-    "The accuracy set. Expected outcomes signed off by Matthew, 2026-10-10. Run with `npm run eval`.",
+    "The accuracy set. Expected outcomes signed off by Matthew, 2026-10-10 (corrections to cases 1 and 3 the same day). Run with `npm run eval`.",
     "verdict: any one of the listed outcomes passes.",
     "  KEPT / BROKE                 single-mode verdict",
     "  KEPT_MIXED / BROKE_MIXED     ranked (mixed) verdict",
     "  BROKE_JUDGED                 BROKE published after review: a judge disposition, not withheld, with a counterargument",
     "  WITHHELD_AFTER_REVIEW        NOT_DETERMINABLE, WITHHELD_PENDING_REVIEW, and the judge actually ran",
-    "  NOT_DETERMINABLE             any not-determinable reason (nd_reasons narrows it)",
+    "  direction: consistent | runs_counter | not_counted | any, or a list of them (any one passes). outcome (optional) also checks the row's outcome.",
     "must_have: each bill must be in the evidence (not gated out, not below the floor) with the direction given.",
     "  direction: consistent | runs_counter | not_counted | any. outcome (optional) also checks the row's outcome.",
     "  any_of + min: at least `min` of the listed bills, each with the direction.",
@@ -18,26 +18,60 @@
     {
       "id": "1-schumer-clean-air",
       "senator": "S000148",
-      "statement": "I will protect clean air.",
-      "verdict": ["KEPT"],
+      "statement": "promised to protect clean air standards from rollback",
+      "verdict": [
+        "KEPT"
+      ],
       "band": "Low",
-      "count": { "total": 2, "consistent": 2 },
-      "must_have": [{ "bill": "sjres31-119", "direction": "consistent" }],
-      "forbidden": ["DID_NOTHING_WORDING"],
-      "note": "Regression baseline: fail if anything changes."
+      "count": {
+        "total": 2,
+        "consistent": 2
+      },
+      "must_have": [
+        {
+          "bill": "sjres31-119",
+          "direction": "consistent"
+        },
+        {
+          "bill": "hjres61-119",
+          "direction": "consistent"
+        }
+      ],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Regression baseline: fail if anything changes. The stored production question (app_queries f11e3644 and four more runs, 2026-10-07 19:07–19:11 UTC): KEPT · Low, 2 actions, sjres31-119 and hjres61-119 both consistent."
     },
     {
       "id": "2-schumer-student-debt",
       "senator": "S000148",
       "statement": "I will fight to make student loan repayment affordable and cancel student debt.",
-      "verdict": ["KEPT"],
+      "verdict": [
+        "KEPT"
+      ],
       "must_have": [
-        { "bill": "hjres45-118", "direction": "consistent" },
-        { "bill": "sjres43-118", "direction": "consistent" }
+        {
+          "bill": "hjres45-118",
+          "direction": "consistent"
+        },
+        {
+          "bill": "sjres43-118",
+          "direction": "consistent"
+        }
       ],
       "forbidden": [
-        { "bill_direction": { "bill": "hjres45-118", "direction": "runs_counter" } },
-        { "bill_direction": { "bill": "sjres43-118", "direction": "runs_counter" } },
+        {
+          "bill_direction": {
+            "bill": "hjres45-118",
+            "direction": "runs_counter"
+          }
+        },
+        {
+          "bill_direction": {
+            "bill": "sjres43-118",
+            "direction": "runs_counter"
+          }
+        },
         "DID_NOTHING_WORDING"
       ]
     },
@@ -45,86 +79,192 @@
       "id": "3-schumer-abortion",
       "senator": "S000148",
       "statement": "We will pass legislation to protect a woman's right to an abortion.",
-      "verdict": ["KEPT"],
+      "verdict": [
+        "KEPT"
+      ],
       "must_have": [
-        { "bill": "s4554-118", "direction": "not_counted", "outcome": "PROCEDURAL_SWITCH" },
-        { "bill": "s6-119", "direction": "consistent" }
+        {
+          "bill": "s4554-118",
+          "direction": "not_counted",
+          "outcome": "PROCEDURAL_SWITCH"
+        },
+        {
+          "bill": "s6-119",
+          "direction": [
+            "consistent",
+            "not_counted"
+          ]
+        }
       ],
       "forbidden": [
-        { "bill_direction": { "bill": "s4554-118", "direction": "runs_counter" } },
-        { "bill_direction": { "bill": "s4381-118", "direction": "runs_counter" } },
+        {
+          "bill_direction": {
+            "bill": "s4554-118",
+            "direction": "runs_counter"
+          }
+        },
+        {
+          "bill_direction": {
+            "bill": "s4381-118",
+            "direction": "runs_counter"
+          }
+        },
         "DID_NOTHING_WORDING"
-      ]
+      ],
+      "note": "s6-119 may be consistent or not counted (neutral); both pass. Corrected 2026-10-10."
     },
     {
       "id": "4-schumer-tariffs",
       "senator": "S000148",
       "statement": "Trump's tariffs are a tax on American families and should be ended.",
-      "verdict": ["KEPT"],
-      "flag_band": ["Low"],
-      "must_have": [
-        { "any_of": ["sjres49-119", "sjres88-119", "sjres37-119", "sjres77-119", "sjres81-119"], "min": 3, "direction": "consistent" }
+      "verdict": [
+        "KEPT"
       ],
-      "forbidden": ["DID_NOTHING_WORDING"]
+      "flag_band": [
+        "Low"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "sjres49-119",
+            "sjres88-119",
+            "sjres37-119",
+            "sjres77-119",
+            "sjres81-119"
+          ],
+          "min": 3,
+          "direction": "consistent"
+        }
+      ],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ]
     },
     {
       "id": "5-thune-tariffs",
       "senator": "T000250",
       "statement": "Trump's tariffs are a tax on American families and should be ended.",
-      "verdict": ["BROKE_JUDGED", "WITHHELD_AFTER_REVIEW"],
-      "must_have": [
-        { "any_of": ["sjres49-119", "sjres88-119", "sjres37-119", "sjres77-119", "sjres81-119"], "min": 3, "direction": "runs_counter" }
+      "verdict": [
+        "BROKE_JUDGED",
+        "WITHHELD_AFTER_REVIEW"
       ],
-      "forbidden": ["BROKE_WITHOUT_JUDGE", "TALLY_ON_NOT_DETERMINABLE", "DID_NOTHING_WORDING"],
-      "note": "'The same resolutions' as case 4, read as the same at-least-3-of-5 rule."
+      "must_have": [
+        {
+          "any_of": [
+            "sjres49-119",
+            "sjres88-119",
+            "sjres37-119",
+            "sjres77-119",
+            "sjres81-119"
+          ],
+          "min": 3,
+          "direction": "runs_counter"
+        }
+      ],
+      "forbidden": [
+        "BROKE_WITHOUT_JUDGE",
+        "TALLY_ON_NOT_DETERMINABLE",
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "'The same resolutions' as case 4: at least 3 of the 5 (confirmed 2026-10-10)."
     },
     {
       "id": "6-schumer-wep-gpo",
       "senator": "S000148",
       "statement": "I will fight to end the penalties that cut Social Security for teachers, firefighters and police.",
-      "verdict": ["KEPT"],
-      "must_have": [{ "bill": "hr82-118", "direction": "consistent" }],
-      "forbidden": ["DID_NOTHING_WORDING"]
+      "verdict": [
+        "KEPT"
+      ],
+      "must_have": [
+        {
+          "bill": "hr82-118",
+          "direction": "consistent"
+        }
+      ],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ]
     },
     {
       "id": "7-thune-wep-gpo",
       "senator": "T000250",
       "statement": "I will fight to end the penalties that cut Social Security for teachers, firefighters and police.",
-      "verdict": ["BROKE_JUDGED", "WITHHELD_AFTER_REVIEW"],
-      "must_have": [{ "bill": "hr82-118", "direction": "runs_counter" }],
-      "forbidden": ["BROKE_WITHOUT_JUDGE", "TALLY_ON_NOT_DETERMINABLE", "DID_NOTHING_WORDING"]
+      "verdict": [
+        "BROKE_JUDGED",
+        "WITHHELD_AFTER_REVIEW"
+      ],
+      "must_have": [
+        {
+          "bill": "hr82-118",
+          "direction": "runs_counter"
+        }
+      ],
+      "forbidden": [
+        "BROKE_WITHOUT_JUDGE",
+        "TALLY_ON_NOT_DETERMINABLE",
+        "DID_NOTHING_WORDING"
+      ]
     },
     {
       "id": "8-thune-border",
       "senator": "T000250",
       "statement": "I will secure the border and stop illegal immigration.",
-      "verdict": ["KEPT", "KEPT_MIXED"],
-      "must_have": [
-        { "bill": "s5-119", "direction": "consistent" },
-        { "bill": "s2-119", "direction": "consistent" },
-        { "bill": "s4361-118", "direction": "any" }
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED"
       ],
-      "forbidden": ["DID_NOTHING_WORDING"],
-      "note": "s4361-118 may be read either way; it must appear, and how it was read is reported."
+      "must_have": [
+        {
+          "bill": "s5-119",
+          "direction": "consistent"
+        },
+        {
+          "bill": "s2-119",
+          "direction": "consistent"
+        },
+        {
+          "bill": "s4361-118",
+          "direction": "any"
+        }
+      ],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "s4361-118 may be read either way; it must appear, and how it was read is reported. The s5-119 and s4361-118 retrieval misses are real (confirmed 2026-10-10)."
     },
     {
       "id": "9-thune-stablecoins",
       "senator": "T000250",
       "statement": "Congress should pass clear rules for stablecoins and crypto.",
-      "verdict": ["KEPT"],
-      "must_have": [
-        { "bill": "s1582-119", "direction": "consistent" },
-        { "bill": "hr3633-119", "direction": "consistent" }
+      "verdict": [
+        "KEPT"
       ],
-      "forbidden": ["DID_NOTHING_WORDING"]
+      "must_have": [
+        {
+          "bill": "s1582-119",
+          "direction": "consistent"
+        },
+        {
+          "bill": "hr3633-119",
+          "direction": "consistent"
+        }
+      ],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ]
     },
     {
       "id": "10-schumer-drug-prices",
       "senator": "S000148",
       "statement": "I will lower prescription drug prices by letting Medicare negotiate.",
-      "verdict": ["NOT_DETERMINABLE"],
+      "verdict": [
+        "NOT_DETERMINABLE"
+      ],
       "must_have": [],
-      "forbidden": ["TALLY_SHOWN", "DID_NOTHING_WORDING"],
+      "forbidden": [
+        "TALLY_SHOWN",
+        "DID_NOTHING_WORDING"
+      ],
       "note": "The 2022 law is before the corpus. Not determinable, never 'he did nothing'."
     }
   ]

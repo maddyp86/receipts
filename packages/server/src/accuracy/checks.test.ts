@@ -189,3 +189,14 @@ describe('where a missing bill went (from the trace)', () => {
     expect(classificationOf(steps)).toBe('Tax Reform / Tax Cuts & Credits · Opposed (orchestrator disagreed: primary_issue: orchestrator said "Budget & Economy")');
   });
 });
+
+describe('a list of directions', () => {
+  it('any one of them passes', () => {
+    const c = base({ must_have: [{ bill: 'a-1', direction: ['consistent', 'not_counted'] }] });
+    expect(checkCase(c, result(score([row('a-1'), row('b-2')])), '').direction.pass).toBe(true);
+    expect(checkCase(c, result(score([row('a-1', { bill_effect: 'NEUTRAL' }), row('b-2')])), '').direction.pass).toBe(true);
+    const counter = checkCase(c, result(score([row('a-1', NAY), row('b-2'), row('c-3')])), '');
+    expect(counter.direction.pass).toBe(false);
+    expect(counter.direction.detail[0]).toMatch(/expected consistent or not_counted$/);
+  });
+});
