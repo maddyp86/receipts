@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { CornerDownLeftIcon, XIcon } from 'lucide-react';
-import { SPECIFIC_EXAMPLES, phrasingTips, topics } from '../../data/topics.js';
+import { CheckIcon, CornerDownLeftIcon, XIcon } from 'lucide-react';
+import { SPECIFIC_EXAMPLES, askingPairs, cantCheck, topics } from '../../data/topics.js';
 import { GlossaryTerm } from '../glossary/GlossaryTerm.js';
 
 export type StatementKind = 'position' | 'promise';
@@ -148,16 +148,40 @@ export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, o
       </div>
 
       <div id="promise-tips" className="mt-6 border-t border-rule pt-4 text-[15px] text-ink-soft">
-        <p className="font-medium text-ink">What we can’t check</p>
-        <ul className="mt-2 space-y-1.5">
-          {phrasingTips.map((t) => (
-            <li key={t.text} className="flex items-start gap-2">
-              <XIcon className="mt-0.5 h-4 w-4 shrink-0 text-broken" aria-hidden="true" />
-              <span>
-                “{t.text}” — {t.why}.
-              </span>
+        <p className="font-medium text-ink">How to ask</p>
+        <ul className="mt-2 space-y-4">
+          {askingPairs.map((pair) => (
+            <li key={pair.instead}>
+              <p className="flex items-start gap-2">
+                <XIcon className="mt-0.5 h-4 w-4 shrink-0 text-broken" aria-hidden="true" />
+                <span>
+                  <span className="font-medium text-ink">Instead of</span> "{pair.instead}"
+                </span>
+              </p>
+              <p className="mt-1.5 pl-6 font-medium text-ink">Try</p>
+              <ul className="mt-0.5 space-y-0.5 pl-6">
+                {pair.tries.map((t) => (
+                  <li key={t}>
+                    {/* Fills the box and focuses it; never submits. */}
+                    <button
+                      type="button"
+                      onClick={() => pick(t)}
+                      className="-ml-1 flex min-h-[36px] items-start gap-2 rounded px-1 py-1 text-left transition-colors duration-150 hover:bg-card hover:text-ink"
+                    >
+                      <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-kept" aria-hidden="true" />
+                      <span>"{t}"</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </li>
           ))}
+          <li className="flex items-start gap-2">
+            <XIcon className="mt-0.5 h-4 w-4 shrink-0 text-broken" aria-hidden="true" />
+            <span>
+              <span className="font-medium text-ink">Can't check</span> "{cantCheck.text}" — {cantCheck.why}.
+            </span>
+          </li>
         </ul>
       </div>
     </div>

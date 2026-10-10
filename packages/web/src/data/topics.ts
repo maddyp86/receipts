@@ -114,9 +114,21 @@ export const topics: Topic[] = [
   },
 ];
 
-/** What the checker cannot test, shown under the input, each with what to do instead. */
-export const phrasingTips: ReadonlyArray<{ text: string; why: string }> = [
-  { text: 'What is their stance on abortion?', why: 'a question has no side to check. Say which way: “supports…” or “opposes…”' },
-  { text: 'supports our veterans', why: 'too broad. Name the policy, program or bill' },
-  { text: 'is a good leader', why: 'can’t be checked against bills' },
+/**
+ * "How to ask", under the input: a weak way to put it, then better ones to try.
+ * The examples replace explanations. Wording is approved as written; change it
+ * only with sign-off.
+ */
+export const askingPairs: ReadonlyArray<{ instead: string; tries: readonly string[] }> = [
+  {
+    instead: 'What is their stance on abortion?',
+    tries: ['Did they vote to protect abortion access?', 'Did they vote to limit abortion after 15 weeks?'],
+  },
+  {
+    instead: 'Do they support our veterans?',
+    tries: ['Have they backed expanding VA health care?', "Did they vote to raise veterans' disability pay?"],
+  },
 ];
+
+/** The one thing no rewording fixes. */
+export const cantCheck = { text: 'Are they a good leader?', why: "a voting record can't answer that" };
