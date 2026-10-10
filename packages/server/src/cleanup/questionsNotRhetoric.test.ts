@@ -89,3 +89,27 @@ describe('the rewording offered: never a side the reader did not take', () => {
     expect(checkSuggestion(text, raw as never).action).toBe('NONE');
   });
 });
+
+describe('a rewrite is a position, never a past vote', () => {
+  // Eval cases 21/22, 2026-10-10: "voted to …" was halted as a credit claim.
+  it('"voted to X" is not sent on', async () => {
+    const { checkDecision } = await import('./cleanUpInput.js');
+    const d = checkDecision('Did they vote to protect abortion access?', { action: 'REWRITE', statement: 'voted to protect abortion access' });
+    expect(d).toEqual({ action: 'PASS', reason: 'rewrite is a past vote, not a position' });
+  });
+
+  it('"voted for / against X" becomes "supports / opposes X"', async () => {
+    const { checkDecision } = await import('./cleanUpInput.js');
+    expect(checkDecision('Did he vote for the assault weapons ban?', { action: 'REWRITE', statement: 'voted for the assault weapons ban' }))
+      .toEqual({ action: 'REWRITE', statement: 'supports the assault weapons ban' });
+    expect(checkDecision('Did she vote against the assault weapons ban?', { action: 'REWRITE', statement: 'voted against the assault weapons ban' }))
+      .toEqual({ action: 'REWRITE', statement: 'opposes the assault weapons ban' });
+  });
+
+  it('the prompt asks for a position and never a past vote', async () => {
+    const { CLEANUP_SYSTEM_PROMPT, CLEANUP_SYSTEM_PROMPT_VERSION } = await import('./cleanupPrompt.js');
+    expect(CLEANUP_SYSTEM_PROMPT_VERSION).toBe('input-cleanup-v2');
+    expect(CLEANUP_SYSTEM_PROMPT).toMatch(/Never start with "voted"/);
+    expect(CLEANUP_SYSTEM_PROMPT).not.toMatch(/"voted for", "voted against"/);
+  });
+});

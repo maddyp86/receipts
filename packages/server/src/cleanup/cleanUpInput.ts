@@ -231,7 +231,15 @@ export function checkDecision(original: string, raw: RawCleanupOutput | null): C
   const action = typeof raw.action === 'string' ? raw.action.trim().toUpperCase() : '';
 
   if (action === 'REWRITE') {
-    const statement = tidy(raw.statement);
+    // A position, never a past vote: "voted to X" reads to the scope
+    // classifier as a credit claim and is refused (eval cases 21/22,
+    // 2026-10-10). "voted for/against X" is the same position as
+    // "supports/opposes X"; "voted to X" has no clean position form here, so
+    // it is not used — the text goes on as typed, and the reader-question
+    // backstop reads it as a position.
+    const statement = tidy(raw.statement)
+      .replace(/^voted for\s+/i, 'supports ')
+      .replace(/^voted against\s+/i, 'opposes ');
     if (!statement) return { action: 'PASS', reason: 'REWRITE with no statement' };
     if (statement.includes('?')) return { action: 'PASS', reason: 'rewrite is still a question' };
     if (statement.length < 6 || statement.length > 240) return { action: 'PASS', reason: 'rewrite length out of range' };
@@ -251,6 +259,8 @@ export function checkDecision(original: string, raw: RawCleanupOutput | null): C
         ? { ...asked, why: `rewrite refused: ${notTheirs}` }
         : { action: 'PASS', reason: `rewrite adds a side: ${notTheirs}` };
     }
+    // Last, so a side or subject the reader did not type is named as that.
+    if (/^voted\b/i.test(statement)) return { action: 'PASS', reason: 'rewrite is a past vote, not a position' };
     return { action: 'REWRITE', statement };
   }
 

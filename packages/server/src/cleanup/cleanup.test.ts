@@ -123,13 +123,15 @@ describe('a rewrite never brings a side the reader did not type', () => {
     expect(checkDecision('What is his stance on assault weapons?', { action: 'ASK_SIDE', proposition: 'banning assault weapons' }).action).toBe('PASS');
   });
 
+  // A past vote is restated as the position it takes (2026-10-10: "voted …"
+  // read as a credit claim and was refused).
   it.each([
-    ['Did he vote for the farm bill?', 'voted for the farm bill'],
-    ['Why did he vote against the border bill?', 'voted against the border bill'],
-    ['Does he back the border wall?', 'supports the border wall'],
-    ['Where does he stand — does he support term limits?', 'supports term limits'],
-  ])('a side the reader did type is kept: %s → %s', (original, statement) => {
-    expect(checkDecision(original, { action: 'REWRITE', statement })).toEqual({ action: 'REWRITE', statement });
+    ['Did he vote for the farm bill?', 'voted for the farm bill', 'supports the farm bill'],
+    ['Why did he vote against the border bill?', 'voted against the border bill', 'opposes the border bill'],
+    ['Does he back the border wall?', 'supports the border wall', 'supports the border wall'],
+    ['Where does he stand — does he support term limits?', 'supports term limits', 'supports term limits'],
+  ])('a side the reader did type is kept: %s → %s', (original, statement, kept) => {
+    expect(checkDecision(original, { action: 'REWRITE', statement })).toEqual({ action: 'REWRITE', statement: kept });
   });
 
   it.each([
