@@ -16,7 +16,7 @@ import {
   UserPlusIcon,
   XIcon,
 } from 'lucide-react';
-import { FeedbackControl, type FeedbackContext } from './FeedbackControl.js';
+import { FeedbackControl, FeedbackPrompt, type FeedbackContext } from './FeedbackControl.js';
 import {
   EFFECT_UNREAD,
   STRENGTH_PHRASE,
@@ -509,7 +509,11 @@ export function EvidenceCard({
 
       {feedback ? (
         <div className="border-t border-rule px-5 py-1">
-          <FeedbackControl level="evidence" context={feedback} actionUid={action.action_uid} billId={action.bill_id} />
+          {feedback.prompts ? (
+            <FeedbackPrompt level="evidence" context={feedback} actionUid={action.action_uid} billId={action.bill_id} />
+          ) : (
+            <FeedbackControl level="evidence" context={feedback} actionUid={action.action_uid} billId={action.bill_id} />
+          )}
         </div>
       ) : null}
     </article>

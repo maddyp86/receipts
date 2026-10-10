@@ -19,10 +19,11 @@ export function SelectedMember({ member, onChange, compact = false }: Props) {
       <div className="flex items-center gap-3 rounded-card border border-rule bg-card py-2 pl-2 pr-1">
         <MemberPortrait politicianId={member.politician_id} name={member.name} size="sm" />
         <p className="min-w-0 flex-1 text-[16px] leading-snug text-ink">
-          <span className="block truncate">
+          {/* Never cut the name short: on a narrow phone "Jo…" is two different senators. */}
+          <span className="block">
             <span className="text-ink-soft">Checking:</span> <span className="font-semibold">{member.name}</span>
           </span>
-          <span className="block truncate text-[14px] text-ink-soft">{memberTitle(member)}</span>
+          <span className="block text-[14px] text-ink-soft">{memberTitle(member)}</span>
         </p>
         {onChange ? (
           <button
@@ -41,7 +42,10 @@ export function SelectedMember({ member, onChange, compact = false }: Props) {
 
   return (
     <div className="flex items-center gap-4 rounded-card border-2 border-ink bg-card p-4 shadow-soft" role="status">
-      <MemberPortrait politicianId={member.politician_id} name={member.name} />
+      {/* On the narrowest phones the portrait costs the name its line, so the name wins. */}
+      <span className="shrink-0 max-[359px]:hidden">
+        <MemberPortrait politicianId={member.politician_id} name={member.name} />
+      </span>
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-1.5 text-[15px] text-ink-soft">
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-ink text-paper" aria-hidden="true">

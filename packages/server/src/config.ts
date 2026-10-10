@@ -310,8 +310,12 @@ export const config = {
     queryPerDay: num(process.env.RATE_LIMIT_QUERY_PER_DAY, 20),
     /** Free, memory-cached routes. Generous; only stops a hammering loop. */
     readPer15Min: num(process.env.RATE_LIMIT_READ_PER_15MIN, 120),
-    /** Feedback submissions per IP per hour. Generous for a reader; stops a flood. */
-    feedbackPerHour: num(process.env.RATE_LIMIT_FEEDBACK_PER_HOUR, 30),
+    /**
+     * Feedback submissions per IP per hour. Generous for a reader; stops a
+     * flood. 120 since the two prompts (2026-10): a reader who answers the one
+     * under the answer and the one under each bill sends five or six a check.
+     */
+    feedbackPerHour: num(process.env.RATE_LIMIT_FEEDBACK_PER_HOUR, 120),
     /**
      * Global: paid requests (/api/query + /api/followup) per UTC day across
      * EVERYONE, then "come back tomorrow". The only control that bounds total
@@ -395,6 +399,24 @@ export const config = {
      */
     campaignPromiseOverride:
       boolOverride(process.env.ENABLE_CAMPAIGN_PROMISE_OVERRIDE) ?? false,
+    /**
+     * Input clean-up (cleanup/cleanUpInput.ts): a question is restated as the
+     * statement it asks about, or the reader is asked which side.
+     *
+     * OFF by default. The code path is tested; the PROMPT has not been run
+     * against the live model, and a rewrite decides what gets checked. Turn it
+     * on, try a handful of questions, read the CLEANUP steps in the trace, and
+     * leave it on if they read right. Off, nothing about a query changes.
+     */
+    queryCleanup: boolOverride(process.env.ENABLE_QUERY_CLEANUP) ?? false,
+    /**
+     * The two feedback prompts ("Did this answer what you asked?", "Is this
+     * bill about what you asked?").
+     *
+     * OFF by default because they send feedback kinds the table refuses until
+     * migration 013 has been run. Run it, then turn this on.
+     */
+    feedbackPrompts: boolOverride(process.env.ENABLE_FEEDBACK_PROMPTS) ?? false,
   },
 } as const;
 

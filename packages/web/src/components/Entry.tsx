@@ -132,7 +132,7 @@ export function Entry({
         />
       </section>
 
-      <div className="sticky bottom-0 z-10 -mx-5 mt-10 border-t border-rule bg-paper/95 px-5 pb-5 pt-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-16 sm:backdrop-blur-none">
+      <div className="sticky bottom-0 z-10 -mx-5 mt-10 border-t border-rule bg-paper/95 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-16 sm:backdrop-blur-none">
         <button
           type="submit"
           aria-disabled={blockedReason || busy ? 'true' : undefined}

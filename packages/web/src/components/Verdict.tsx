@@ -1,5 +1,13 @@
 import { useState, type ReactNode } from 'react';
-import { CheckIcon, ChevronDownIcon, MinusIcon, ShieldCheckIcon, MessageSquareQuoteIcon, XIcon } from 'lucide-react';
+import {
+  ArrowDownIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  MinusIcon,
+  ShieldCheckIcon,
+  MessageSquareQuoteIcon,
+  XIcon,
+} from 'lucide-react';
 import {
   BAND_PHRASE,
   ND_NO_REASON_COPY,
@@ -15,7 +23,7 @@ import {
   type QueryResult,
 } from '@receipts/shared';
 import { EvidenceCard } from './EvidenceCard.js';
-import { FeedbackControl, type FeedbackContext } from './FeedbackControl.js';
+import { FeedbackControl, FeedbackPrompt, type FeedbackContext } from './FeedbackControl.js';
 import { GatedActions } from './GatedActions.js';
 import { HowWeGotHere } from './HowWeGotHere.js';
 import { CoverageNote, EnrichmentGapNote } from './States.js';
@@ -50,6 +58,9 @@ const VERDICT_STYLE: Record<string, { Icon: typeof CheckIcon; text: string; bg: 
   BROKE: { Icon: XIcon, text: 'text-broken', bg: 'bg-broken', wash: 'bg-broken-wash' },
   NOT_DETERMINABLE: { Icon: MinusIcon, text: 'text-cantsay', bg: 'bg-cantsay', wash: 'bg-cantsay-wash' },
 };
+
+/** Where the bills start, for the phone's "see the bills" link. */
+export const EVIDENCE_ANCHOR = 'the-bills';
 
 /** Promise wording only where the headline uses it — the rule `evidenceTallySentence` applies. */
 function usesPromiseVocabulary(result: QueryResult): boolean {
@@ -207,6 +218,8 @@ interface VerdictProps {
   /** The run that produced this answer; feedback is tied to it. */
   traceId?: string | null;
   feedbackAvailable?: boolean;
+  /** Ask "Did this answer what you asked?" and, per bill, "Is this bill about what you asked?". */
+  feedbackPrompts?: boolean;
 }
 
 /**
@@ -214,7 +227,7 @@ interface VerdictProps {
  * replayed answer carries its original trace event, so the stream's trace id
  * is already that run — and the verdict as shown.
  */
-function feedbackContext({ result, traceId, feedbackAvailable }: VerdictProps): FeedbackContext | undefined {
+function feedbackContext({ result, traceId, feedbackAvailable, feedbackPrompts }: VerdictProps): FeedbackContext | undefined {
   const { scored, senator } = result;
   return feedbackAvailable && traceId
     ? {
@@ -222,6 +235,7 @@ function feedbackContext({ result, traceId, feedbackAvailable }: VerdictProps): 
         politicianId: senator.politician_id,
         promiseText: result.interpretation.raw,
         verdictShown: [scored.verdict, scored.band, scored.nd_reason].filter(Boolean).join(' · '),
+        prompts: Boolean(feedbackPrompts),
       }
     : undefined;
 }
@@ -278,6 +292,7 @@ export function VerdictCard(props: VerdictProps) {
 
   const tally = evidenceTallySentence(result);
   const reused = reusedSentence(result.reused_from?.produced_at);
+  const billCount = scored.evidence.length + (result.gated?.length ?? 0);
 
   return (
     <section
@@ -328,6 +343,17 @@ export function VerdictCard(props: VerdictProps) {
             <p className="verdict-tally text-[17px] leading-relaxed text-ink">{tally}</p>
             <TallyBar result={result} />
           </div>
+        ) : null}
+
+        {/* On a phone the bills are a long scroll below this card. */}
+        {billCount > 0 ? (
+          <a
+            href={`#${EVIDENCE_ANCHOR}`}
+            className="inline-flex min-h-[44px] items-center gap-1.5 text-[16px] font-medium text-focus underline underline-offset-4 lg:hidden"
+          >
+            See the {billCount === 1 ? 'bill' : `${billCount} bills`} we found
+            <ArrowDownIcon className="h-4 w-4" aria-hidden="true" />
+          </a>
         ) : null}
 
         <div className="verdict-why">
@@ -392,7 +418,13 @@ export function VerdictCard(props: VerdictProps) {
         {/* What the beta covers and what to do if this looks wrong. Only with
             the control it points at. */}
         {feedback ? <p className="scope-line text-[14px] leading-relaxed text-ink-soft">{RESULT_SCOPE_LINE}</p> : null}
-        {feedback ? <FeedbackControl level="result" context={feedback} /> : null}
+        {feedback ? (
+          feedback.prompts ? (
+            <FeedbackPrompt level="result" context={feedback} />
+          ) : (
+            <FeedbackControl level="result" context={feedback} />
+          )
+        ) : null}
       </div>
     </section>
   );
@@ -503,7 +535,7 @@ export function EvidenceList(props: VerdictProps) {
   );
 
   return (
-    <div className="space-y-8">
+    <div id={EVIDENCE_ANCHOR} className="scroll-mt-4 space-y-8">
       {scored.mode === 'ranked' && dominant && dissent ? (
         <>
           <EvidenceSection

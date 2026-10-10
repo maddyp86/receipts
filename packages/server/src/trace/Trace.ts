@@ -44,6 +44,10 @@ export type TraceStage =
   | 'REQUEST'
   | 'CACHE_REPLAY'
   | 'ANSWER_REUSE'
+  /** Input clean-up (cleanup/cleanUpInput.ts): the model call, then the code's decision on it. */
+  | 'CLEANUP_MODEL'
+  | 'CLEANUP'
+  | 'CLARIFY'
   | 'SCOPE_MODEL'
   | 'SCOPE_CLASSIFY'
   | 'HALT'
@@ -127,7 +131,12 @@ export interface TraceRun {
   started_at: string;
   ended_at: string | null;
   /** How the run concluded, in the stream's own vocabulary. */
-  status: 'running' | 'result' | 'halt' | 'uncached' | 'error' | 'replay';
+  /**
+   * `clarify`: stopped to ask the reader which side; nothing was checked.
+   * `cleanup`: an input clean-up run that handed on to a normal run (a rewrite,
+   * or a question the model left alone) — the answer is in that other run.
+   */
+  status: 'running' | 'result' | 'halt' | 'uncached' | 'error' | 'replay' | 'clarify' | 'cleanup';
   politician_id: string;
   promise_text: string;
   /** The app_queries row this run was persisted as, when one was written. */

@@ -1,5 +1,11 @@
 import pg from 'pg';
-import { FEEDBACK_KINDS, type FeedbackKind, type FeedbackLevel, type FeedbackRequest } from '@receipts/shared';
+import {
+  FEEDBACK_KINDS,
+  FEEDBACK_PROMPT_KINDS,
+  type FeedbackKind,
+  type FeedbackLevel,
+  type FeedbackRequest,
+} from '@receipts/shared';
 
 // ===========================================================================
 // Reader feedback — "something looks wrong" — stored for an operator's review.
@@ -29,8 +35,15 @@ export interface FeedbackRow {
 export const FEEDBACK_COMMENT_MAX = 1000;
 
 const S = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
-const levelOf = (kind: FeedbackKind): FeedbackLevel =>
-  (FEEDBACK_KINDS.evidence as string[]).includes(kind) ? 'evidence' : 'result';
+/** Every kind the endpoint accepts: "what looks wrong", and the answers to the two prompts. */
+export const ACCEPTED_KINDS: readonly FeedbackKind[] = [
+  ...FEEDBACK_KINDS.result,
+  ...FEEDBACK_KINDS.evidence,
+  ...FEEDBACK_PROMPT_KINDS.result,
+  ...FEEDBACK_PROMPT_KINDS.evidence,
+];
+const EVIDENCE_KINDS: readonly string[] = [...FEEDBACK_KINDS.evidence, ...FEEDBACK_PROMPT_KINDS.evidence];
+const levelOf = (kind: FeedbackKind): FeedbackLevel => (EVIDENCE_KINDS.includes(kind) ? 'evidence' : 'result');
 
 /**
  * Check a request and shape it into a row, or say what is wrong. Mirrors the
@@ -40,8 +53,8 @@ const levelOf = (kind: FeedbackKind): FeedbackLevel =>
 export function validateFeedback(body: unknown): { ok: true; row: FeedbackRow } | { ok: false; message: string } {
   const b = (body ?? {}) as Partial<Record<keyof FeedbackRequest, unknown>>;
   const kind = S(b.kind) as FeedbackKind;
-  if (![...FEEDBACK_KINDS.result, ...FEEDBACK_KINDS.evidence].includes(kind)) {
-    return { ok: false, message: 'kind must be one of QUESTION_MISREAD, VERDICT_WRONG, BILL_NOT_RELEVANT, BILL_READ_BACKWARDS.' };
+  if (!ACCEPTED_KINDS.includes(kind)) {
+    return { ok: false, message: `kind must be one of ${ACCEPTED_KINDS.join(', ')}.` };
   }
   const run_id = S(b.run_id);
   if (!/^[0-9a-f-]{36}$/i.test(run_id)) return { ok: false, message: 'run_id must be the trace id of the answer.' };
