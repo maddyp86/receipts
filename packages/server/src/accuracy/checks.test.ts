@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { GatedAction, QueryResult, ScoredResult } from '@receipts/shared';
 import { scoreMatches, type ScorableMatch } from '../scoring/score.js';
 import { checkCase, didNothingSentences, verdictTokens, type EvalCase } from './checks.js';
+import { classificationOf, whereIsBill } from './diagnose.js';
 
 // ===========================================================================
 // The accuracy set's checks, on scorer-built results. No model, no money:
@@ -166,5 +167,25 @@ describe('4. forbidden', () => {
           "Our search can miss things, so that isn't proof there are none.",
       ),
     ).toEqual([]);
+  });
+});
+
+describe('where a missing bill went (from the trace)', () => {
+  const steps = [
+    { stage: 'RETRIEVE', output: { returned: 10, candidates: [{ bill_id: 'a-1', score: 0.62 }, { bill_id: 'b-2', score: 0.53 }, { bill_id: 'c-3', score: 0.51 }] } },
+    { stage: 'RELEVANCE', subject: 'ACT-c-3-X000001', output: { parsed: { verdict: 'FALSE_POSITIVE' } } },
+    { stage: 'RELEVANCE', subject: 'ACT-b-2-X000001', output: { parsed: { verdict: 'TRUE_POSITIVE' } } },
+    { stage: 'CLASSIFY', output: { interpretation: { primary_issue: 'Tax Reform', sub_issue: 'Tax Cuts & Credits', stance: 'Opposed' }, disagreements: ['primary_issue: orchestrator said "Budget & Economy"'] } },
+  ];
+
+  it('not retrieved, dropped by relevance, below the floor, or retrieved', () => {
+    expect(whereIsBill('z-9', steps)).toBe('not retrieved at or above the retrieval floor 0.5 (3 of 10 returned were)');
+    expect(whereIsBill('c-3', steps)).toBe('retrieved (rank 3 of 3, score 0.510); dropped by the relevance check as FALSE_POSITIVE');
+    expect(whereIsBill('b-2', steps)).toBe('retrieved (rank 2 of 3, score 0.530), relevance TRUE_POSITIVE; below the evidence floor 0.575');
+    expect(whereIsBill('a-1', steps)).toBe('retrieved (rank 1 of 3, score 0.620)');
+  });
+
+  it('the classification, with the orchestrator’s disagreement', () => {
+    expect(classificationOf(steps)).toBe('Tax Reform / Tax Cuts & Credits · Opposed (orchestrator disagreed: primary_issue: orchestrator said "Budget & Economy")');
   });
 });

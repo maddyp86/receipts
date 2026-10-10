@@ -4,6 +4,9 @@
 //
 //   npm run eval                 every case
 //   npm run eval -- 4 5          only cases whose id starts with 4- or 5-
+//   npm run eval -- --explain .data/eval/<file>.json
+//                                re-read a finished run's local traces and say
+//                                where each missing bill went; free, no query
 //
 // LIVE AND PAID: real models and production data (mirror reads through
 // DATABASE_URL, Pinecone retrieval), about $0.10–0.35 a case. It calls
@@ -21,7 +24,7 @@
 // Before anything reads config.
 process.env.ANSWER_REUSE = 'false';
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -35,14 +38,44 @@ const { traceSinks } = await import('../packages/server/src/services.ts');
 const { MemoryTraceSink } = await import('../packages/server/src/trace/TraceStore.ts');
 const { costOf } = await import('../packages/server/src/trace/pricing.ts');
 const { checkCase, verdictLabel } = await import('../packages/server/src/accuracy/checks.ts');
+const { whereIsBill, classificationOf } = await import('../packages/server/src/accuracy/diagnose.ts');
+type TraceStepLike = import('../packages/server/src/accuracy/diagnose.ts').TraceStepLike;
 const { Verdict } = await import('../packages/web/src/components/Verdict.tsx');
 type EvalCase = import('../packages/server/src/accuracy/checks.ts').EvalCase;
 type CaseReport = import('../packages/server/src/accuracy/checks.ts').CaseReport;
 
+const root = fileURLToPath(new URL('../', import.meta.url));
+
+/** A listed bill's reading, with where it went when it is not in the evidence. */
+function explainReadings(readings: Record<string, string>, steps: TraceStepLike[]): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(readings).map(([bill, how]) => [bill, how === 'not in evidence' ? `not in evidence: ${whereIsBill(bill, steps)}` : how]),
+  );
+}
+
+// ---- --explain: diagnose a finished run from its local trace files ---------
+if (process.argv[2] === '--explain') {
+  const report = JSON.parse(await readFile(process.argv[3]!, 'utf8')) as {
+    rows: Array<{ id: string; run_id: string | null; report: { readings: Record<string, string> } | null }>;
+  };
+  const files = await readdir(`${root}.data/traces`);
+  for (const r of report.rows) {
+    const f = r.run_id ? files.find((x) => x.includes(r.run_id!)) : undefined;
+    if (!f) {
+      console.log(`${r.id}: no local trace`);
+      continue;
+    }
+    const steps = (await readFile(`${root}.data/traces/${f}`, 'utf8')).split('\n').filter(Boolean)
+      .map((l) => JSON.parse(l) as TraceStepLike & { type?: string }).filter((s) => s.type === 'step');
+    console.log(`${r.id} · run ${r.run_id}\n  classified as: ${classificationOf(steps)}`);
+    for (const [bill, how] of Object.entries(explainReadings(r.report?.readings ?? {}, steps))) console.log(`  ${bill}: ${how}`);
+  }
+  process.exit(0);
+}
+
 if (config.answerReuse.enabled) throw new Error('answer reuse must be off for an eval run');
 if (config.demoMode || config.fixtureMode) throw new Error('eval runs against live models and production data; demo/fixture mode is on');
 
-const root = fileURLToPath(new URL('../', import.meta.url));
 const { cases } = JSON.parse(await readFile(`${root}docs/eval/cases.json`, 'utf8')) as { cases: EvalCase[] };
 const only = process.argv.slice(2);
 const selected = only.length ? cases.filter((c) => only.some((p) => c.id.startsWith(`${p}-`) || c.id === p)) : cases;
@@ -61,6 +94,7 @@ interface Row {
   verdict: string;
   band: string;
   count_line: string;
+  classification: string;
   report: CaseReport | null;
   error: string | null;
 }
@@ -88,7 +122,9 @@ for (const c of selected) {
   if (result) {
     const card = text(renderToStaticMarkup(React.createElement(Verdict, { result, traceId: runId, feedbackAvailable: true })));
     report = checkCase(c, result, card);
+    report.readings = explainReadings(report.readings, record?.steps ?? []);
   }
+  const classification = classificationOf(record?.steps ?? []);
   const row: Row = {
     id: c.id,
     run_id: runId,
@@ -97,6 +133,7 @@ for (const c of selected) {
     verdict: result ? verdictLabel(result) : `NO RESULT (${other ? other.type : 'nothing'})`,
     band: result?.scored.band ?? '—',
     count_line: result ? (evidenceTallySentence(result) ?? '—') : '—',
+    classification,
     report,
     error: other && !result ? JSON.stringify(other).slice(0, 300) : null,
   };
@@ -127,7 +164,7 @@ console.log('\nHow each listed bill was read:');
 for (const r of rows) {
   if (!r.report) continue;
   const readings = Object.entries(r.report.readings).map(([b, how]) => `${b} ${how}`);
-  console.log(`  ${r.id}: ${readings.join('; ') || '—'}${r.report.flags.length ? ` · FLAG: ${r.report.flags.join('; ')}` : ''}`);
+  console.log(`  ${r.id} (classified as ${r.classification}): ${readings.join('; ') || '—'}${r.report.flags.length ? ` · FLAG: ${r.report.flags.join('; ')}` : ''}`);
 }
 
 const failed = rows.filter((r) => !r.report?.pass);
