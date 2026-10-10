@@ -2,7 +2,9 @@ import { createHash } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config.js';
 import { anthropicContent, anthropicUsage, traceBegin, traceStep } from '../trace/Trace.js';
+import { clarifyFor, type ClarifyOption } from '@receipts/shared';
 import { CLEANUP_SYSTEM_PROMPT, CLEANUP_SYSTEM_PROMPT_VERSION } from './cleanupPrompt.js';
+import { SUGGEST_SYSTEM_PROMPT, SUGGEST_SYSTEM_PROMPT_VERSION } from './suggestPrompt.js';
 
 // ===========================================================================
 // INPUT CLEAN-UP — what to do when a reader types a question.
@@ -229,7 +231,15 @@ export function checkDecision(original: string, raw: RawCleanupOutput | null): C
   const action = typeof raw.action === 'string' ? raw.action.trim().toUpperCase() : '';
 
   if (action === 'REWRITE') {
-    const statement = tidy(raw.statement);
+    // A position, never a past vote: "voted to X" reads to the scope
+    // classifier as a credit claim and is refused (eval cases 21/22,
+    // 2026-10-10). "voted for/against X" is the same position as
+    // "supports/opposes X"; "voted to X" has no clean position form here, so
+    // it is not used — the text goes on as typed, and the reader-question
+    // backstop reads it as a position.
+    const statement = tidy(raw.statement)
+      .replace(/^voted for\s+/i, 'supports ')
+      .replace(/^voted against\s+/i, 'opposes ');
     if (!statement) return { action: 'PASS', reason: 'REWRITE with no statement' };
     if (statement.includes('?')) return { action: 'PASS', reason: 'rewrite is still a question' };
     if (statement.length < 6 || statement.length > 240) return { action: 'PASS', reason: 'rewrite length out of range' };
@@ -249,6 +259,8 @@ export function checkDecision(original: string, raw: RawCleanupOutput | null): C
         ? { ...asked, why: `rewrite refused: ${notTheirs}` }
         : { action: 'PASS', reason: `rewrite adds a side: ${notTheirs}` };
     }
+    // Last, so a side or subject the reader did not type is named as that.
+    if (/^voted\b/i.test(statement)) return { action: 'PASS', reason: 'rewrite is a past vote, not a position' };
     return { action: 'REWRITE', statement };
   }
 
@@ -288,7 +300,8 @@ export class CleanupUnavailableError extends Error {
   }
 }
 
-export function liveCleanupFetcher(): CleanupFetcher {
+/** One small model call on the reader's text, recorded as `stage`. The member is never sent. */
+function liveFetcher(system: string, version: string, stage: 'CLEANUP_MODEL' | 'SUGGEST_MODEL', what: string): CleanupFetcher {
   return async (text) => {
     if (!config.anthropic.apiKey) throw new CleanupUnavailableError();
 
@@ -302,14 +315,13 @@ export function liveCleanupFetcher(): CleanupFetcher {
       message = await client.messages.create({
         model: config.models.classify,
         max_tokens: CLEANUP_MAX_TOKENS,
-        system: CLEANUP_SYSTEM_PROMPT,
+        system,
         messages: [{ role: 'user', content: userMessage }],
       });
     } catch (err) {
       end({
-        stage: 'CLEANUP_MODEL', kind: 'model', status: 'error', label: 'input clean-up call failed',
-        model: config.models.classify, prompt_version: CLEANUP_SYSTEM_PROMPT_VERSION,
-        prompt_text: CLEANUP_SYSTEM_PROMPT,
+        stage, kind: 'model', status: 'error', label: `${what} call failed`,
+        model: config.models.classify, prompt_version: version, prompt_text: system,
         input: { user_message: userMessage },
         error: err instanceof Error ? err.message : String(err),
       });
@@ -322,18 +334,21 @@ export function liveCleanupFetcher(): CleanupFetcher {
       .join('');
 
     end({
-      stage: 'CLEANUP_MODEL', kind: 'model', status: out ? 'ok' : 'error',
+      stage, kind: 'model', status: out ? 'ok' : 'error',
       label: out ? `stop_reason=${message.stop_reason ?? 'none'}` : 'no text returned',
-      model: config.models.classify, prompt_version: CLEANUP_SYSTEM_PROMPT_VERSION,
-      prompt_text: CLEANUP_SYSTEM_PROMPT,
+      model: config.models.classify, prompt_version: version, prompt_text: system,
       usage: anthropicUsage(message.usage),
       input: { user_message: userMessage },
       output: { stop_reason: message.stop_reason, raw_text: out, content: anthropicContent(message.content) },
     });
 
-    if (!out) throw new Error(`Input clean-up returned no text (stop_reason=${message.stop_reason ?? 'none'}).`);
+    if (!out) throw new Error(`${what} returned no text (stop_reason=${message.stop_reason ?? 'none'}).`);
     return parseJson(out);
   };
+}
+
+export function liveCleanupFetcher(): CleanupFetcher {
+  return liveFetcher(CLEANUP_SYSTEM_PROMPT, CLEANUP_SYSTEM_PROMPT_VERSION, 'CLEANUP_MODEL', 'Input clean-up');
 }
 
 /**
@@ -445,5 +460,106 @@ export async function cleanUpInput(text: string, options: CleanUpOptions = {}): 
     output: decision,
   });
   cache.set(key, decision);
+  return decision;
+}
+
+// ===========================================================================
+// REWORDING SUGGESTION — after a statement could not be checked.
+//
+// Offered on a halt or a "too broad" answer, in place of fixed examples: one
+// rewording of the reader's own topic, or both sides of it. Nothing is checked
+// until the reader clicks. The model may add specificity (that is the point);
+// the check below holds what it may not add:
+//
+//   - a side the reader did not take. Only the overall side is compared
+//     ("supports" vs "opposes"): a reader who supports veterans may be offered
+//     "supports expanding VA health care". A reader who took no side, or a
+//     suggestion whose side differs, gets BOTH sides, never one;
+//   - a different topic: it keeps at least one of the reader's own words;
+//   - a question, a member's name, or a subject pronoun.
+//
+// Fails closed to NO suggestion (the fixed examples stay as the fallback).
+// ===========================================================================
+
+export type SuggestDecision =
+  | { action: 'SUGGEST'; options: ClarifyOption[] }
+  | { action: 'NONE'; reason: string };
+
+const STATEMENT_FOR = /^(supports?|promised to|voted (for|to))\b/i;
+const STATEMENT_AGAINST = /^(opposes?|voted against|promised to (oppose|block|vote against))\b/i;
+const LEADING_SIDE = /^(supports?|opposes?|promised to|voted (for|against|to))\s+/i;
+
+/** The side the reader's text takes, coarsely: "for", "against", or none. */
+export function readerSide(text: string): 'for' | 'against' | null {
+  const w = words(text);
+  const saidFor = w.some((x) => FOR_WORD.test(x) || /^promis/.test(x)) || FOR_PHRASE.test(text);
+  const saidAgainst = w.some((x) => AGAINST_WORD.test(x));
+  if (saidFor === saidAgainst) return null;
+  return saidFor ? 'for' : 'against';
+}
+
+/** Does `candidate` keep at least one of the reader's own topic words? */
+const keepsTopic = (original: string, candidate: string): boolean => {
+  const have = contentWords(original);
+  return contentWords(candidate).some((w) => have.some((h) => sameStem(h, w)));
+};
+
+function bothSides(original: string, subject: string): SuggestDecision {
+  const p = tidy(subject).replace(LEADING_SIDE, '');
+  if (!p || p.includes('?') || p.length < 3 || p.length > 100) return { action: 'NONE', reason: 'proposition unusable' };
+  if (!keepsTopic(original, p)) return { action: 'NONE', reason: 'proposition is not on the reader\'s topic' };
+  return { action: 'SUGGEST', options: clarifyFor(p).options };
+}
+
+/** Decide what to offer from the model's output. Anything doubtful is NONE. */
+export function checkSuggestion(original: string, raw: RawCleanupOutput | null): SuggestDecision {
+  if (!raw || typeof raw !== 'object') return { action: 'NONE', reason: 'model output did not parse' };
+  const action = typeof raw.action === 'string' ? raw.action.trim().toUpperCase() : '';
+
+  if (action === 'ASK_SIDE') return bothSides(original, String(raw.proposition ?? ''));
+
+  if (action === 'SUGGEST') {
+    const statement = tidy(raw.statement);
+    if (!statement || statement.includes('?')) return { action: 'NONE', reason: 'suggestion is empty or a question' };
+    if (statement.length < 6 || statement.length > 160) return { action: 'NONE', reason: 'suggestion length out of range' };
+    const side = STATEMENT_AGAINST.test(statement) ? 'against' : STATEMENT_FOR.test(statement) ? 'for' : null;
+    if (!side) return { action: 'NONE', reason: 'suggestion does not start with a side' };
+    if (!keepsTopic(original, statement)) return { action: 'NONE', reason: 'suggestion is not on the reader\'s topic' };
+    // Same side as the reader: one option. Otherwise never one guessed side.
+    if (readerSide(original) === side) return { action: 'SUGGEST', options: [{ label: statement, statement }] };
+    return bothSides(original, statement);
+  }
+
+  return { action: 'NONE', reason: action === 'NONE' ? 'model: nothing to suggest' : `unknown action "${action || '(none)'}"` };
+}
+
+export function liveSuggestFetcher(): CleanupFetcher {
+  return liveFetcher(SUGGEST_SYSTEM_PROMPT, SUGGEST_SYSTEM_PROMPT_VERSION, 'SUGGEST_MODEL', 'Rewording suggestion');
+}
+
+/**
+ * One rewording to offer for a statement that could not be checked. Never
+ * throws: a failure is NONE, and the reader sees the fixed examples instead.
+ * In demo mode there is no model, so nothing is suggested.
+ */
+export async function suggestRewording(text: string, options: { fetcher?: CleanupFetcher } = {}): Promise<SuggestDecision> {
+  if (!String(text ?? '').trim()) return { action: 'NONE', reason: 'empty' };
+  if (config.demoMode && !options.fetcher) return { action: 'NONE', reason: 'demo mode' };
+  let raw: RawCleanupOutput | null;
+  try {
+    raw = await (options.fetcher ?? liveSuggestFetcher())(text);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    traceStep({ stage: 'SUGGEST', kind: 'deterministic', status: 'error', label: 'no suggestion — call failed', input: { text }, error: message });
+    return { action: 'NONE', reason: `unavailable: ${message}` };
+  }
+  const decision = checkSuggestion(text, raw);
+  traceStep({
+    stage: 'SUGGEST', kind: 'deterministic',
+    status: decision.action === 'NONE' && raw && String(raw.action ?? '').toUpperCase() !== 'NONE' ? 'rejected' : 'ok',
+    label: decision.action === 'SUGGEST' ? `offer: ${decision.options.map((o) => `"${o.statement}"`).join(' / ')}` : `none — ${decision.reason}`,
+    input: { text, model_json: raw },
+    output: decision,
+  });
   return decision;
 }

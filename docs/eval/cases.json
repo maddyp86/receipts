@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "The accuracy set. Expected outcomes signed off by Matthew, 2026-10-10 (cases 1–10, corrections to 1 and 3 the same day; cases 11–18 added the same day). Run with `npm run eval`.",
+    "The accuracy set. Expected outcomes signed off by Matthew, 2026-10-10 (cases 1–10, corrections to 1 and 3 the same day; cases 11–18 added the same day). Run with `npm run eval`; cases 19–25 (question-box examples and question forms) added the same day.",
     "verdict: any one of the listed outcomes passes.",
     "  KEPT / BROKE                 single-mode verdict",
     "  KEPT_MIXED / BROKE_MIXED     ranked (mixed) verdict",
@@ -416,6 +416,119 @@
         "DID_NOTHING_WORDING"
       ],
       "note": "Deliberately vague. Not determinable with the too-broad reason, or KEPT. BROKE is outside the allowed verdicts."
+    },
+    {
+      "id": "19-thune-photo-id-example",
+      "senator": "T000250",
+      "statement": "promised to require photo ID to vote",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "A question-box example (2026-10-10): every example must return a real verdict, not a refusal. Senator is the one it is most likely tried on (a guess; change freely). From the 'Be specific' helper text."
+    },
+    {
+      "id": "20-schumer-fentanyl-example",
+      "senator": "S000148",
+      "statement": "promised to classify fentanyl-related drugs as Schedule I",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "A question-box example (2026-10-10): every example must return a real verdict, not a refusal. Senator is the one it is most likely tried on (a guess; change freely). From the 'Be specific' helper text."
+    },
+    {
+      "id": "21-schumer-abortion-access-question",
+      "senator": "S000148",
+      "statement": "Did they vote to protect abortion access?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "A 'How to ask' Try example, and the question form of case 3. Refused as RHETORIC on 2026-10-10 (trace d4631308-d8f0-413a-a6b6-8d71d1b9e7a8)."
+    },
+    {
+      "id": "22-thune-15-weeks-question",
+      "senator": "T000250",
+      "statement": "Did they vote to limit abortion after 15 weeks?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "A question-box example (2026-10-10): every example must return a real verdict, not a refusal. Senator is the one it is most likely tried on (a guess; change freely). A 'How to ask' Try example."
+    },
+    {
+      "id": "23-schumer-va-health-care-question",
+      "senator": "S000148",
+      "statement": "Have they backed expanding VA health care?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "A question-box example (2026-10-10): every example must return a real verdict, not a refusal. Senator is the one it is most likely tried on (a guess; change freely). A 'How to ask' Try example."
+    },
+    {
+      "id": "24-schumer-veterans-disability-pay-question",
+      "senator": "S000148",
+      "statement": "Did they vote to raise veterans' disability pay?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "A question-box example (2026-10-10): every example must return a real verdict, not a refusal. Senator is the one it is most likely tried on (a guess; change freely). A 'How to ask' Try example."
+    },
+    {
+      "id": "25-thune-tcja-question",
+      "senator": "T000250",
+      "statement": "Did Thune vote to make the 2017 tax cuts permanent?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED"
+      ],
+      "must_have": [
+        {
+          "bill": "hr1-119",
+          "direction": "consistent"
+        }
+      ],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "The question form of case 13."
     }
   ]
 }

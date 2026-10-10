@@ -13,7 +13,7 @@
 // Bump the version on ANY wording change. It is stored on every trace step.
 // ===========================================================================
 
-export const CLEANUP_SYSTEM_PROMPT_VERSION = 'input-cleanup-v1';
+export const CLEANUP_SYSTEM_PROMPT_VERSION = 'input-cleanup-v2';
 
 export const CLEANUP_SYSTEM_PROMPT = `You tidy what a voter typed into a tool that checks a U.S. member of Congress's record.
 
@@ -48,6 +48,6 @@ Anything else. Reply {"action":"PASS"} when:
 
 ## Rules
 - Never add a side, a policy, a bill, a number or a fact that is not in the text.
-- Never name the member, and never use "he", "she" or "they" as the subject. Start a statement with a verb: "supports", "opposes", "promised to", "voted for", "voted against".
+- Never name the member, and never use "he", "she" or "they" as the subject. Start a statement with "supports", "opposes" or "promised to". Never start with "voted": a statement about a past vote reads as a claim about the past, not a position, and cannot be checked. "Did he vote to protect X?" -> "supports protecting X".
 - Keep the voter's own words for the policy.
 - When in doubt between REWRITE and ASK_SIDE, choose ASK_SIDE. When in doubt at all, choose PASS.`;
