@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckIcon, CornerDownLeftIcon, XIcon } from 'lucide-react';
+import { CheckIcon, ChevronDownIcon, CornerDownLeftIcon, XIcon } from 'lucide-react';
 import { SPECIFIC_EXAMPLES, askingPairs, cantCheck, topics } from '../../data/topics.js';
 import { GlossaryTerm } from '../glossary/GlossaryTerm.js';
 
@@ -102,88 +102,102 @@ export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, o
         ))}
       </p>
 
-      <div className="mt-6">
-        <p className="text-[16px] text-ink-soft">Not sure how to say it? Start with a topic:</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {topics.map((t) => {
-            const active = t.id === topicId;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                aria-pressed={active}
-                onClick={() => setTopicId(active ? null : t.id)}
-                className={`min-h-[44px] whitespace-nowrap rounded-full border px-4 text-[16px] transition-colors duration-150 ${
-                  active ? 'border-ink bg-ink text-paper' : 'border-rule bg-card text-ink hover:border-ink-faint'
-                }`}
-              >
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {topic ? (
-          <div key={topic.id} className="mt-4 animate-rise-in rounded-card border border-rule bg-card">
-            <p className="px-4 pt-4 text-[15px] text-ink-soft">Tap one to use it. You can change the words after.</p>
-            <ul className="mt-2 divide-y divide-rule">
-              {topic.examples.map((ex) => (
-                <li key={ex.text}>
-                  <button
-                    type="button"
-                    onClick={() => pick(ex.text)}
-                    className="flex min-h-[52px] w-full items-center justify-between gap-3 px-4 py-3 text-left text-[17px] text-ink transition-colors duration-150 hover:bg-paper"
-                  >
-                    <span>“{ex.text}”</span>
-                    <span className="flex shrink-0 items-center gap-1 text-[14px] text-ink-soft">
-                      Use
-                      <CornerDownLeftIcon className="h-4 w-4" aria-hidden="true" />
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+      {/* Help for phrasing: topic starters and "How to ask". Closed by default,
+          one tap away, in the page either way (native <details>, the same
+          pattern as "About this beta"). */}
+      <details className="group mt-6">
+        <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+          <span className="inline-flex min-h-[44px] items-center gap-1 text-[16px] font-medium text-focus underline underline-offset-4">
+            Need help phrasing it?
+            <ChevronDownIcon
+              className="h-4 w-4 transition-transform duration-200 group-open:rotate-180"
+              aria-hidden="true"
+            />
+          </span>
+        </summary>
+        <div className="mt-3">
+          <p className="text-[16px] text-ink-soft">Start with a topic:</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {topics.map((t) => {
+              const active = t.id === topicId;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setTopicId(active ? null : t.id)}
+                  className={`min-h-[44px] whitespace-nowrap rounded-full border px-4 text-[16px] transition-colors duration-150 ${
+                    active ? 'border-ink bg-ink text-paper' : 'border-rule bg-card text-ink hover:border-ink-faint'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
           </div>
-        ) : null}
-      </div>
 
-      <div id="promise-tips" className="mt-6 border-t border-rule pt-4 text-[15px] text-ink-soft">
-        <p className="font-medium text-ink">How to ask</p>
-        <ul className="mt-2 space-y-4">
-          {askingPairs.map((pair) => (
-            <li key={pair.instead}>
-              <p className="flex items-start gap-2">
-                <XIcon className="mt-0.5 h-4 w-4 shrink-0 text-broken" aria-hidden="true" />
-                <span>
-                  <span className="font-medium text-ink">Instead of</span> "{pair.instead}"
-                </span>
-              </p>
-              <p className="mt-1.5 pl-6 font-medium text-ink">Try</p>
-              <ul className="mt-0.5 space-y-0.5 pl-6">
-                {pair.tries.map((t) => (
-                  <li key={t}>
-                    {/* Fills the box and focuses it; never submits. */}
+          {topic ? (
+            <div key={topic.id} className="mt-4 animate-rise-in rounded-card border border-rule bg-card">
+              <p className="px-4 pt-4 text-[15px] text-ink-soft">Tap one to use it. You can change the words after.</p>
+              <ul className="mt-2 divide-y divide-rule">
+                {topic.examples.map((ex) => (
+                  <li key={ex.text}>
                     <button
                       type="button"
-                      onClick={() => pick(t)}
-                      className="-ml-1 flex min-h-[36px] items-start gap-2 rounded px-1 py-1 text-left transition-colors duration-150 hover:bg-card hover:text-ink"
+                      onClick={() => pick(ex.text)}
+                      className="flex min-h-[52px] w-full items-center justify-between gap-3 px-4 py-3 text-left text-[17px] text-ink transition-colors duration-150 hover:bg-paper"
                     >
-                      <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-kept" aria-hidden="true" />
-                      <span>"{t}"</span>
+                      <span>“{ex.text}”</span>
+                      <span className="flex shrink-0 items-center gap-1 text-[14px] text-ink-soft">
+                        Use
+                        <CornerDownLeftIcon className="h-4 w-4" aria-hidden="true" />
+                      </span>
                     </button>
                   </li>
                 ))}
               </ul>
+            </div>
+          ) : null}
+        </div>
+
+        <div id="promise-tips" className="mt-6 border-t border-rule pt-4 text-[15px] text-ink-soft">
+          <p className="font-medium text-ink">How to ask</p>
+          <ul className="mt-2 space-y-4">
+            {askingPairs.map((pair) => (
+              <li key={pair.instead}>
+                <p className="flex items-start gap-2">
+                  <XIcon className="mt-0.5 h-4 w-4 shrink-0 text-broken" aria-hidden="true" />
+                  <span>
+                    <span className="font-medium text-ink">Instead of</span> "{pair.instead}"
+                  </span>
+                </p>
+                <p className="mt-1.5 pl-6 font-medium text-ink">Try</p>
+                <ul className="mt-0.5 space-y-0.5 pl-6">
+                  {pair.tries.map((t) => (
+                    <li key={t}>
+                      {/* Fills the box and focuses it; never submits. */}
+                      <button
+                        type="button"
+                        onClick={() => pick(t)}
+                        className="-ml-1 flex min-h-[36px] items-start gap-2 rounded px-1 py-1 text-left transition-colors duration-150 hover:bg-card hover:text-ink"
+                      >
+                        <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-kept" aria-hidden="true" />
+                        <span>"{t}"</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+            <li className="flex items-start gap-2">
+              <XIcon className="mt-0.5 h-4 w-4 shrink-0 text-broken" aria-hidden="true" />
+              <span>
+                <span className="font-medium text-ink">Can't check</span> "{cantCheck.text}" — {cantCheck.why}.
+              </span>
             </li>
-          ))}
-          <li className="flex items-start gap-2">
-            <XIcon className="mt-0.5 h-4 w-4 shrink-0 text-broken" aria-hidden="true" />
-            <span>
-              <span className="font-medium text-ink">Can't check</span> "{cantCheck.text}" — {cantCheck.why}.
-            </span>
-          </li>
-        </ul>
-      </div>
+          </ul>
+        </div>
+      </details>
     </div>
   );
 }
