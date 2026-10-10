@@ -19,6 +19,18 @@ const html = renderToStaticMarkup(
 const section = html.slice(html.indexOf('id="promise-tips"'));
 const text = section.replace(/<[^>]+>/g, ' ').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/\s+/g, ' ');
 
+describe('the help toggle', () => {
+  it('topics and "How to ask" sit inside one toggle, closed by default', () => {
+    const details = html.slice(html.indexOf('<details'), html.indexOf('</details>'));
+    expect(html).toMatch(/<details class="group mt-6">/); // no "open" attribute
+    expect(details).toContain('Need help phrasing it?');
+    expect(details).toContain('Start with a topic:');
+    expect(details).toContain('id="promise-tips"');
+    // The question box itself stays outside.
+    expect(html.indexOf('id="promise"')).toBeLessThan(html.indexOf('<details'));
+  });
+});
+
 describe('How to ask', () => {
   it('has the new heading and labels, and none of the old explanations', () => {
     expect(text).toContain('How to ask');
