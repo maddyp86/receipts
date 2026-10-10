@@ -8,7 +8,7 @@ import { Entry } from './components/Entry.js';
 import type { StatementKind } from './components/entry/PromiseInput.js';
 import { Waiting } from './components/Waiting.js';
 import { EvidenceList, HowWeGotHereToggle, VerdictCard } from './components/Verdict.js';
-import { ClarifyState, DemoBanner, ErrorState, HaltState, ThinResultActions, UncachedState } from './components/States.js';
+import { ClarifyState, DemoBanner, ErrorState, HaltState, SuggestedRewording, ThinResultActions, UncachedState } from './components/States.js';
 import {
   AppliedCorrections,
   AssertedPremiseBadge,
@@ -192,7 +192,15 @@ export default function App() {
                 <UncachedState senator={stream.uncached.senator} queued={stream.uncached.queued} onReset={changeMember} />
               ) : null}
               {stream.error ? <ErrorState error={stream.error} onRetry={submit} onReset={reword} /> : null}
-              {stream.halt ? <HaltState halt={stream.halt} onReset={reword} onRetryWithDate={rerunWithDate} /> : null}
+              {stream.halt ? (
+                <HaltState
+                  halt={stream.halt}
+                  onReset={reword}
+                  onRetryWithDate={rerunWithDate}
+                  suggestions={stream.suggest}
+                  onPick={checkStatement}
+                />
+              ) : null}
               {stream.clarify ? <ClarifyState clarify={stream.clarify} onPick={checkStatement} onReset={reword} /> : null}
               {/* The stream closed with nothing at all. Say so rather than show an empty page. */}
               {!stream.uncached && !stream.error && !stream.halt && !stream.clarify ? (
@@ -256,6 +264,13 @@ export default function App() {
                   feedbackAvailable={modes.feedback}
                   feedbackPrompts={modes.prompts}
                 />
+
+                {/* "Too broad": a rewording of the reader's own topic to check instead. */}
+                {stream.suggest?.length && stream.result.scored.nd_reason === 'NOT_EVALUABLE' ? (
+                  <div className="rounded-card border border-rule bg-card px-4 py-4 text-[16px] text-ink-soft">
+                    <SuggestedRewording options={stream.suggest} onPick={checkStatement} />
+                  </div>
+                ) : null}
 
                 <div className="hidden lg:block">
                   <ThinResultActions onReset={askAnother} onChangeMember={changeMember} senatorName={memberName} />

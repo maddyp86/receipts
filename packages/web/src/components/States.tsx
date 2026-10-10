@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react';
-import { ArrowRightIcon, TriangleAlertIcon } from 'lucide-react';
+import { ArrowRightIcon, ChevronDownIcon, TriangleAlertIcon } from 'lucide-react';
 import {
   coverageSentence,
   enrichmentGapSentence,
+  type ClarifyOption,
   type CoverageWindow,
   type EnrichmentGap,
   type QueryClarify,
@@ -263,10 +264,15 @@ export function HaltState({
   halt,
   onReset,
   onRetryWithDate,
+  suggestions,
+  onPick,
 }: {
   halt: QueryHalt;
   onReset: () => void;
   onRetryWithDate: (isoDate: string) => void;
+  /** A rewording of the reader's own topic, when one was offered. */
+  suggestions?: ClarifyOption[] | null;
+  onPick?: (statement: string) => void;
 }) {
   const [date, setDate] = useState('');
 
@@ -284,10 +290,16 @@ export function HaltState({
       {/* What to do about it. A question or a bare topic is the usual cause, and
           neither names a side for a vote to be checked against. */}
       {halt.reason === 'NON_TESTABLE_SPEECH_ACT' ? (
-        <p>
-          Try it as a statement that takes a side — for example “supports expanding background checks” or “opposes
-          cuts to Social Security.”
-        </p>
+        suggestions?.length && onPick ? (
+          <SuggestedRewording options={suggestions} onPick={onPick} />
+        ) : (
+          // The fallback, when no rewording was offered (input help off, or
+          // nothing on the reader's topic could be suggested).
+          <p>
+            Try it as a statement that takes a side — for example “supports expanding background checks” or “opposes
+            cuts to Social Security.”
+          </p>
+        )
       ) : null}
 
       {halt.recoverable_with_date ? (
@@ -317,15 +329,49 @@ export function HaltState({
         </div>
       )}
 
-      {/* The classification is shown because it is the reason. A user who
-          disagrees that this was a scheduling remark can see what we decided
-          and why, rather than being told the tool declined. */}
-      <p className="border-t border-rule pt-3 text-[14px] leading-snug text-ink-soft">
-        Read as {article(halt.scope.speech_act)}{' '}
-        {halt.scope.speech_act.toLowerCase().replace('_', ' ')} statement
-        {halt.scope.anchor_entity ? ` about ${halt.scope.anchor_entity}` : ''}. {halt.scope.reasoning}
-      </p>
+      {/* The classifier's own wording is analyst detail, not the reason a
+          reader is given: the plain reason is above. Kept one tap away, so a
+          reader who disagrees can still see what was decided and why. */}
+      <details className="group border-t border-rule pt-3 text-[14px] leading-snug text-ink-soft">
+        <summary className="inline-flex min-h-[36px] cursor-pointer list-none items-center gap-1 [&::-webkit-details-marker]:hidden">
+          Details for analysts
+          <ChevronDownIcon className="h-4 w-4 transition-transform duration-200 group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <p className="mt-1">
+          Read as {article(halt.scope.speech_act)}{' '}
+          {halt.scope.speech_act.toLowerCase().replace('_', ' ')} statement
+          {halt.scope.anchor_entity ? ` about ${halt.scope.anchor_entity}` : ''}. {halt.scope.reasoning}
+        </p>
+      </details>
     </Notice>
+  );
+}
+
+/**
+ * A rewording of the reader's own topic to check instead: one option that
+ * keeps their side, or both sides when they took none. Nothing is checked
+ * until they pick one.
+ */
+export function SuggestedRewording({ options, onPick }: { options: ClarifyOption[]; onPick: (statement: string) => void }) {
+  return (
+    <div className="space-y-2">
+      <p>{options.length === 1 ? 'You could check this instead:' : 'You could check one of these instead:'}</p>
+      <div className={`grid gap-3 ${options.length > 1 ? 'sm:grid-cols-2' : ''}`}>
+        {options.map((o) => (
+          <button
+            key={o.statement}
+            type="button"
+            onClick={() => onPick(o.statement)}
+            className="flex min-h-[64px] items-center justify-between gap-3 rounded-card border border-rule bg-card px-4 py-3 text-left text-[17px] font-medium text-ink shadow-soft transition-colors duration-150 hover:border-ink"
+          >
+            <span>
+              <span className="block text-[13px] font-normal uppercase tracking-wide text-ink-soft">Check this</span>“{o.label}”
+            </span>
+            <ArrowRightIcon className="h-5 w-5 shrink-0 text-ink-soft" aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

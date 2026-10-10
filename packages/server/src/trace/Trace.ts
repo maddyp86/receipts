@@ -47,9 +47,12 @@ export type TraceStage =
   /** Input clean-up (cleanup/cleanUpInput.ts): the model call, then the code's decision on it. */
   | 'CLEANUP_MODEL'
   | 'CLEANUP'
+  | 'SUGGEST_MODEL'
+  | 'SUGGEST'
   | 'CLARIFY'
   | 'SCOPE_MODEL'
   | 'SCOPE_CLASSIFY'
+  | 'SCOPE_OVERRIDE'
   | 'HALT'
   | 'ORCHESTRATOR_TURN'
   | 'CLASSIFY_MODEL'

@@ -105,6 +105,10 @@ interface Row {
   band: string;
   count_line: string;
   classification: string;
+  /** Set when input clean-up restated the typed text before it was checked. */
+  checked_as: string | null;
+  /** A rewording offered after a refusal, if any. */
+  suggested: string[] | null;
   report: CaseReport | null;
   error: string | null;
   vector: number[] | null;
@@ -142,10 +146,16 @@ for (const c of selected) {
     run_id: runId,
     usd,
     seconds: Math.round((Date.now() - started) / 1000),
-    verdict: result ? verdictLabel(result) : `NO RESULT (${other ? other.type : 'nothing'})`,
+    verdict: result
+      ? verdictLabel(result)
+      : other?.type === 'halt'
+        ? `HALT · ${(other as { halt: { reason: string; scope?: { speech_act?: string } } }).halt.reason} · ${(other as { halt: { scope?: { speech_act?: string } } }).halt.scope?.speech_act ?? '?'}`
+        : `NO RESULT (${other ? other.type : 'nothing'})`,
     band: result?.scored.band ?? '—',
     count_line: result ? (evidenceTallySentence(result) ?? '—') : '—',
     classification,
+    checked_as: (events.find((e) => e.type === 'rewritten') as { statement?: string } | undefined)?.statement ?? null,
+    suggested: (events.find((e) => e.type === 'suggest') as { options?: Array<{ statement: string }> } | undefined)?.options?.map((o) => o.statement) ?? null,
     report,
     error: other && !result ? JSON.stringify(other).slice(0, 300) : null,
     vector: lastVector,
@@ -158,12 +168,12 @@ for (const c of selected) {
 const mark = (ok: boolean | undefined) => (ok === undefined ? '—' : ok ? 'pass' : '**FAIL**');
 const cell = (s: string) => s.replace(/\|/g, '\\|');
 const lines: string[] = [
-  '| case | verdict | band | count line | verdict ✓ | must-have ✓ | direction ✓ | forbidden ✓ | extra bills found |',
-  '|---|---|---|---|---|---|---|---|---|',
+  '| case | checked as | verdict | band | count line | verdict ✓ | must-have ✓ | direction ✓ | forbidden ✓ | extra bills found |',
+  '|---|---|---|---|---|---|---|---|---|---|',
 ];
 for (const r of rows) {
   lines.push(
-    `| ${r.id} | ${cell(r.verdict)} | ${r.band} | ${cell(r.count_line)} | ${mark(r.report?.verdict.pass)} | ${mark(r.report?.must_have.pass)} | ` +
+    `| ${r.id} | ${cell(r.checked_as ?? '—')} | ${cell(r.verdict)} | ${r.band} | ${cell(r.count_line)} | ${mark(r.report?.verdict.pass)} | ${mark(r.report?.must_have.pass)} | ` +
       `${mark(r.report?.direction.pass)} | ${mark(r.report?.forbidden.pass)} | ${cell(r.report?.extra_bills.join(', ') || '—')} |`,
   );
 }
@@ -186,6 +196,7 @@ if (failed.length) {
   for (const r of failed) {
     console.log(`  ${r.id} · run ${r.run_id}`);
     if (r.error) console.log(`    ${r.error}`);
+    if (r.suggested) console.log(`    offered instead: ${r.suggested.map((x) => `"${x}"`).join(' / ')}`);
     if (!r.report) continue;
     for (const [name, check] of Object.entries({ verdict: r.report.verdict, 'must-have': r.report.must_have, direction: r.report.direction, forbidden: r.report.forbidden })) {
       if (!check.pass) console.log(`    ${name}: ${check.detail.join('; ')}`);

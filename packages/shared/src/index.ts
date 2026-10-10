@@ -1279,6 +1279,17 @@ export interface TraceEvent {
   run_id: string;
 }
 
+/**
+ * A rewording to try, offered when a statement could not be checked (a halt,
+ * or "too broad"). Built from the reader's own topic: one option that keeps
+ * the side they took, or both sides when they took none — never one guessed
+ * side. Each option is checked only when the reader clicks it.
+ */
+export interface SuggestEvent {
+  type: 'suggest';
+  options: ClarifyOption[];
+}
+
 export type StreamEvent =
   | TraceEvent
   | StepEvent
@@ -1288,6 +1299,7 @@ export type StreamEvent =
   | HaltEvent
   | RewrittenEvent
   | ClarifyEvent
+  | SuggestEvent
   | StreamErrorEvent
   | DoneEvent;
 

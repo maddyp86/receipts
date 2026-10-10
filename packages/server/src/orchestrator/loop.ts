@@ -16,7 +16,8 @@ import {
 import type { AuditEvent, StoredAlignment, StoredMatch } from '../data/QueryStore.js';
 import { derivePartialSubtype, describeExclusions } from '../evaluation/evidenceGate.js';
 import { classifyScope, haltForScope } from '../scope/classifyScope.js';
-import { cleanUpInput, needsCleanUp } from '../cleanup/cleanUpInput.js';
+import { cleanUpInput, needsCleanUp, suggestRewording } from '../cleanup/cleanUpInput.js';
+import { asReaderQuestion } from '../scope/readerQuestion.js';
 import { describeCoverage } from '../scoring/coverage.js';
 import { cacheKey, isCacheable, resultCache } from '../data/ResultCache.js';
 import { answerCache, answerKey, stampReused } from '../data/AnswerCache.js';
@@ -1085,6 +1086,19 @@ async function classifyStatementScope(session: QuerySession, emit: Emit): Promis
     return false;
   }
 
+  // BACKSTOP: a reader's question is not the senator's rhetoric
+  // (scope/readerQuestion.ts).
+  const read = asReaderQuestion(session.scope, session.promiseText);
+  if (read.overridden) {
+    traceStep({
+      stage: 'SCOPE_OVERRIDE', kind: 'deterministic',
+      label: 'RHETORIC → POSITION: the text is a reader\'s question, not the senator\'s rhetoric',
+      input: { text: session.promiseText, scope: session.scope },
+      output: { speech_act: read.scope.speech_act },
+    });
+    session.scope = read.scope;
+  }
+
   const halt = haltForScope(session.scope);
   emit({
     type: 'step',
@@ -1316,6 +1330,19 @@ export async function runQuery(
       };
       record({ type: 'error', error });
     } finally {
+      // A rewording to try, when this could not be checked: a halt no vote can
+      // settle, or "too broad". Input help, so behind the same switch as
+      // clean-up. One small model call, only on a refusal; NONE leaves the
+      // fixed examples in place.
+      const refused = recorded.some(
+        (e) =>
+          (e.type === 'halt' && e.halt.reason === 'NON_TESTABLE_SPEECH_ACT') ||
+          (e.type === 'result' && e.result.scored.nd_reason === 'NOT_EVALUABLE'),
+      );
+      if (config.features.queryCleanup && refused) {
+        const suggestion = await suggestRewording(promiseText);
+        if (suggestion.action === 'SUGGEST') record({ type: 'suggest', options: suggestion.options });
+      }
       record({ type: 'done' });
       // Stored only when the run reached a real conclusion. An errored run is
       // never cached: a transient upstream failure that got stuck here would

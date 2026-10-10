@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type {
+  ClarifyOption,
   Interpretation,
   QueryClarify,
   QueryHalt,
@@ -50,6 +51,12 @@ export interface StreamState {
    * error — and unlike one, a tap away from a check.
    */
   clarify: QueryClarify | null;
+  /**
+   * A rewording to try, built from the reader's own topic, when the statement
+   * could not be checked (a halt, or "too broad"). One option that keeps their
+   * side, or both sides. Null when none was offered.
+   */
+  suggest: ClarifyOption[] | null;
   error: ToolError | null;
   /**
    * The server-side run id for this stream. First event on every fresh run;
@@ -69,6 +76,7 @@ const EMPTY: StreamState = {
   halt: null,
   rewritten: null,
   clarify: null,
+  suggest: null,
   error: null,
   traceId: null,
 };
@@ -153,6 +161,8 @@ export function useReceiptStream() {
               return { ...prev, rewritten: { original: event.original, statement: event.statement } };
             case 'clarify':
               return { ...prev, clarify: event.clarify };
+            case 'suggest':
+              return { ...prev, suggest: event.options };
             case 'error':
               return { ...prev, error: event.error };
             case 'done':
