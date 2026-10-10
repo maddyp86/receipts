@@ -111,3 +111,13 @@ describe('where it shows', () => {
     expect(verdict(true, null)).not.toContain('Beta ·');
   });
 });
+
+describe('the question box', () => {
+  it('shows specific example statements, naming no senator', () => {
+    const page = entry(false);
+    expect(page).toContain('Be specific: name the policy, program or bill.');
+    expect(page).toContain('“promised to protect clean air standards from rollback”');
+    expect(page).toContain('“promised to require photo ID to vote” or “promised to classify fentanyl-related drugs as Schedule I”.');
+    expect(page).not.toMatch(/Schumer|Thune/);
+  });
+});

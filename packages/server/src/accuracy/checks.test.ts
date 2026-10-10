@@ -43,7 +43,7 @@ describe('the cases file', () => {
   it('parses, and every case names a senator, a statement and an allowed verdict', () => {
     const file = fileURLToPath(new URL('../../../../docs/eval/cases.json', import.meta.url));
     const { cases } = JSON.parse(readFileSync(file, 'utf8')) as { cases: EvalCase[] };
-    expect(cases).toHaveLength(10);
+    expect(cases).toHaveLength(18);
     for (const c of cases) {
       expect(c.senator).toMatch(/^[A-Z]\d{6}$/);
       expect(c.statement.length).toBeGreaterThan(5);
@@ -181,7 +181,8 @@ describe('where a missing bill went (from the trace)', () => {
   it('not retrieved, dropped by relevance, below the floor, or retrieved', () => {
     expect(whereIsBill('z-9', steps)).toBe('not retrieved at or above the retrieval floor 0.5 (3 of 10 returned were)');
     expect(whereIsBill('c-3', steps)).toBe('retrieved (rank 3 of 3, score 0.510); dropped by the relevance check as FALSE_POSITIVE');
-    expect(whereIsBill('b-2', steps)).toBe('retrieved (rank 2 of 3, score 0.530), relevance TRUE_POSITIVE; below the evidence floor 0.575');
+    // At or above the evidence floor (0.50 since 2026-10-10).
+    expect(whereIsBill('b-2', steps)).toBe('retrieved (rank 2 of 3, score 0.530), relevance TRUE_POSITIVE');
     expect(whereIsBill('a-1', steps)).toBe('retrieved (rank 1 of 3, score 0.620)');
   });
 
@@ -198,5 +199,21 @@ describe('a list of directions', () => {
     const counter = checkCase(c, result(score([row('a-1', NAY), row('b-2'), row('c-3')])), '');
     expect(counter.direction.pass).toBe(false);
     expect(counter.direction.detail[0]).toMatch(/expected consistent or not_counted$/);
+  });
+});
+
+describe('forbidden text, and a not-determinable reason list', () => {
+  it('text on the card is forbidden, case-insensitively', () => {
+    const c = base({ verdict: ['NOT_DETERMINABLE'], forbidden: [{ text: "We couldn't tell what to check" }] });
+    const r = result(nd('NOT_EVALUABLE', []));
+    expect(checkCase(c, r, 'This is too broad to check against specific bills.').forbidden.pass).toBe(true);
+    expect(checkCase(c, r, "we couldn't tell what to check").forbidden.pass).toBe(false);
+  });
+
+  it('nd_reasons narrows only a not-determinable answer', () => {
+    const c = base({ verdict: ['NOT_DETERMINABLE', 'KEPT'], nd_reasons: ['NOT_EVALUABLE'] });
+    expect(checkCase(c, result(nd('NOT_EVALUABLE', [])), '').verdict.pass).toBe(true);
+    expect(checkCase(c, result(nd('NO_MATCHES', [])), '').verdict.pass).toBe(false);
+    expect(checkCase(c, result(score([row('a-1')])), '').verdict.pass).toBe(true);
   });
 });

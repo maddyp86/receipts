@@ -58,6 +58,10 @@ A pair outside this list is rejected by the server. If nothing fits well, choose
 
 If the statement is too vague to check against legislation at all, set \`is_evaluable\` to false. Do NOT guess a category to fill the field — an invented category injects that subject's vocabulary into the search and manufactures confident matches on a topic nobody asked about.
 
+## SUBJECT
+
+Classify by the policy, program or instrument the statement is about, not by how the speaker characterises it. When a statement calls one thing by another's name, choose the issue of the thing itself: tariffs are Trade even when the speaker calls them "a tax".
+
 ## STANCE
 
 \`stance\` is what the statement WANTS, not how it is phrased. "Protect", "preserve" and "defend" mean the speaker wants the thing to continue — that is In Favor of that goal, not opposition.

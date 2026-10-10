@@ -2047,3 +2047,40 @@ stand in only when the user gave none.
 per-statement evaluations are not re-run per request, so its run-to-run
 variance does not reach a reader the same way. Recorded so a future
 re-verification of the port reads this as deliberate, not drift.
+
+---
+
+## 2026-10-10 — the evidence floor departs from WF7a, deliberately
+
+**What.** `scoring/config.ts` `SIMILARITY.STRONG`, the evidence floor, is
+0.50, down from WF7a `Parse and Store Matches` `STRONG_THRESHOLD` 0.575. It
+now equals the retrieval floor (`WEAK`), so every retrieved candidate that
+survives the relevance check is weighed and `ALL_BELOW_FLOOR` no longer
+occurs. The card's "closely / loosely related" wording keeps the old line in
+a new display-only constant, `SIMILARITY.CLOSE` = 0.575, so a 0.51 match is
+still described as loosely related.
+
+**Why.** The accuracy set's first run (`docs/eval/cases.json`, #47): in seven
+of eight failing cases a listed bill had been retrieved and confirmed by the
+relevance check, then scored 0.50–0.573. The 0.575 line was calibrated on the
+corpus's promise text (GPT-4.1 terms); the query tool's text scores lower
+against the same bill vectors (the gap recorded on 2026-09-07 above, still
+unexplained). A replay of that run at 0.50 from its traces
+(`tools/replay-floor.mts`) admitted no wrongly-directed bill. Precision is the
+relevance gate's job, not the threshold's — WF7a's own reasoning when it
+moved from 0.60 to 0.575 on 2026-08-09.
+
+**What it does not change.** No model call depends on the floor: relevance
+and the evaluator already ran on every candidate at or above 0.50. The band
+bar (`HIGH_AVG_STRENGTH` 0.65) is unchanged, so newly admitted matches can
+only lower a band.
+
+**For the pipeline.** Receipts and the senator profile now disagree on which
+matches count. Not a proposal to change WF7a until the batch pipeline is
+measured the same way.
+
+The same day, two changes with no pipeline counterpart: the classifier prompt
+(written here, not ported — see `evaluation/classify.ts`) gained a rule to
+classify the policy itself rather than the speaker's name for it, and the
+NOT_EVALUABLE copy now says the statement is too broad to hold against
+specific bills.

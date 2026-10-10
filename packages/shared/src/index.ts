@@ -183,7 +183,11 @@ export type PromiseType = 'policy' | 'process' | 'rhetorical' | 'non_legislative
 
 export type ConfidenceBand = 'High' | 'Medium' | 'Low';
 
-/** Retrieval bands from WF7a: STRONG >= 0.575, WEAK >= 0.50, else dropped. */
+/**
+ * How closely a card says a match is related: STRONG ("closely") at 0.575 and
+ * above, WEAK ("loosely") from 0.50. Wording only: since 2026-10-10 both count
+ * as evidence (the floor is 0.50; scoring/config.ts SIMILARITY).
+ */
 export type MatchStrength = 'STRONG' | 'WEAK' | 'BELOW_THRESHOLD';
 
 /** Evidence weighting class. Hard evidence is a vote or a sponsorship. */
@@ -1388,7 +1392,10 @@ export const ND_HEADLINE: Partial<Record<NotDeterminableReason, string>> = {
   WITHHELD_LOW_CONFIDENCE: "We can't make a reliable call on this",
   WITHHELD_PENDING_REVIEW: "We can't make a reliable call on this",
   WITHHELD_TEXT_UNAVAILABLE: "We can't make a reliable call on this",
-  NOT_EVALUABLE: "We couldn't tell what to check",
+  // The classifier judged the statement too broad to hold against specific
+  // bills. Not "we couldn't tell what to check": the subject is usually clear
+  // (it was classified, and bills on it were found), the commitment is not.
+  NOT_EVALUABLE: 'This is too broad to check against specific bills',
   NON_LEGISLATIVE: "We don't think a vote can settle this",
 };
 
@@ -1416,7 +1423,7 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   NON_LEGISLATIVE:
     "As we read it, this statement isn't something a bill or a vote can settle, and we only track legislative action.",
   NOT_EVALUABLE:
-    "We couldn't tell what specific commitment to check here. Try naming the policy, program, or outcome you have in mind.",
+    'This statement is too broad to hold against specific bills. Try naming a specific policy, program or bill — for example, “promised to protect clean air standards from rollback”.',
   UNDIRECTABLE_METADATA:
     "We found related legislation but couldn't establish which way it cuts on this statement, so we're not going to guess.",
   // Deliberately NOT exculpatory. Withholding an accusation is not a finding
