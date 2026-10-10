@@ -1,67 +1,44 @@
-import { useMemo } from 'react';
-import { SCOPE_NOTE, type Senator } from '@receipts/shared';
+import { useMemo, useRef } from 'react';
+import { ArrowRightIcon, FileTextIcon, InfoIcon } from 'lucide-react';
+import type { Senator } from '@receipts/shared';
+import type { Member } from '../data/roster.js';
+import { BetaNotice } from './entry/BetaNotice.js';
+import { HowItWorks } from './entry/HowItWorks.js';
+import { PromiseInput, type StatementKind } from './entry/PromiseInput.js';
+import { MemberPicker } from './members/MemberPicker.js';
+import { SelectedMember } from './members/SelectedMember.js';
+
+// Exported from here as before; the list itself lives with the other input copy.
+export { SPECIFIC_EXAMPLES } from '../data/topics.js';
 
 // ===========================================================================
 // The entry screen.
 //
-// Deliberately minimal. The senator picker is not clutter — it is how a user
-// learns what they can ask, so coverage is labelled honestly rather than hidden
-// behind a search box that quietly fails.
+// Two steps, in the order a voter thinks: who, then what. The picker is not
+// clutter — it is how a reader learns what they can ask, so coverage is shown
+// honestly (checked now / being added) rather than hidden behind a search box
+// that quietly fails.
+//
+// Nobody is preselected. With a short list, a default would be a nudge toward
+// whichever member happens to be first.
 // ===========================================================================
 
-export interface ExamplePromise {
-  label: string;
-  senatorId: string;
-  text: string;
-}
-
-/**
- * Three examples, chosen to show three different shapes of answer rather than
- * three wins: a clean kept promise, a genuinely mixed record, and one where the
- * intuitive reading of the vote is backwards.
- */
-export const EXAMPLES: ExamplePromise[] = [
-  {
-    label: 'Drug pricing',
-    senatorId: 'S000148',
-    text: 'promised to lower prescription drug prices',
-  },
-  {
-    label: 'Background checks',
-    senatorId: 'S000148',
-    text: 'promised to require universal background checks and close the gun show loophole',
-  },
-  {
-    label: 'Clean air',
-    senatorId: 'S000148',
-    text: 'promised to protect clean air standards from rollback',
-  },
-];
-
-/**
- * Helper text for the question box: what a checkable statement looks like.
- * Specific on purpose — a broad one ("I support our veterans") is too broad to
- * hold against bills — and naming no senator, since the list grows. The old
- * placeholder, "lower prescription drug prices", pointed at a law from before
- * the record starts.
- */
-export const SPECIFIC_EXAMPLES = [
-  'promised to protect clean air standards from rollback',
-  'promised to require photo ID to vote',
-  'promised to classify fentanyl-related drugs as Schedule I',
-];
-
 interface Props {
-  senators: Senator[];
+  /** The picker's list. Plain `Senator` rows are shown as senators. */
+  senators: ReadonlyArray<Member | Senator>;
+  /** The selected member's id, or '' for none. */
   selected: string;
   promise: string;
   busy: boolean;
   onSelect: (politicianId: string) => void;
   onPromiseChange: (text: string) => void;
   onSubmit: () => void;
-  onExample: (example: ExamplePromise) => void;
   /** The beta scope note. It points at "Something look wrong?", so only where that exists. */
   showScopeNote?: boolean;
+  /** The reader may assert "this was a campaign promise" (server flag). */
+  kindEnabled?: boolean;
+  kind?: StatementKind;
+  onKindChange?: (kind: StatementKind) => void;
 }
 
 export function Entry({
@@ -72,104 +49,115 @@ export function Entry({
   onSelect,
   onPromiseChange,
   onSubmit,
-  onExample,
   showScopeNote = false,
+  kindEnabled = false,
+  kind = 'position',
+  onKindChange = () => {},
 }: Props) {
-  // Analysed senators first — the picker should lead with what works.
-  const ordered = useMemo(
-    () => [...senators].sort((a, b) => Number(b.cached) - Number(a.cached)),
+  const pickerRef = useRef<HTMLElement>(null);
+
+  const members = useMemo<Member[]>(
+    () => senators.map((s) => ('chamber' in s ? s : { ...s, chamber: 'senate' as const })),
     [senators],
   );
+  // Only a covered member can be the selection: an id for someone the pipeline
+  // has not analysed would run straight into the "not analysed" stop.
+  const member = members.find((m) => m.politician_id === selected && m.cached) ?? null;
 
-  // An example for a senator no longer covered would run straight into the
-  // "not analysed" stop. Offer only those the picker offers.
-  const examples = useMemo(
-    () => EXAMPLES.filter((ex) => senators.some((s) => s.cached && s.politician_id === ex.senatorId)),
-    [senators],
-  );
+  const hasPromise = promise.trim().length > 2;
+  const blockedReason = !member ? 'Pick who to check first' : !hasPromise ? 'Tell us what they said' : null;
+  const stepsDone = !member ? 0 : !hasPromise ? 1 : 2;
 
-  const canSubmit = Boolean(selected) && promise.trim().length > 2 && !busy;
+  function handleSubmit() {
+    if (busy) return;
+    if (!member) {
+      pickerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if (!hasPromise) {
+      document.getElementById('promise')?.focus();
+      return;
+    }
+    onSubmit();
+  }
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (canSubmit) onSubmit();
+        handleSubmit();
       }}
     >
-      {showScopeNote ? (
-        <aside className="scope-note" aria-label="About this beta">
-          {SCOPE_NOTE.map((p) => (
-            <p key={p}>{p}</p>
-          ))}
-        </aside>
-      ) : null}
-
-      <div className="field">
-        <span className="field-label" id="senator-label">
-          Senator
-        </span>
-        <div className="senators" role="group" aria-labelledby="senator-label">
-          {ordered.map((s) => (
-            <button
-              key={s.politician_id}
-              type="button"
-              className="senator"
-              aria-pressed={selected === s.politician_id}
-              onClick={() => onSelect(s.politician_id)}
-            >
-              <span>
-                <span className="senator-name">{s.name}</span>
-                <span className="senator-meta">
-                  {s.party}
-                  {s.state ? `–${s.state}` : ''}
-                </span>
-              </span>
-              <span className={s.cached ? 'coverage available' : 'coverage'}>
-                {s.cached ? 'Available now' : 'Not analyzed yet'}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="field">
-        <label htmlFor="promise">The promise</label>
-        <textarea
-          id="promise"
-          className="promise"
-          value={promise}
-          placeholder={`e.g., ${SPECIFIC_EXAMPLES[0]}`}
-          aria-describedby="promise-help"
-          onChange={(e) => onPromiseChange(e.target.value)}
-        />
-        <p className="promise-help" id="promise-help">
-          Be specific: name the policy, program or bill. For example,{' '}
-          {SPECIFIC_EXAMPLES.map((ex, i) => (
-            <span key={ex}>
-              “{ex}”{i < SPECIFIC_EXAMPLES.length - 2 ? ', ' : i === SPECIFIC_EXAMPLES.length - 2 ? ' or ' : '.'}
-            </span>
-          ))}
+      <header>
+        <h1 className="font-serif text-[36px] leading-none text-ink sm:text-[44px]">Receipts</h1>
+        <p className="mt-3 max-w-[38ch] text-[19px] leading-snug text-ink-soft sm:text-[21px]">
+          See if what a member of Congress says matches what they do — checked against their real votes and bills.
         </p>
-        <div className="examples">
-          {examples.map((ex) => (
-            <button
-              key={ex.label}
-              type="button"
-              className="example"
-              onClick={() => onExample(ex)}
-            >
-              {ex.label}
-            </button>
-          ))}
-        </div>
+        <BetaNotice full={showScopeNote} />
+      </header>
+
+      <div className="mt-6 border-y border-rule py-4">
+        <HowItWorks done={stepsDone} />
       </div>
 
-      <div className="submit-row">
-        <button type="submit" className="submit" disabled={!canSubmit}>
-          {busy ? 'Checking…' : 'Check this promise'}
+      <section ref={pickerRef} aria-labelledby="picker-heading" className="mt-10 scroll-mt-6">
+        {member ? (
+          <>
+            <h2 id="picker-heading" className="sr-only">
+              Who you’re checking
+            </h2>
+            <SelectedMember member={member} onChange={() => onSelect('')} />
+          </>
+        ) : (
+          <>
+            <h2 id="picker-heading" className="font-serif text-[26px] leading-tight text-ink sm:text-[30px]">
+              Who do you want to check?
+            </h2>
+            <p className="mb-5 mt-2 text-[17px] text-ink-soft">
+              These are the members of Congress we’ve checked so far. More are being added.
+            </p>
+            <MemberPicker members={members} selectedId={null} onSelect={onSelect} />
+          </>
+        )}
+      </section>
+
+      <section aria-label="What they said" className="mt-12">
+        <PromiseInput
+          memberName={member?.name ?? null}
+          value={promise}
+          onChange={onPromiseChange}
+          kindEnabled={kindEnabled}
+          kind={kind}
+          onKindChange={onKindChange}
+        />
+      </section>
+
+      <div className="sticky bottom-0 z-10 -mx-5 mt-10 border-t border-rule bg-paper/95 px-5 pb-5 pt-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-16 sm:backdrop-blur-none">
+        <button
+          type="submit"
+          aria-disabled={blockedReason || busy ? 'true' : undefined}
+          className={`flex min-h-[56px] w-full items-center justify-center gap-2 rounded-card text-[18px] font-semibold transition-colors duration-150 ${
+            blockedReason
+              ? 'cursor-default border border-dashed border-ink-faint bg-cantsay-wash text-ink-soft'
+              : 'bg-ink text-paper hover:bg-[#33312D]'
+          }`}
+        >
+          {blockedReason ? (
+            <>
+              <InfoIcon className="h-5 w-5" aria-hidden="true" />
+              {blockedReason}
+            </>
+          ) : (
+            <>
+              {busy ? 'Checking…' : 'Check their record'}
+              <ArrowRightIcon className="h-5 w-5" aria-hidden="true" />
+            </>
+          )}
         </button>
-        <p className="trust-cue">Every answer links back to real bills.</p>
+        <p className="mt-3 flex items-center justify-center gap-2 text-[15px] text-ink-soft">
+          <FileTextIcon className="h-4 w-4" aria-hidden="true" />
+          Every answer links back to real bills.
+        </p>
       </div>
     </form>
   );

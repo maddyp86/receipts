@@ -26,7 +26,7 @@ const entry = (showScopeNote: boolean) =>
       React.createElement(Entry, {
         senators: [{ politician_id: 'X000001', name: 'Jane Example', cached: true, party: 'D', state: 'XX' }],
         selected: 'X000001', promise: '', busy: false, showScopeNote,
-        onSelect: () => {}, onPromiseChange: () => {}, onSubmit: () => {}, onExample: () => {},
+        onSelect: () => {}, onPromiseChange: () => {}, onSubmit: () => {},
       }),
     ),
   );
