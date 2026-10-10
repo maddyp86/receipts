@@ -158,6 +158,16 @@ describe('4. forbidden', () => {
     expect(checkCase(base({ forbidden: ['TALLY_SHOWN'] }), kept, '').forbidden.pass).toBe(false);
   });
 
+  it('"did nothing" wording is about the senator, not about bills', () => {
+    // Case 3, run on evaluator v8: a fact about the bills, not the senator.
+    expect(didNothingSentences('The key limit here is that the two substantive bills were never voted on by the full Senate — what we have is co-sponsorship.', 'Schumer')).toEqual([]);
+    expect(didNothingSentences('They were never voted on by the full Senate.', 'Schumer')).toEqual([]);
+    expect(didNothingSentences('Schumer never voted for it.', 'Schumer')).toEqual(['Schumer never voted for it.']);
+    expect(didNothingSentences('The senator has simply never acted on this.')).toHaveLength(1);
+    expect(didNothingSentences('We found no record of Thune on this.', 'Thune')).toHaveLength(1);
+    expect(didNothingSentences('This is his full record.')).toHaveLength(1);
+  });
+
   it('"did nothing" wording, but not the sentences that guard against it', () => {
     expect(didNothingSentences('He did nothing on this. Fine.')).toEqual(['He did nothing on this.']);
     expect(didNothingSentences('The senator has no record on drug prices.')).toHaveLength(1);

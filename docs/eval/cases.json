@@ -85,8 +85,7 @@
       "must_have": [
         {
           "bill": "s4554-118",
-          "direction": "not_counted",
-          "outcome": "PROCEDURAL_SWITCH"
+          "direction": "not_counted"
         },
         {
           "bill": "s6-119",
@@ -111,7 +110,7 @@
         },
         "DID_NOTHING_WORDING"
       ],
-      "note": "s6-119 may be consistent or not counted (neutral); both pass. Corrected 2026-10-10."
+      "note": "s6-119 may be consistent or not counted (neutral); both pass. s4554-118 passes if not counted for any reason — a procedural switch or no effect (corrected 2026-10-10, evaluator v8)."
     },
     {
       "id": "4-schumer-tariffs",
@@ -343,7 +342,7 @@
     {
       "id": "15-thune-voter-id",
       "senator": "T000250",
-      "statement": "Require proof of citizenship and photo ID to vote.",
+      "statement": "Require photo ID to vote.",
       "verdict": [
         "KEPT"
       ],
@@ -359,7 +358,8 @@
       ],
       "forbidden": [
         "DID_NOTHING_WORDING"
-      ]
+      ],
+      "note": "Was \"Require proof of citizenship and photo ID to vote.\" until 2026-10-10: that bundled two policies, and the evaluator rightly read a photo-ID bill as a different object from both together. Both must-haves kept."
     },
     {
       "id": "16-schumer-fentanyl-schedule-i",
