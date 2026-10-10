@@ -89,6 +89,21 @@ export interface FeedbackStore {
   readonly kind: 'supabase' | 'null';
   /** Store one row. Throws when it could not be stored; the caller says so. */
   add(row: FeedbackRow): Promise<void>;
+  /**
+   * Whether the table accepts the two prompts' answers (migration 013). The
+   * prompts are offered only when it does, so turning the flag on before the
+   * migration hides them instead of failing every answer.
+   */
+  promptsAccepted(): Promise<boolean>;
+}
+
+/** Every kind the two prompts send. All must be allowed. */
+const PROMPT_KINDS: readonly string[] = [...FEEDBACK_PROMPT_KINDS.result, ...FEEDBACK_PROMPT_KINDS.evidence];
+
+/** True when this kind CHECK constraint allows every prompt kind. Pure, for the test. */
+export function constraintAcceptsPrompts(definitions: readonly string[]): boolean {
+  const kindCheck = definitions.find((d) => /\bkind\b/.test(d) && d.includes('QUESTION_MISREAD'));
+  return Boolean(kindCheck) && PROMPT_KINDS.every((k) => kindCheck!.includes(`'${k}'`));
 }
 
 /** No database: feedback cannot be kept, and the endpoint says so rather than pretending. */
@@ -96,6 +111,9 @@ export const nullFeedbackStore: FeedbackStore = {
   kind: 'null',
   async add() {
     throw new Error('Feedback cannot be stored: no database is configured.');
+  },
+  async promptsAccepted() {
+    return false;
   },
 };
 
@@ -112,6 +130,34 @@ export class SupabaseFeedbackStore implements FeedbackStore {
       connectionTimeoutMillis: 10_000,
     });
     this.pool.on('error', (err) => console.error('[feedback] idle client error:', err.message));
+  }
+
+  private accepted: { value: boolean; at: number } | null = null;
+
+  /**
+   * Read from the catalog, not assumed: whether migration 013 has been run.
+   * Re-read every five minutes, so running it takes effect without a deploy.
+   * A failed read is "no" — offering prompts that cannot be stored is worse
+   * than not offering them.
+   */
+  async promptsAccepted(): Promise<boolean> {
+    if (this.accepted && Date.now() - this.accepted.at < 5 * 60_000) return this.accepted.value;
+    let value = false;
+    try {
+      const { rows } = await this.pool.query<{ def: string }>(
+        `select pg_get_constraintdef(con.oid) as def
+           from pg_constraint con
+           join pg_class cls on cls.oid = con.conrelid
+           join pg_namespace n on n.oid = cls.relnamespace
+          where n.nspname = 'app' and cls.relname = 'app_feedback' and con.contype = 'c'`,
+      );
+      value = constraintAcceptsPrompts(rows.map((r) => r.def));
+      if (!value) console.warn('[feedback] prompts are switched on but migration 013 has not been run; not offering them.');
+    } catch (err) {
+      console.error('[feedback] could not read whether the prompts are accepted:', err instanceof Error ? err.message : String(err));
+    }
+    this.accepted = { value, at: Date.now() };
+    return value;
   }
 
   async add(r: FeedbackRow): Promise<void> {

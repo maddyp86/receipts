@@ -12,7 +12,7 @@ import { primaryIssues, subIssuesFor } from './embeddings/taxonomy.js';
 import type { Corrections } from '@receipts/shared';
 import { actionStore, embedder } from './services.js';
 import { TAXONOMY_IS_COMPLETE } from './embeddings/taxonomy.js';
-import { feedbackLimiter, globalDailyCap, queryBurstLimiter, queryDailyLimiter, readOnlyLimiter } from './rateLimit.js';
+import { feedbackLimiter, globalDailyCap, queryBurstLimiter, queryDailyLimiter, readOnlyLimiter, refundDailyCheck } from './rateLimit.js';
 import { feedbackStore, usageCounter } from './services.js';
 import { validateFeedback } from './data/FeedbackStore.js';
 
@@ -143,7 +143,11 @@ app.get('/api/senators', async (_req, res) => {
     feedback_available: feedbackStore.kind === 'supabase',
     // The two prompts send kinds the table accepts only after migration 013,
     // so they are offered only once that has been run and the flag set.
-    feedback_prompts_available: feedbackStore.kind === 'supabase' && config.features.feedbackPrompts,
+    // And only once the table accepts their answers, read from the database,
+    // so switching the flag on before migration 013 hides them instead of
+    // failing every answer.
+    feedback_prompts_available:
+      feedbackStore.kind === 'supabase' && config.features.feedbackPrompts && (await feedbackStore.promptsAccepted()),
   });
 });
 
@@ -277,7 +281,10 @@ app.get('/api/query', queryDailyLimiter, queryBurstLimiter, globalCap, async (re
     closed = true;
   });
 
+  // A "which way?" stop checks nothing; its daily check is given back below.
+  let askedWhichWay = false;
   const emit = (event: StreamEvent) => {
+    if (event.type === 'clarify') askedWhichWay = true;
     if (closed) return;
     res.write(`data: ${JSON.stringify(event)}\n\n`);
   };
@@ -300,6 +307,7 @@ app.get('/api/query', queryDailyLimiter, queryBurstLimiter, globalCap, async (re
     });
   } finally {
     clearInterval(heartbeat);
+    if (askedWhichWay) await refundDailyCheck(req);
     if (!closed) res.end();
   }
 });

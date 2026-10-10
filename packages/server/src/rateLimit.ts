@@ -1,4 +1,4 @@
-import { rateLimit, type RateLimitRequestHandler } from 'express-rate-limit';
+import { MemoryStore, rateLimit, type RateLimitRequestHandler } from 'express-rate-limit';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import type { ToolError } from '@receipts/shared';
 import { config } from './config.js';
@@ -167,21 +167,40 @@ export const queryBurstLimiter: RateLimitRequestHandler = rateLimit({
   handler: respondRateLimited,
 });
 
+/**
+ * The daily limiter's own store and request property, so a check can be given
+ * back (`refundDailyCheck`). Its own property because the burst limiter runs
+ * after it and would overwrite the default `req.rateLimit`.
+ */
+const queryDailyStore = new MemoryStore();
+type DailyInfo = { queryDaily?: { resetTime?: Date; key?: string } };
+
 /** Sustained cap, for the drip that never trips the burst window. */
 export const queryDailyLimiter: RateLimitRequestHandler = rateLimit({
   ...COMMON,
   windowMs: HOURS_24,
   limit: config.rateLimit.queryPerDay,
+  store: queryDailyStore,
+  requestPropertyName: 'queryDaily',
   handler: (req, res) =>
     respondWith(
       req,
       res,
-      dailyLimitError(
-        config.rateLimit.queryPerDay,
-        (req as Request & { rateLimit?: { resetTime?: Date } }).rateLimit?.resetTime,
-      ),
+      dailyLimitError(config.rateLimit.queryPerDay, (req as Request & DailyInfo).queryDaily?.resetTime),
     ),
 });
+
+/**
+ * Give back the daily check this request used. For a "which way?" stop: the
+ * reader was asked a question and nothing was checked, so it does not count
+ * against their 10 a day. The burst limit and the global daily cap still
+ * count it — the stop costs a small model call, and a script must not be able
+ * to use stops to get past either.
+ */
+export async function refundDailyCheck(req: Request): Promise<void> {
+  const key = (req as Request & DailyInfo).queryDaily?.key;
+  if (key) await queryDailyStore.decrement(key);
+}
 
 /** Feedback submissions: a reader sends a handful; a script sends thousands. */
 export const feedbackLimiter: RateLimitRequestHandler = rateLimit({

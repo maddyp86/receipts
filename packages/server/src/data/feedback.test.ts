@@ -10,7 +10,7 @@ import {
   FEEDBACK_PROMPT_THANKS,
   FEEDBACK_THANKS,
 } from '@receipts/shared';
-import { ACCEPTED_KINDS, nullFeedbackStore, validateFeedback } from './FeedbackStore.js';
+import { ACCEPTED_KINDS, SupabaseFeedbackStore, constraintAcceptsPrompts, nullFeedbackStore, validateFeedback } from './FeedbackStore.js';
 
 // ===========================================================================
 // READER FEEDBACK — what it records, and that it can never change a verdict.
@@ -81,8 +81,16 @@ describe('it can never change a verdict', () => {
 
   it('the store has no read method', async () => {
     const mod = await import('./FeedbackStore.js');
-    expect(Object.keys(mod.nullFeedbackStore).sort()).toEqual(['add', 'kind']);
-    expect(Object.getOwnPropertyNames(mod.SupabaseFeedbackStore.prototype).sort()).toEqual(['add', 'constructor']);
+    expect(Object.keys(mod.nullFeedbackStore).sort()).toEqual(['add', 'kind', 'promptsAccepted']);
+    expect(Object.getOwnPropertyNames(mod.SupabaseFeedbackStore.prototype).sort()).toEqual(['add', 'constructor', 'promptsAccepted']);
+  });
+
+  // promptsAccepted reads the table's DEFINITION from the catalog (whether
+  // migration 013 has run), never a feedback row. Pinned on its source.
+  it('the one other method reads the catalog, never a feedback row', () => {
+    const src = SupabaseFeedbackStore.prototype.promptsAccepted.toString();
+    expect(src).toMatch(/from pg_constraint/);
+    expect(src).not.toMatch(/from\s+app\.app_feedback/i);
   });
 
   it('stores no IP, user agent or session', () => {
@@ -163,5 +171,25 @@ describe('migration 013', () => {
 
   it('is one transaction', () => {
     expect(body).toMatch(/\bbegin;[\s\S]*\bcommit;/i);
+  });
+});
+
+describe('feedback prompts are offered only once the table accepts them', () => {
+  // The kind constraint exactly as production reads today (012), and as 013 leaves it.
+  const before = "CHECK ((kind = ANY (ARRAY['QUESTION_MISREAD'::text, 'VERDICT_WRONG'::text, 'BILL_NOT_RELEVANT'::text, 'BILL_READ_BACKWARDS'::text])))";
+  const after = "CHECK ((kind = ANY (ARRAY['QUESTION_MISREAD'::text, 'VERDICT_WRONG'::text, 'BILL_NOT_RELEVANT'::text, 'BILL_READ_BACKWARDS'::text, 'ANSWERED_YES'::text, 'ANSWERED_PARTLY'::text, 'ANSWERED_NO'::text, 'BILL_RELEVANT'::text])))";
+  const other = 'CHECK ((char_length(promise_text) <= 2000))';
+
+  it('before migration 013: not offered', () => {
+    expect(constraintAcceptsPrompts([other, before])).toBe(false);
+  });
+  it('after it: offered', () => {
+    expect(constraintAcceptsPrompts([other, after])).toBe(true);
+  });
+  it('no kind constraint found: not offered', () => {
+    expect(constraintAcceptsPrompts([other])).toBe(false);
+  });
+  it('with no database: not offered', async () => {
+    expect(await nullFeedbackStore.promptsAccepted()).toBe(false);
   });
 });
