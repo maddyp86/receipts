@@ -92,13 +92,6 @@ process.exit(0);
 
 // ---- G2: both stores, same vectors ----------------------------------------
 
-/** Fields compared for a bill both stores return. Score is compared separately. */
-const FIELDS = [
-  'vote', 'cloture_vote', 'passage_vote', 'action_type', 'is_sponsor', 'is_cosponsor',
-  'title', 'summary', 'intended_effects', 'mechanisms', 'affected_stakeholders',
-  'primary_issue', 'sub_issue', 'bill_keywords', 'congress', 'source_url', 'action_uid',
-] as const;
-
 /** Every returned action, best first, one entry per bill at its best rank. */
 function byBill(res: { matches: MatchedAction[]; nearMisses: Array<{ action_uid: string; bill_id: string; score: number }> }) {
   const all = [
@@ -117,6 +110,14 @@ async function compareStores(path: string | undefined, k: string | undefined): P
   if (!config.database.url) throw new Error('--compare needs DATABASE_URL for the Supabase store');
   const { PineconeActionStore } = await import('../packages/server/src/data/PineconeActionStore.ts');
   const { SupabaseActionStore } = await import('../packages/server/src/data/SupabaseActionStore.ts');
+  // Fields compared for a bill both stores return. Score is compared separately.
+  // Declared here, not at module level: --compare runs before the module body
+  // below the dispatch has executed.
+  const FIELDS = [
+    'vote', 'cloture_vote', 'passage_vote', 'action_type', 'is_sponsor', 'is_cosponsor',
+    'title', 'summary', 'intended_effects', 'mechanisms', 'affected_stakeholders',
+    'primary_issue', 'sub_issue', 'bill_keywords', 'congress', 'source_url', 'action_uid',
+  ] as const;
   const pinecone = new PineconeActionStore();
   const supabase = new SupabaseActionStore();
   const topK = Number(k ?? config.retrieval.topK);
