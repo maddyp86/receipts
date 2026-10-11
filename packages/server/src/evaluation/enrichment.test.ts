@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nullEnrichmentSource } from './enrichment.js';
+import { nullEnrichmentSource, partyKey, whipVotes } from './enrichment.js';
 import { preEvaluatorGates, type GateRow } from './preEvaluatorGates.js';
 
 // ===========================================================================
@@ -74,5 +74,33 @@ describe('with enrichment present, the same row gates', () => {
     );
     expect(withDate.hit?.verdict).toBe('NOT_APPLICABLE_EXPIRED');
     expect(withDate.context.vote_flags).not.toContain('ACTION_DATE_PROXY');
+  });
+});
+
+describe("a senator is compared with their own party's whip", () => {
+  // Party Vote Positions holds one row per roll call per party. Before this,
+  // the lookup was keyed by roll call alone and the later row won.
+  const rows = [
+    { vote_id: 's100-119.2025', vote: 'Yea', party: 'D' },
+    { vote_id: 's100-119.2025', vote: 'Nay', party: 'R' },
+  ];
+
+  it("gives each party its own whip's vote, whatever the row order", () => {
+    for (const order of [rows, [...rows].reverse()]) {
+      const whip = whipVotes(order);
+      expect(whip.get(`s100-119.2025|${partyKey('Democrat')}`)).toBe('Yea');
+      expect(whip.get(`s100-119.2025|${partyKey('Republican')}`)).toBe('Nay');
+    }
+  });
+
+  it('reads the spelled-out and abbreviated party the same way', () => {
+    expect(partyKey('Democrat')).toBe(partyKey('D'));
+    expect(partyKey(' republican ')).toBe('R');
+  });
+
+  it('gives an independent no whip vote rather than either party\'s', () => {
+    const whip = whipVotes(rows);
+    expect(whip.get(`s100-119.2025|${partyKey('Independent')}`)).toBeUndefined();
+    expect(whip.get(`s100-119.2025|${partyKey('')}`)).toBeUndefined();
   });
 });

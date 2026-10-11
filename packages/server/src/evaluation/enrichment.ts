@@ -375,6 +375,8 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
     if (!uids.length) return new Map();
 
     const out = new Map<string, ActionEnrichment>();
+    // The senator's party on each action row, for picking their party's whip.
+    const partyOf = new Map<string, string>();
 
     // Enrich AFTER the evidence gate, so this reads the 2–4 admitted
     // candidates rather than all 10 — the mitigation data/sheets.ts calls for
@@ -391,6 +393,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
       );
       for (const r of rows) {
         const j = r.row ?? {};
+        partyOf.set(S(r.action_uid), partyKey(pickRow(j, 'Party')));
         out.set(S(r.action_uid), {
           cloture_vote: pickRow(j, 'Cloture Vote'),
           cloture_vote_id: pickRow(j, 'Cloture Vote ID'),
@@ -409,19 +412,22 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
     // The whip's vote lives in the 'Vote' column of Party Vote Positions —
     // there is no 'Party Alignment' column on that tab, so the mirror's typed
     // column of that name is null by design. G3 needs the vote, not a label.
+    //
+    // The tab holds one row per roll call PER PARTY: the Democratic whip's and
+    // the Republican whip's. The senator is compared with their own party's
+    // whip; the tab's row order says nothing about which one that is.
     const clotureIds = [...out.values()].map((e) => S(e.cloture_vote_id)).filter(Boolean);
     if (clotureIds.length) {
       try {
-        const { rows } = await this.pool.query<{ vote_id: string; vote: string | null }>(
-          `select vote_id, row->>'Vote' as vote
+        const { rows } = await this.pool.query<{ vote_id: string; vote: string | null; party: string | null }>(
+          `select vote_id, row->>'Vote' as vote, row->>'Party' as party
              from ${this.schema}.mirror_party_vote_positions
             where vote_id = any($1::text[])`,
           [clotureIds],
         );
-        const whip = new Map<string, string>();
-        for (const r of rows) if (S(r.vote)) whip.set(S(r.vote_id), S(r.vote));
+        const whip = whipVotes(rows);
         for (const [uid, e] of out) {
-          const v = whip.get(S(e.cloture_vote_id));
+          const v = whip.get(`${S(e.cloture_vote_id)}|${partyOf.get(uid) ?? ''}`);
           if (v) out.set(uid, { ...e, party_whip_vote: v });
         }
       } catch (err) {
@@ -574,6 +580,31 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
  * Exported for the tests, which pin the parse against real mirror rows rather
  * than against a live database.
  */
+/**
+ * A party as one letter: 'Democrat' and 'D' are both 'D'. The action rows spell
+ * the party out; Party Vote Positions abbreviates it.
+ */
+export function partyKey(party: unknown): string {
+  return S(party).charAt(0).toUpperCase();
+}
+
+/**
+ * "vote_id|party" -> that party's whip vote on the roll call.
+ *
+ * Keyed by party so a senator is never compared with the other party's whip.
+ * An independent matches neither row, so has no whip vote: the party check
+ * then fails open, as it does when the vote is missing, rather than comparing
+ * them with a whip they do not answer to.
+ */
+export function whipVotes(rows: Array<{ vote_id: string; vote: string | null; party: string | null }>): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    const party = partyKey(r.party);
+    if (S(r.vote) && party) out.set(`${S(r.vote_id)}|${party}`, S(r.vote));
+  }
+  return out;
+}
+
 export function sponsorshipOf(row: Record<string, unknown>): SponsorshipEnrichment {
   const committees = pickRow(row, 'Committee Member Of');
   return {
