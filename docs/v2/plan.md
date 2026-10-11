@@ -35,7 +35,7 @@ There is no election deadline on this. Nothing a voter sees changes until the ne
 
 | Table | One row per | Notes |
 |---|---|---|
-| `members` | member of Congress | All 541 rows of the Politicians tab (100 Senate, 441 House including delegates). Holds chamber, district, party, Senate vote ID, leadership roles, `in_scope`, `live`, and the congresses collected. |
+| `members` | member of Congress | All 538 rows of the Politicians tab (100 Senate, 438 House including delegates). Holds chamber, district, party, Senate vote ID, leadership roles, `in_scope`, `live`, and the congresses collected. |
 | `bills` | bill | Titles, dates, status, progress stage and outcome, committees, text link. |
 | `bill_impacts` | bill and text version | The impact statement, issue tags, keywords, stakeholders, and the embedding. Replaces three tabs. |
 | `roll_calls` | roll-call vote | Chamber, real timestamp, bill, category, result. |
@@ -75,7 +75,7 @@ Counts are as read on 10 October 2026, after the partial Ossoff load was rolled 
 
 | What | How | Size |
 |---|---|---|
-| Members | Import the Politicians tab; check it against the public legislators file | 541 |
+| Members | Import the Politicians tab; check it against the public legislators file | 538 |
 | Bills | Import from Bills Master | 973 |
 | Impact statements, versions, stakeholders | Import from the Impact Statements workbook | 973 statements, 3,420 stakeholder rows |
 | Sponsorships | Import from the action rows that carry a sponsor or cosponsor flag | 919 of 1,162 |
