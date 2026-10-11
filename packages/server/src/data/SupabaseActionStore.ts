@@ -66,6 +66,15 @@ const SQL = `
     join core.bills b on b.bill_id = r.bill_id
     join core.bill_impacts i on i.impact_id = r.impact_id`;
 
+/**
+ * The similarity as Pinecone reports it: float32, nine significant digits.
+ *
+ * pgvector computes in double precision, and the score is printed into the
+ * relevance prompt ("Semantic Similarity Score: 0.559665859"). Full precision
+ * there would change the prompt's text for no gain in meaning.
+ */
+export const scoreOf = (similarity: number | string): number => Number(Number(similarity).toPrecision(9));
+
 /** WF6 upper-cases votes and writes 'NA' for "no such vote". */
 const voteOf = (v: string | null): string => (v ? v.toUpperCase() : 'NA');
 
@@ -147,7 +156,7 @@ export class SupabaseActionStore implements ActionStore {
       });
     }
 
-    const all = rows.map((r) => toMatchedAction(r.action_uid, Number(r.similarity), metadataOf(r)));
+    const all = rows.map((r) => toMatchedAction(r.action_uid, scoreOf(r.similarity), metadataOf(r)));
     return ok(searchResultOf(all, `core:${params.politicianId}`, params.topK));
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { metadataOf } from './SupabaseActionStore.js';
+import { metadataOf, scoreOf } from './SupabaseActionStore.js';
 import { toMatchedAction } from './PineconeActionStore.js';
 
 // ===========================================================================
@@ -57,6 +57,14 @@ describe('a core row in WF6 metadata shape', () => {
     expect(md.vote).toBe('NAY');
     expect(md.passage_vote).toBe('NAY');
     expect(md.cloture_vote).toBe('NA');
+  });
+});
+
+describe('the score reads like Pinecone\'s', () => {
+  it('is cut to nine significant digits, as Pinecone returns it', () => {
+    // The relevance prompt prints the score; a 15-digit double would change it.
+    expect(scoreOf(0.559694834028099)).toBe(0.559694834);
+    expect(String(scoreOf('0.674757123456789'))).toBe('0.674757123');
   });
 });
 
