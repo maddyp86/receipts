@@ -73,7 +73,17 @@ Ten bills, `statements_mode: sample`, drafts in `core.impact_drafts` (run 43). T
 - hr1-119's title isn't on WF5's large-bill list, so it didn't get the summary path either.
 - In live mode these drafts would be written to `bill_impacts`: they are flagged for review, but not marked title-only, because a text link exists.
 
-**Cost.** $0.61 for the ten (380,438 input tokens, 14,490 output, 26 web searches), about $0.06 a bill. A first run cost about the same but wrote only one draft: a bug, fixed below. The samples cost about $1.20 in all, against a $5 build budget. At the cap of 60 bills a day, live mode would cost at most about $3.70 a day; the monthly budget stop is $25.
+**Fixed and re-tested (11 October, run 44).** Every bill's text is now fetched and handed to the model inline, as version requests already were. Reconciliation bills take the large-bill summary path, and a bill with no published text gets the CRS summary rather than its title. The three bad bills, re-run:
+
+| Bill | Before | After |
+|---|---|---|
+| hr1-119 | Appropriations details; no tax provisions | Leads with the $5 trillion debt-limit increase, the tax extensions and new credits, and the SNAP and Medicaid changes |
+| hr5334-119 | "Text unavailable" | The educator expense deduction extended to early childhood educators (section 62(d)(1), from 2026) |
+| sres13-118 | "Text unavailable" | National Stalking Awareness Month: prevalence, technology-facilitated stalking, victim services |
+
+All three passed the parser's checks, with no flags and no missing fields. They cost $0.115 in all, with no web searches. Fetching the text is also cheaper: about $0.04 a bill.
+
+**Cost.** $0.61 for the ten (380,438 input tokens, 14,490 output, 26 web searches), about $0.06 a bill. A first run cost about the same but wrote only one draft: a bug, fixed below. The samples cost about $1.20 in all, against a $5 build budget. With the text fetched inline, a statement costs about $0.04; at the cap of 60 bills a day, live mode costs at most about $2.40 a day. The monthly budget stop is $25.
 
 ## Bugs found by running on n8n, all fixed
 
@@ -91,6 +101,6 @@ Ten bills, `statements_mode: sample`, drafts in `core.impact_drafts` (run 43). T
 
 ## Before cutover (decisions for Matt)
 
-1. **Fetch the bill text inline for every statement**, as version requests already do, and send reconciliation bills down the large-bill summary path (samples above). This changes WF5's behaviour.
+1. ~~Fetch the bill text inline for every statement~~: done 11 October and re-tested (above).
 2. Exercise the new-bill and new-pair paths on n8n once Congress is back in session, or before cutover with a staged bill.
 3. **Queued for after Phase 3, with the tax-query work:** only bill-level statements are embedded, in the old pipeline and v2 alike, so a gut-and-amend bill can be found only by its bill-level statement. For example, hr5334-119 is searchable as the educator deduction, not as the Russia sanctions text that was enacted.
