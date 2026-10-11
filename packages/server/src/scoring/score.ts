@@ -70,6 +70,9 @@ export type ScorableMatch = MatchedAction & {
   text_version?: import('@receipts/shared').TextVersionDisclosure;
   /** The record sentence. Passed through untouched; never read for scoring. */
   record?: string;
+  /** The bill's path and the record's remainder, for the card. Passed through; never read for scoring. */
+  path?: import('@receipts/shared').PathStep[];
+  record_detail?: string;
   /** The bill's history could not be read. Passed through; never read for scoring. */
   history_unavailable?: boolean;
   /**

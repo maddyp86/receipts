@@ -12,6 +12,7 @@ import {
   type Senator,
   type Stance,
   type PromiseType,
+  type PathStep,
 } from '@receipts/shared';
 import { senatorCache } from '../data/SenatorCache.js';
 import { queueStore } from '../data/QueueStore.js';
@@ -35,6 +36,7 @@ import {
   type EnrichmentReport,
 } from '../evaluation/enrichment.js';
 import { recordSentence } from '../scoring/recordSentence.js';
+import { billPath } from '../scoring/billPath.js';
 import { SUMMARY_UNDER_REVIEW_GATE, SUMMARY_UNDER_REVIEW_REASON, summaryUnderReview } from '../evaluation/summaryReview.js';
 import {
   applyTextVersion,
@@ -1250,17 +1252,32 @@ async function evaluateEffectsTool(
   // outcome and committee clauses. The card says so, so that the absence is
   // not read as "never advanced".
   const historyUnavailable = enrichmentFailures.some((f) => f.part === 'bill_progress');
-  const recordFor = (m: MatchedAction): { record?: string; history_unavailable?: boolean } => {
-    const r = recordSentence({
+  const recordFor = (m: MatchedAction): { record?: string; record_detail?: string; path?: PathStep[]; history_unavailable?: boolean } => {
+    const e = enrichment.get(m.action_uid) ?? null;
+    const input = {
       bill_id: String(m.bill_id ?? ''),
       is_sponsor: m.is_sponsor,
       is_cosponsor: m.is_cosponsor,
-      sponsorship: enrichment.get(m.action_uid) ?? null,
+      sponsorship: e,
       bill: bills.get(String(m.bill_id ?? '')) ?? null,
       text_version: textVersions[m.action_uid]?.disclosure ?? null,
+    };
+    const r = recordSentence(input);
+    // The card draws the path as steps; what the steps cannot show (when and
+    // how the name went on, a committee seat, text enacted elsewhere) stays
+    // as a sentence beside it. The full sentence is kept for the explainer.
+    const detail = r?.clauses.filter((c) => !c.sources.includes('Progress Outcome')).map((c) => c.text).join(' ');
+    const path = billPath({
+      ...input,
+      cloture_vote: e?.cloture_vote ?? m.cloture_vote,
+      cloture_vote_date: e?.cloture_vote_date ?? null,
+      passage_vote: e?.passage_vote ?? m.passage_vote,
+      passage_vote_date: e?.passage_vote_date ?? null,
     });
     return {
       ...(r ? { record: r.sentence } : {}),
+      ...(detail ? { record_detail: detail } : {}),
+      ...(path ? { path } : {}),
       ...(historyUnavailable ? { history_unavailable: true } : {}),
     };
   };

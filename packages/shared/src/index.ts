@@ -451,12 +451,41 @@ export interface DirectedAction extends MatchedAction {
   record?: string;
 
   /**
+   * The bill's path, left to right: introduced, its versions, the senator's own
+   * act, and how it ended. Built in code from the record (scoring/billPath.ts);
+   * a step the record does not hold is left out, never guessed, and a step
+   * whose date is unknown has `date: null`.
+   */
+  path?: PathStep[];
+
+  /**
+   * The parts of `record` the path cannot show — how and when the senator's
+   * name went on the bill, the committee they sit on, text enacted through
+   * another bill. Absent when the path says it all.
+   */
+  record_detail?: string;
+
+  /**
    * True when the bill's history — how far it got, which committees acted —
    * could not be read for this answer. Display only: the card says so, so
    * that a missing "reported by committee" is not read as "never reported".
    * Never read for scoring.
    */
   history_unavailable?: boolean;
+}
+
+/** One step on a bill's path. */
+export interface PathStep {
+  /** "Introduced", "Passed the House", "Final vote", "Became law" … */
+  label: string;
+  /** YYYY-MM-DD, or null when the record has no date for it. */
+  date: string | null;
+  /** The senator's own act on the bill: their vote ("Yes"/"No"), or sponsorship. */
+  senator?: { act: string } | null;
+  /** A short note on this step, e.g. "the text we read". */
+  note?: string | null;
+  /** The last step: how the bill ended, or where it stands. */
+  outcome?: boolean;
 }
 
 /**
