@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "The accuracy set. Expected outcomes signed off by Matthew, 2026-10-10 (cases 1–10, corrections to 1 and 3 the same day; cases 11–18 added the same day). Run with `npm run eval`; cases 19–25 (question-box examples and question forms) added the same day.",
+    "The accuracy set. Expected outcomes signed off by Matthew, 2026-10-10 (cases 1–10, corrections to 1 and 3 the same day; cases 11–18 added the same day). Run with `npm run eval`; cases 19–25 (question-box examples and question forms) added the same day; cases 26–50 (the 25 topic starters) added the same day.",
     "verdict: any one of the listed outcomes passes.",
     "  KEPT / BROKE                 single-mode verdict",
     "  KEPT_MIXED / BROKE_MIXED     ranked (mixed) verdict",
@@ -529,6 +529,390 @@
         "DID_NOTHING_WORDING"
       ],
       "note": "The question form of case 13."
+    },
+    {
+      "id": "26-schumer-topic-aca-tax-credits",
+      "senator": "S000148",
+      "statement": "Did they vote to extend the enhanced Affordable Care Act tax credits?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter (replaced 2026-10-10 after the first live run found nothing). Must return a real verdict, either way. Was \"capping the cost of insulin at $35 a month\": the cap was the 2022 law, before the record."
+    },
+    {
+      "id": "27-schumer-topic-medicaid-cuts",
+      "senator": "S000148",
+      "statement": "Do they support protecting Medicaid from cuts?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter (replaced 2026-10-10 after the first live run found nothing). Must return a real verdict, either way. Was \"protecting coverage for people with pre-existing conditions\": ALL_NEUTRAL."
+    },
+    {
+      "id": "28-schumer-topic-protect-access-to-abortion",
+      "senator": "S000148",
+      "statement": "Did they vote to protect access to abortion?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Abortion' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "29-thune-topic-restricting-abortion",
+      "senator": "T000250",
+      "statement": "Do they support restricting abortion?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Abortion' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "30-thune-topic-oppose-federal-funding-for-abortion",
+      "senator": "T000250",
+      "statement": "Do they oppose federal funding for abortion?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Abortion' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "31-schumer-topic-expand-background-checks-for-gun-sales",
+      "senator": "S000148",
+      "statement": "Did they vote to expand background checks for gun sales?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Guns' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "32-thune-topic-the-right-to-carry-a-concealed-firearm-a",
+      "senator": "T000250",
+      "statement": "Do they support the right to carry a concealed firearm across state lines?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Guns' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "33-schumer-topic-ban-assault-weapons",
+      "senator": "S000148",
+      "statement": "Did they vote to ban assault weapons?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Guns' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "34-thune-topic-secure-the-border-and-stop-illegal-immig",
+      "senator": "T000250",
+      "statement": "Did they vote to secure the border and stop illegal immigration?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Immigration' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "35-thune-topic-laken-riley-act",
+      "senator": "T000250",
+      "statement": "Did they vote for the Laken Riley Act?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter (replaced 2026-10-10 after the first live run found nothing). Must return a real verdict, either way. Was \"a path to citizenship for Dreamers\": NO_MATCHES."
+    },
+    {
+      "id": "36-thune-topic-extend-the-2017-tax-cuts",
+      "senator": "T000250",
+      "statement": "Did they vote to extend the 2017 tax cuts?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Taxes' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "37-schumer-topic-making-large-corporations-pay-more-in-ta",
+      "senator": "S000148",
+      "statement": "Do they support making large corporations pay more in taxes?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Taxes' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "38-schumer-topic-expand-the-child-tax-credit",
+      "senator": "S000148",
+      "statement": "Did they vote to expand the child tax credit?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Taxes' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "39-schumer-topic-debt-limit",
+      "senator": "S000148",
+      "statement": "Did they vote to raise the debt limit?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter (replaced 2026-10-10 after the first live run found nothing). Must return a real verdict, either way. Was \"raise the federal minimum wage\": ALL_NEUTRAL."
+    },
+    {
+      "id": "40-schumer-topic-ending-tariffs-on-imported-goods",
+      "senator": "S000148",
+      "statement": "Do they support ending tariffs on imported goods?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "No longer a topic starter (removed 2026-10-10). Kept as a regression case for a stance double-negative: \"supports ending tariffs on imported goods\" was classified Opposed and two identical tariff-ending resolutions were read as HINDER (run fb5fcdba-4d23-4427-abb5-5b56165de898). Expected KEPT for Schumer."
+    },
+    {
+      "id": "41-thune-topic-clear-rules-for-stablecoins-and-crypto",
+      "senator": "T000250",
+      "statement": "Did they vote for clear rules for stablecoins and crypto?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Jobs & the economy' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "42-schumer-topic-protect-clean-air-standards-from-rollbac",
+      "senator": "S000148",
+      "statement": "Did they vote to protect clean air standards from rollback?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Environment & energy' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "44-schumer-topic-expand-clean-energy-tax-credits",
+      "senator": "S000148",
+      "statement": "Did they vote to expand clean energy tax credits?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Environment & energy' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "45-schumer-topic-canceling-student-debt",
+      "senator": "S000148",
+      "statement": "Do they support canceling student debt?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Education' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "46-schumer-topic-expand-pell-grants",
+      "senator": "S000148",
+      "statement": "Did they vote to expand Pell Grants?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Education' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "47-schumer-topic-protect-social-security-benefits-from-cu",
+      "senator": "S000148",
+      "statement": "Did they vote to protect Social Security benefits from cuts?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Social Security' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "48-schumer-topic-end-the-penalties-that-cut-social-securi",
+      "senator": "S000148",
+      "statement": "Did they vote to end the penalties that cut Social Security for teachers, firefighters and police?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Social Security' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "49-thune-topic-requiring-photo-id-to-vote",
+      "senator": "T000250",
+      "statement": "Do they support requiring photo ID to vote?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Voting' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "50-schumer-topic-making-election-day-a-federal-holiday",
+      "senator": "S000148",
+      "statement": "Do they support making Election Day a federal holiday?",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED"
+      ],
+      "must_have": [],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Topic starter under 'Voting' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
     }
   ]
 }
