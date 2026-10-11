@@ -10,6 +10,14 @@
 //
 // Where a topic is contested, the examples point both ways, in the same
 // neutral wording, so the list does not presume which side a member is on.
+//
+// EVERY EXAMPLE IS AN EVAL CASE (docs/eval/cases.json, 26 onward) and must
+// return a real verdict for the senator it is most likely asked about.
+// Replaced 2026-10-10 after a live run: insulin and pre-existing conditions,
+// Dreamers, the minimum wage and oil and gas found nothing in the record
+// since January 2023 (insulin's $35 cap was the 2022 law). The tariffs
+// example is out until a stance double-negative is fixed: "supports ending
+// tariffs", classified as Opposed, was read as opposing the ending.
 // ===========================================================================
 
 export interface TopicExample {
@@ -40,8 +48,8 @@ export const topics: Topic[] = [
     id: 'health',
     label: 'Health care',
     examples: [
-      { text: 'Do they support capping the cost of insulin at $35 a month?' },
-      { text: 'Do they support protecting coverage for people with pre-existing conditions?' },
+      { text: 'Did they vote to extend the enhanced Affordable Care Act tax credits?' },
+      { text: 'Do they support protecting Medicaid from cuts?' },
     ],
   },
   {
@@ -67,7 +75,7 @@ export const topics: Topic[] = [
     label: 'Immigration',
     examples: [
       { text: 'Did they vote to secure the border and stop illegal immigration?' },
-      { text: 'Do they support a path to citizenship for Dreamers?' },
+      { text: 'Did they vote for the Laken Riley Act?' },
     ],
   },
   {
@@ -83,8 +91,7 @@ export const topics: Topic[] = [
     id: 'jobs',
     label: 'Jobs & the economy',
     examples: [
-      { text: 'Did they vote to raise the federal minimum wage?' },
-      { text: 'Do they support ending tariffs on imported goods?' },
+      { text: 'Did they vote to raise the debt limit?' },
       { text: 'Did they vote for clear rules for stablecoins and crypto?' },
     ],
   },
@@ -93,7 +100,6 @@ export const topics: Topic[] = [
     label: 'Environment & energy',
     examples: [
       { text: 'Did they vote to protect clean air standards from rollback?' },
-      { text: 'Do they support expanding oil and gas production?' },
       { text: 'Did they vote to expand clean energy tax credits?' },
     ],
   },

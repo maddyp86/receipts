@@ -43,7 +43,7 @@ describe('the cases file', () => {
   it('parses, and every case names a senator, a statement and an allowed verdict', () => {
     const file = fileURLToPath(new URL('../../../../docs/eval/cases.json', import.meta.url));
     const { cases } = JSON.parse(readFileSync(file, 'utf8')) as { cases: EvalCase[] };
-    expect(cases).toHaveLength(25);
+    expect(cases).toHaveLength(49);
     for (const c of cases) {
       expect(c.senator).toMatch(/^[A-Z]\d{6}$/);
       expect(c.statement.length).toBeGreaterThan(5);
