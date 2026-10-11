@@ -304,6 +304,8 @@ app.get('/api/query', queryDailyLimiter, queryBurstLimiter, globalCap, async (re
       // Optional. Supplying it lets a bounded statement ("we vote next week")
       // resolve its window instead of halting with STATEMENT_DATE_REQUIRED.
       statementDate: String(req.query.date ?? '').trim() || undefined,
+      // Set when the reader picked this statement from options we offered.
+      chosen: req.query.chosen === '1',
     });
   } finally {
     clearInterval(heartbeat);

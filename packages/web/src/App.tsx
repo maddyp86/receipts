@@ -50,6 +50,12 @@ export default function App() {
   // Nobody is preselected: with a short list, a default is a nudge.
   const [selected, setSelected] = useState('');
   const [promise, setPromise] = useState('');
+  /**
+   * What the reader typed, kept when they pick one of our options ("which
+   * way?", "which taxes?", a rewording): the answer still says "You asked"
+   * with their words, and "We checked" with the one they picked.
+   */
+  const [askedText, setAskedText] = useState<string | null>(null);
   const [kind, setKind] = useState<StatementKind>('position');
 
   const stream = useReceiptStream();
@@ -96,12 +102,16 @@ export default function App() {
   const baseCorrections = (): Corrections | undefined =>
     modes.override && kind === 'promise' ? { assert_campaign_promise: true } : undefined;
 
-  const submit = () => stream.run(selected, promise.trim(), baseCorrections());
+  const submit = () => {
+    setAskedText(null);
+    stream.run(selected, promise.trim(), baseCorrections());
+  };
 
   // A correction re-runs the ENTIRE query from embedding. `stream.run` resets
   // state first, so the previous verdict is gone before the new one starts —
   // there is no window in which an old verdict sits beside corrected values.
-  const rerunWithCorrections = (corrections: Corrections) => stream.run(selected, promise.trim(), corrections);
+  const rerunWithCorrections = (corrections: Corrections) =>
+    stream.run(selected, promise.trim(), corrections, undefined, { chosen: askedText !== null });
 
   // A STATEMENT_DATE_REQUIRED halt is resolved by supplying the date, which
   // re-runs the whole query — the date changes `valid_until`, which is what the
@@ -110,13 +120,17 @@ export default function App() {
 
   /** Back to the entry screen with the words kept, to reword them. */
   const reword = () => stream.reset();
-  /** The reader picked a side: that statement is now what they are asking. */
+  /** The reader picked one of our options: that statement is now what they are asking. */
   const checkStatement = (statement: string) => {
+    // Picked from options we offered: checked as it stands, never asked again,
+    // and the reader's own words stay at the top of the answer.
+    setAskedText(stream.clarify?.original ?? askedText ?? promise.trim());
     setPromise(statement);
-    stream.run(selected, statement, baseCorrections());
+    stream.run(selected, statement, baseCorrections(), undefined, { chosen: true });
   };
   /** Back to the entry screen with the statement we checked, to change it. */
   const editStatement = (statement: string) => {
+    setAskedText(null);
     setPromise(statement);
     stream.reset();
   };
@@ -129,7 +143,7 @@ export default function App() {
   const otherMembers = roster.filter((m) => m.cached && m.politician_id !== selected);
   const askSameOf = (politicianId: string) => {
     setSelected(politicianId);
-    stream.run(politicianId, promise.trim(), baseCorrections());
+    stream.run(politicianId, promise.trim(), baseCorrections(), undefined, { chosen: askedText !== null });
   };
   /** Back to the picker. */
   const changeMember = () => {
@@ -182,6 +196,7 @@ export default function App() {
               steps={stream.steps}
               interpretation={stream.interpretation}
               rewritten={stream.rewritten}
+              asked={askedText}
               onCancel={reword}
               onChange={editStatement}
             />
@@ -196,9 +211,12 @@ export default function App() {
                 <SelectedMember member={member} onChange={changeMember} compact />
               </div>
             ) : null}
-            <p className="mt-6 text-[17px] text-ink-soft">
-              You asked about: <span className="text-ink">“{promise.trim()}”</span>
-            </p>
+            {/* "Which taxes?" names what they typed itself, beside the choices. */}
+            {stream.clarify?.reason !== 'POLICY_REQUIRED' ? (
+              <p className="mt-6 text-[17px] text-ink-soft">
+                You asked about: <span className="text-ink">“{promise.trim()}”</span>
+              </p>
+            ) : null}
             <div className="mt-5 space-y-5">
               {stream.uncached ? (
                 <UncachedState senator={stream.uncached.senator} queued={stream.uncached.queued} onReset={changeMember} />
@@ -308,8 +326,10 @@ export default function App() {
                               the same card as on the waiting screen, and the
                               same way to change it. */}
                           <QuestionCard
-                            asked={stream.rewritten ? stream.rewritten.original : promise.trim()}
-                            statement={stream.rewritten ? stream.rewritten.statement : stream.interpretation.restated}
+                            asked={stream.rewritten ? stream.rewritten.original : (askedText ?? promise.trim())}
+                            statement={
+                              stream.rewritten ? stream.rewritten.statement : askedText ? promise.trim() : stream.interpretation.restated
+                            }
                             memberName={memberName}
                             interpretation={stream.interpretation}
                             done

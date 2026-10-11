@@ -6,6 +6,7 @@ import {
   FEEDBACK_PROMPT_BILL,
   FEEDBACK_PROMPT_RESULT,
   clarifyFor,
+  whichPolicyFor,
   type Interpretation,
   type QueryResult,
 } from '@receipts/shared';
@@ -110,6 +111,7 @@ describe('checkingLine', () => {
     ['opposes federal funding for abortion.', 'We’re checking whether Schumer’s votes and bills work against federal funding for abortion.'],
     ['promised to lower drug prices', 'We’re checking whether Schumer’s votes and bills follow through on a promise to lower drug prices.'],
     ['Protect clean air standards', 'We’re checking Schumer’s votes and bills against “Protect clean air standards”.'],
+    ['promised not to raise income taxes on individuals', 'We’re checking whether Schumer’s votes and bills keep a promise not to raise income taxes on individuals.'],
   ])('%s', (statement, line) => {
     expect(checkingLine(statement, 'Charles E. Schumer')).toBe(line);
   });
@@ -195,5 +197,30 @@ describe('the feedback prompts', () => {
     const page = card(false, true);
     expect(page).not.toContain(FEEDBACK_PROMPT_RESULT);
     expect(page).not.toContain(FEEDBACK_PROMPT_BILL);
+  });
+});
+
+describe('"which taxes?"', () => {
+  const clarify = whichPolicyFor('He promised not to raise my taxes.', 'taxes', [
+    { label: 'Income taxes', statement: 'opposes raising income taxes on individuals' },
+    { label: 'Payroll taxes', statement: 'opposes raising payroll taxes' },
+    { label: 'Taxes in general', statement: 'opposes raising taxes' },
+  ], 'Which taxes do you mean?');
+  const t = text(renderToStaticMarkup(React.createElement(ClarifyState, { clarify, onPick: () => {}, onReset: () => {} })));
+
+  it('asks which, shows what they typed, and each option says exactly what it checks', () => {
+    expect(t).toContain('Which taxes do you mean?');
+    expect(t).toContain('You asked: “He promised not to raise my taxes.”');
+    expect(t).toContain('Income taxes We’d check: “opposes raising income taxes on individuals”');
+    expect(t).toContain('Taxes in general We’d check: “opposes raising taxes”');
+    expect(t).toContain('Nothing is checked until you pick');
+    expect(t).toContain('Write my own instead');
+  });
+
+  it('the "which way?" card is unchanged', () => {
+    const side = text(renderToStaticMarkup(React.createElement(ClarifyState, { clarify: clarifyFor('stricter gun laws'), onPick: () => {}, onReset: () => {} })));
+    expect(side).toContain('Which do you want to check?');
+    expect(side).toContain('Supports stricter gun laws');
+    expect(side).not.toContain('We’d check');
   });
 });

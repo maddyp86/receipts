@@ -49,6 +49,9 @@ export type TraceStage =
   | 'CLEANUP'
   | 'SUGGEST_MODEL'
   | 'SUGGEST'
+  /** "Which policy?" (cleanup/askWhich.ts): the model call, then the code's decision on it. */
+  | 'WHICH_MODEL'
+  | 'WHICH'
   | 'CLARIFY'
   | 'SCOPE_MODEL'
   | 'SCOPE_CLASSIFY'
@@ -263,6 +266,16 @@ export class QueryTrace {
   begin(): (step: StepInput) => TraceStep {
     const t0 = Date.now();
     return (step) => this.record({ ...step, duration_ms: step.duration_ms ?? Date.now() - t0 });
+  }
+
+  /**
+   * Take steps recorded in a run that will not be kept, renumbered into this
+   * one: a check that ran before this run existed and turned out to change
+   * nothing ("which policy?" on a statement that named one) belongs here, not
+   * in a run of its own.
+   */
+  adopt(steps: readonly TraceStep[]): void {
+    for (const s of steps) this.steps.push({ ...s, run_id: this.runId, seq: this.seq++ });
   }
 
   /** Set once persistence has (or has not) produced a query row. */

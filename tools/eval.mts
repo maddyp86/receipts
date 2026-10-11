@@ -109,6 +109,8 @@ interface Row {
   checked_as: string | null;
   /** A rewording offered after a refusal, if any. */
   suggested: string[] | null;
+  /** Set when the run asked which policy and the case picked an option. */
+  picked: string | null;
   report: CaseReport | null;
   error: string | null;
   vector: number[] | null;
@@ -124,6 +126,25 @@ for (const c of selected) {
     await runQuery(c.senator, c.statement, (e) => events.push(e));
   } catch (err) {
     events.push({ type: 'error', error: { code: 'INTERNAL', message: String(err), recoverable: false } } as StreamEvent);
+  }
+  // Asked which policy (or which way)? Pick the case's option and check it, as
+  // a reader clicking that button would: the picked statement, as it stands.
+  let picked: string | null = null;
+  const asked = (events.find((e) => e.type === 'clarify') as { clarify?: { title?: string; options: Array<{ label: string; statement: string }> } } | undefined)?.clarify;
+  if (asked && c.pick) {
+    const option = asked.options.find((o) => o.label.toLowerCase().includes(c.pick!.toLowerCase()));
+    if (option) {
+      picked = `${asked.title ?? 'asked'} → ${option.label}`;
+      events.length = 0;
+      try {
+        await runQuery(c.senator, option.statement, (e) => events.push(e), undefined, { chosen: true });
+      } catch (err) {
+        events.push({ type: 'error', error: { code: 'INTERNAL', message: String(err), recoverable: false } } as StreamEvent);
+      }
+      events.unshift({ type: 'rewritten', original: c.statement, statement: option.statement } as StreamEvent);
+    } else {
+      picked = `${asked.title ?? 'asked'} → no option matching "${c.pick}" (offered: ${asked.options.map((o) => o.label).join(' / ')})`;
+    }
   }
   const runId = events.find((e) => e.type === 'trace')?.run_id ?? null;
   const result = (events.find((e) => e.type === 'result') as { result?: QueryResult } | undefined)?.result ?? null;
@@ -156,12 +177,13 @@ for (const c of selected) {
     classification,
     checked_as: (events.find((e) => e.type === 'rewritten') as { statement?: string } | undefined)?.statement ?? null,
     suggested: (events.find((e) => e.type === 'suggest') as { options?: Array<{ statement: string }> } | undefined)?.options?.map((o) => o.statement) ?? null,
+    picked,
     report,
     error: other && !result ? JSON.stringify(other).slice(0, 300) : null,
     vector: lastVector,
   };
   rows.push(row);
-  console.log(`${row.report?.pass ? 'PASS' : 'FAIL'} · ${row.verdict} · $${usd.toFixed(3)} · ${row.seconds}s · run ${runId}`);
+  console.log(`${row.report?.pass ? 'PASS' : 'FAIL'} · ${row.verdict} · $${usd.toFixed(3)} · ${row.seconds}s · run ${runId}${picked ? ` · ${picked}` : ''}`);
 }
 
 // ---- The table -------------------------------------------------------------
@@ -195,6 +217,7 @@ if (failed.length) {
   console.log('\nFailures (trace: npm run trace -- <run_id>):');
   for (const r of failed) {
     console.log(`  ${r.id} · run ${r.run_id}`);
+    if (r.picked) console.log(`    ${r.picked}`);
     if (r.error) console.log(`    ${r.error}`);
     if (r.suggested) console.log(`    offered instead: ${r.suggested.map((x) => `"${x}"`).join(' / ')}`);
     if (!r.report) continue;

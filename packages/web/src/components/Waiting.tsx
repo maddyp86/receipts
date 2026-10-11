@@ -87,10 +87,12 @@ export function checkingLine(statement: string, memberName: string, done = false
   const s = statement.trim().replace(/[.。]\s*$/, '');
   const lead = done ? 'We checked' : 'We’re checking';
   const record = `${surnameOf(memberName)}’s votes and bills`;
-  const m = /^(supports|opposes|promised to)\s+(.+)$/i.exec(s);
+  const m = /^(supports|opposes|promised not to|promised to)\s+(.+)$/i.exec(s);
   if (!m) return `${lead} ${record} against “${s}”.`;
   const rest = m[2]!;
   switch (m[1]!.toLowerCase()) {
+    case 'promised not to':
+      return `${lead} whether ${record} ${done ? 'kept' : 'keep'} a promise not to ${rest}.`;
     case 'supports':
       return `${lead} whether ${record} back ${rest}.`;
     case 'opposes':
@@ -165,12 +167,14 @@ interface Props {
   interpretation: Interpretation | null;
   /** Set when the reader typed a question and a statement is being checked in its place. */
   rewritten?: { original: string; statement: string } | null;
+  /** What the reader typed, when they picked one of our options and `promise` is that option. */
+  asked?: string | null;
   onCancel: () => void;
   /** Stop, and put the statement we were checking in the box to edit. */
   onChange: (statement: string) => void;
 }
 
-export function Waiting({ member, promise, steps, interpretation, rewritten = null, onCancel, onChange }: Props) {
+export function Waiting({ member, promise, steps, interpretation, rewritten = null, asked = null, onCancel, onChange }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [tip, setTip] = useState(0);
   const statuses = stageStatuses(steps);
@@ -222,8 +226,8 @@ export function Waiting({ member, promise, steps, interpretation, rewritten = nu
             misread can be caught — with one way to fix it. */}
         <QuestionCard
           className="mt-4 animate-rise-in shadow-soft"
-          asked={rewritten ? rewritten.original : promise}
-          statement={rewritten ? rewritten.statement : (interpretation?.restated ?? null)}
+          asked={rewritten ? rewritten.original : (asked ?? promise)}
+          statement={rewritten ? rewritten.statement : asked ? promise : (interpretation?.restated ?? null)}
           memberName={member.name}
           interpretation={interpretation}
           onChange={() => onChange(rewritten ? rewritten.statement : promise)}

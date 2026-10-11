@@ -430,6 +430,43 @@ export function ClarifyState({
   onPick: (statement: string) => void;
   onReset: () => void;
 }) {
+  // "Which taxes?": several readings, each showing the exact statement it
+  // checks — the reader is choosing wording we wrote, so they see it whole.
+  if (clarify.reason === 'POLICY_REQUIRED') {
+    return (
+      <Notice label="Which policy do you want to check?" title={clarify.title ?? 'Which do you mean?'}>
+        {clarify.original ? (
+          <p className="text-[15px]">
+            You asked: <span className="text-ink">“{clarify.original}”</span>
+          </p>
+        ) : null}
+        <p>{clarify.message}</p>
+        <div className="grid gap-3 pt-1">
+          {clarify.options.map((o) => (
+            <button
+              key={o.statement}
+              type="button"
+              onClick={() => onPick(o.statement)}
+              className="flex min-h-[64px] items-center justify-between gap-3 rounded-card border border-rule bg-card px-4 py-3 text-left shadow-soft transition-colors duration-150 hover:border-ink"
+            >
+              <span>
+                <span className="block text-[17px] font-medium text-ink">{o.label}</span>
+                <span className="mt-0.5 block text-[14px] leading-snug text-ink-soft">We’d check: “{o.statement}”</span>
+              </span>
+              <ArrowRightIcon className="h-5 w-5 shrink-0 text-ink-soft" aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+        <p className="text-[15px]">Nothing is checked until you pick. Your own words stay at the top of the answer.</p>
+        <div className="flex flex-wrap gap-3 border-t border-rule pt-4">
+          <button type="button" className={BTN_SECONDARY} onClick={onReset}>
+            Write my own instead
+          </button>
+        </div>
+      </Notice>
+    );
+  }
+
   return (
     <Notice label="Which position do you want to check?" title="Which do you want to check?">
       <p>{clarify.message}</p>

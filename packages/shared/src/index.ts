@@ -1249,12 +1249,26 @@ export interface ClarifyOption {
  * scored. Unlike a halt, the reader can go on with one tap.
  */
 export interface QueryClarify {
-  reason: 'SIDE_REQUIRED';
-  /** The neutral proposition both options are built from. */
+  /**
+   * SIDE_REQUIRED: a subject with no side ("which way?").
+   * POLICY_REQUIRED: a side on a whole area several policies could mean
+   * ("which taxes?"). Either way nothing was checked, and each option is
+   * checked only if the reader picks it.
+   */
+  reason: 'SIDE_REQUIRED' | 'POLICY_REQUIRED';
+  /** SIDE_REQUIRED: the neutral proposition both options are built from. POLICY_REQUIRED: the area, in the reader's words. */
   proposition: string;
+  /** The question to the reader, e.g. "Which taxes do you mean?". */
+  title?: string;
   /** User-facing copy. Safe to render verbatim. */
   message: string;
-  /** Always both sides, "supports" first — a fixed order, never chosen per member. */
+  /** POLICY_REQUIRED: what the reader typed, shown above the choices. */
+  original?: string;
+  /**
+   * SIDE_REQUIRED: always both sides, "supports" first — a fixed order, never
+   * chosen per member. POLICY_REQUIRED: 2–4 readings on the reader's own side,
+   * each showing the exact statement that would be checked.
+   */
   options: ClarifyOption[];
 }
 
@@ -1276,6 +1290,23 @@ export function clarifyFor(proposition: string): QueryClarify {
       { label: `Supports ${p}`, statement: `supports ${p}` },
       { label: `Opposes ${p}`, statement: `opposes ${p}` },
     ],
+  };
+}
+
+/** Readings of a broad statement for the reader to choose from. The only place they are built. */
+export function whichPolicyFor(original: string, topic: string, options: ClarifyOption[], question?: string): QueryClarify {
+  const t = topic.trim();
+  return {
+    reason: 'POLICY_REQUIRED',
+    proposition: t,
+    // Written by the model and checked in code (cleanup/askWhich.ts): "Which
+    // taxes do you mean?" reads right; "Which the economy do you mean?" would not.
+    title: question?.trim() || 'Which one do you mean?',
+    original: original.trim(),
+    message:
+      'That covers several different policies, and the answer depends on which one. We won’t guess. ' +
+      'Pick the one you mean, and we’ll check only that.',
+    options,
   };
 }
 

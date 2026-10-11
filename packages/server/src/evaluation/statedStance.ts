@@ -28,7 +28,7 @@ import type { Stance } from '@receipts/shared';
 // opening does not settle cleanly — a negation, a hedge — returns null.
 // ===========================================================================
 
-const SUBJECT = String.raw`(?:(?:he|she|they|the senator)\s+)?`;
+const SUBJECT = String.raw`(?:(?:i|we|he|she|they|the senator)\s+)?`;
 const FAVOR = String.raw`supports?|supported|backs?|backed|favou?rs?|favou?red|(?:promised|pledged|vowed|wants?|will work|plans?)\s+to|voted\s+for|is\s+for|are\s+for`;
 const OPPOSE = String.raw`opposes?|opposed|(?:is|are)\s+against|against|voted\s+against|rejects?|rejected|(?:promised|pledged|vowed)\s+not\s+to|(?:will\s+not|won['’]t)`;
 

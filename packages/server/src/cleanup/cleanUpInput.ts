@@ -137,7 +137,7 @@ export function carriedFrom(original: string, candidate: string): number {
   return want.filter((w) => have.some((h) => sameStem(h, w))).length / want.length;
 }
 
-const tidy = (v: unknown): string =>
+export const tidy = (v: unknown): string =>
   (typeof v === 'string' ? v : '').trim().replace(/\s+/g, ' ').replace(/^["“”']+|["“”']+$/g, '').replace(/[.;,]+$/, '');
 
 // ---- whose side is it? ----------------------------------------------------
@@ -301,7 +301,7 @@ export class CleanupUnavailableError extends Error {
 }
 
 /** One small model call on the reader's text, recorded as `stage`. The member is never sent. */
-function liveFetcher(system: string, version: string, stage: 'CLEANUP_MODEL' | 'SUGGEST_MODEL', what: string): CleanupFetcher {
+export function liveFetcher(system: string, version: string, stage: 'CLEANUP_MODEL' | 'SUGGEST_MODEL' | 'WHICH_MODEL', what: string): CleanupFetcher {
   return async (text) => {
     if (!config.anthropic.apiKey) throw new CleanupUnavailableError();
 
@@ -499,7 +499,7 @@ export function readerSide(text: string): 'for' | 'against' | null {
 }
 
 /** Does `candidate` keep at least one of the reader's own topic words? */
-const keepsTopic = (original: string, candidate: string): boolean => {
+export const keepsTopic = (original: string, candidate: string): boolean => {
   const have = contentWords(original);
   return contentWords(candidate).some((w) => have.some((h) => sameStem(h, w)));
 };
