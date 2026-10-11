@@ -6,7 +6,7 @@ import { apiUrl } from './lib/api.js';
 import { buildRoster, type Member } from './data/roster.js';
 import { Entry } from './components/Entry.js';
 import type { StatementKind } from './components/entry/PromiseInput.js';
-import { Waiting } from './components/Waiting.js';
+import { Waiting, checkingLine } from './components/Waiting.js';
 import { EvidenceList, HowWeGotHereToggle, VerdictCard } from './components/Verdict.js';
 import { ClarifyState, DemoBanner, ErrorState, HaltState, ResultActions, SuggestedRewording, ThinResultActions, UncachedState } from './components/States.js';
 import {
@@ -178,6 +178,7 @@ export default function App() {
               interpretation={stream.interpretation}
               rewritten={stream.rewritten}
               onCancel={reword}
+              onChange={editStatement}
             />
           </Page>
         ) : null}
@@ -259,26 +260,23 @@ export default function App() {
                 </div>
               ) : null}
 
-              <section aria-label="How we read your statement" className="rounded-card border border-rule bg-card px-4 py-3">
-                {/* A question was restated before it was checked. Both are
-                    shown: the answer above is about the second. */}
-                {stream.rewritten ? (
-                  <div className="mb-3 border-b border-rule pb-3">
-                    <p className="text-[14px] font-medium text-ink-soft">You typed</p>
-                    <p className="mt-0.5 text-[16px] leading-snug text-ink-soft">“{stream.rewritten.original}”</p>
-                    <p className="mt-2 text-[14px] font-medium text-ink-soft">We checked it as</p>
-                    <p className="mt-0.5 text-[16px] font-medium leading-snug text-ink">“{stream.rewritten.statement}”</p>
-                    <button
-                      type="button"
-                      onClick={() => editStatement(stream.rewritten!.statement)}
-                      className="mt-1 inline-flex min-h-[44px] items-center text-[15px] font-medium text-focus underline underline-offset-4"
-                    >
-                      Not what you meant? Change it
-                    </button>
-                  </div>
-                ) : null}
-                <p className="text-[14px] font-medium text-ink-soft">How we read it</p>
-                <p className="mt-0.5 text-[16px] leading-snug text-ink">“{stream.interpretation.restated}”</p>
+              {/* What they asked and what we checked to answer it: the same
+                  card as on the waiting screen, and the same way to change it. */}
+              <section aria-label="Your question" className="rounded-card border border-rule bg-card px-4 py-3">
+                <p className="text-[14px] font-medium text-ink-soft">You asked</p>
+                <p className="mt-0.5 text-[16px] leading-snug text-ink-soft">
+                  “{stream.rewritten ? stream.rewritten.original : promise.trim()}”
+                </p>
+                <p className="mt-2 text-[16px] font-medium leading-snug text-ink">
+                  {checkingLine(stream.rewritten ? stream.rewritten.statement : stream.interpretation.restated, memberName, true)}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => editStatement(stream.rewritten ? stream.rewritten.statement : promise.trim())}
+                  className="mt-1 inline-flex min-h-[44px] items-center text-[15px] font-medium text-focus underline underline-offset-4"
+                >
+                  Not quite right? Change it
+                </button>
               </section>
 
               <div className="legacy">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeftIcon, CheckIcon, LightbulbIcon, Loader2Icon, TriangleAlertIcon } from 'lucide-react';
-import type { Interpretation, StepEvent, StepId } from '@receipts/shared';
+import { surnameOf, type Interpretation, type StepEvent, type StepId } from '@receipts/shared';
 import type { Member } from '../data/roster.js';
 import { SelectedMember } from './members/SelectedMember.js';
 
@@ -12,8 +12,10 @@ import { SelectedMember } from './members/SelectedMember.js';
 // related actions") is printed under it. The visible progress is the
 // traceability, so nothing here is simulated.
 //
-// It also shows the reader how their words were read, as soon as that is
-// known — the earliest point at which a misread can be caught.
+// Above it, one card says what the reader asked and what we are checking to
+// answer it, as soon as that is known, with one way to change it. The check
+// keeps running meanwhile: most readings are right, and waiting on a "yes"
+// would slow every one of them.
 // ===========================================================================
 
 interface Stage {
@@ -72,10 +74,19 @@ function stageIsComplete(stage: Stage, byId: Map<StepId, StepEvent>): boolean {
   return byId.get(last)?.status === 'done';
 }
 
-const STANCE_CHIP: Record<string, string> = {
-  'In Favor': 'Wants this to happen',
-  Opposed: 'Wants to stop this',
-};
+/**
+ * What we are checking, said as the answer to their question: "whether
+ * Schumer supports the Laken Riley Act". Clean-up writes every restated
+ * question as "supports …", "opposes …" or "promised to …", so it reads as a
+ * clause after the member's name. Anything else is quoted as it stands.
+ */
+export function checkingLine(statement: string, memberName: string, done = false): string {
+  const s = statement.trim().replace(/[.。]\s*$/, '');
+  const lead = done ? 'We checked' : 'We’re checking';
+  return /^(supports|opposes|promised to)\s/i.test(s)
+    ? `${lead} whether ${surnameOf(memberName)} ${s.charAt(0).toLowerCase()}${s.slice(1)}.`
+    : `${lead} it as “${s}”.`;
+}
 
 interface Props {
   member: Member;
@@ -85,9 +96,11 @@ interface Props {
   /** Set when the reader typed a question and a statement is being checked in its place. */
   rewritten?: { original: string; statement: string } | null;
   onCancel: () => void;
+  /** Stop, and put the statement we were checking in the box to edit. */
+  onChange: (statement: string) => void;
 }
 
-export function Waiting({ member, promise, steps, interpretation, rewritten = null, onCancel }: Props) {
+export function Waiting({ member, promise, steps, interpretation, rewritten = null, onCancel, onChange }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [tip, setTip] = useState(0);
   const statuses = stageStatuses(steps);
@@ -133,51 +146,52 @@ export function Waiting({ member, promise, steps, interpretation, rewritten = nu
         <h1 className="font-serif text-[28px] leading-tight text-ink sm:text-[32px]">
           Checking {member.name}’s record
         </h1>
-        {rewritten ? (
-          <div className="mt-3 animate-rise-in rounded-card border border-rule bg-card p-4 shadow-soft">
-            <p className="text-[14px] font-medium text-ink-soft">You typed</p>
-            <p className="mt-0.5 text-[16px] leading-snug text-ink-soft">“{rewritten.original}”</p>
-            <p className="mt-3 text-[14px] font-medium text-ink-soft">We’re checking it as</p>
-            <p className="mt-0.5 font-serif text-[20px] leading-snug text-ink">“{rewritten.statement}”</p>
-            <p className="mt-3 text-[14px] text-ink-soft">
-              A question has no side to check, so we check the statement it asks about. Not what you meant? Go back
-              and reword it.
+
+        {/* One card: what they asked, and what we are checking to answer it.
+            Shown as soon as each is known — the earliest point at which a
+            misread can be caught — with one way to fix it. */}
+        <div
+          aria-label="Your question"
+          className="mt-4 animate-rise-in rounded-card border border-rule bg-card p-4 shadow-soft"
+        >
+          <p className="text-[14px] font-medium text-ink-soft">You asked</p>
+          <p className="mt-0.5 text-[16px] leading-snug text-ink-soft">“{rewritten ? rewritten.original : promise}”</p>
+          {rewritten ? (
+            <p className="mt-3 font-serif text-[20px] leading-snug text-ink">
+              {checkingLine(rewritten.statement, member.name)}
             </p>
-          </div>
-        ) : (
-          <p className="mt-3 text-[17px] text-ink-soft">
-            You asked about: <span className="text-ink">“{promise}”</span>
-          </p>
-        )}
-        <p className="mt-2 text-[15px] text-ink-soft">
+          ) : interpretation ? (
+            <p className="mt-3 font-serif text-[20px] leading-snug text-ink">
+              {checkingLine(interpretation.restated, member.name)}
+            </p>
+          ) : null}
+          {interpretation && (interpretation.primary_issue || interpretation.sub_issue) ? (
+            <div className="mt-3 flex flex-wrap gap-2 text-[14px] text-ink-soft">
+              {interpretation.primary_issue ? (
+                <span className="rounded-full border border-rule bg-paper px-3 py-1">{interpretation.primary_issue}</span>
+              ) : null}
+              {interpretation.sub_issue && interpretation.sub_issue !== interpretation.primary_issue ? (
+                <span className="rounded-full border border-rule bg-paper px-3 py-1">{interpretation.sub_issue}</span>
+              ) : null}
+            </div>
+          ) : null}
+          {rewritten || interpretation ? (
+            <button
+              type="button"
+              onClick={() => onChange(rewritten ? rewritten.statement : promise)}
+              className="mt-2 inline-flex min-h-[44px] items-center text-[15px] font-medium text-focus underline underline-offset-4"
+            >
+              Not quite right? Change it
+            </button>
+          ) : null}
+        </div>
+
+        <p className="mt-4 text-[15px] text-ink-soft">
           This usually takes about a minute. <span className="tabular-nums">{elapsed}s</span> so far.
         </p>
       </section>
 
-      {/* How the statement was read — shown the moment it is known. */}
-      {interpretation ? (
-        <section
-          aria-label="How we read your statement"
-          className="mt-6 animate-rise-in rounded-card border border-rule bg-card p-4 shadow-soft"
-        >
-          <p className="text-[14px] font-medium text-ink-soft">How we read it</p>
-          <p className="mt-1 font-serif text-[20px] leading-snug text-ink">“{interpretation.restated}”</p>
-          <div className="mt-3 flex flex-wrap gap-2 text-[14px] text-ink-soft">
-            {interpretation.primary_issue ? (
-              <span className="rounded-full border border-rule bg-paper px-3 py-1">{interpretation.primary_issue}</span>
-            ) : null}
-            {interpretation.sub_issue ? (
-              <span className="rounded-full border border-rule bg-paper px-3 py-1">{interpretation.sub_issue}</span>
-            ) : null}
-            <span className="rounded-full border border-rule bg-paper px-3 py-1">
-              {STANCE_CHIP[interpretation.stance] ?? 'Unclear which way'}
-            </span>
-          </div>
-          <p className="mt-3 text-[14px] text-ink-soft">Not what you meant? Go back and reword it.</p>
-        </section>
-      ) : null}
-
-      <ol className="mt-6 space-y-1 rounded-card border border-rule bg-card p-2 shadow-soft">
+      <ol className="mt-3 space-y-1 rounded-card border border-rule bg-card p-2 shadow-soft">
         {STAGES.map((stage, i) => {
           const status = statuses[i]!;
           const detail = detailFor(stage);
