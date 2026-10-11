@@ -7,10 +7,10 @@ import {
   ChevronDownIcon,
   CircleDashedIcon,
   CircleHelpIcon,
+  InfoIcon,
   ExternalLinkIcon,
   MinusIcon,
   PenLineIcon,
-  PlusIcon,
   ThumbsDownIcon,
   ThumbsUpIcon,
   UserPlusIcon,
@@ -19,7 +19,6 @@ import {
 import { FeedbackControl, FeedbackPrompt, type FeedbackContext } from './FeedbackControl.js';
 import {
   EFFECT_UNREAD,
-  STRENGTH_PHRASE,
   VOTE_FLAG_COPY,
   textVersionLines,
   congressLabel,
@@ -28,6 +27,7 @@ import {
   HISTORY_UNAVAILABLE_COPY,
   surnameOf,
   type DirectedAction,
+  type PathStep,
 } from '@receipts/shared';
 import { GlossaryTerm } from './glossary/GlossaryTerm.js';
 import type { GlossaryId } from '../data/glossary.js';
@@ -251,18 +251,115 @@ function whenLine(e: DirectedAction, congress: number | null): string | null {
 }
 
 type Direction = DirectedAction['direction'];
+type Count = 'toward' | 'against' | 'not';
 
-const DIRECTION_STYLE: Record<Direction, { Icon: typeof CheckIcon; cls: string }> = {
-  keeps: { Icon: CheckIcon, cls: 'bg-kept-wash text-kept' },
-  breaks: { Icon: XIcon, cls: 'bg-broken-wash text-broken' },
-  neutral: { Icon: MinusIcon, cls: 'bg-cantsay-wash text-cantsay' },
+/** The chip in the card's corner: green, red, or yellow. */
+const COUNT_CHIP: Record<Count, { label: string; Icon: typeof CheckIcon; cls: string }> = {
+  toward: { label: 'Counts toward', Icon: CheckIcon, cls: 'bg-kept-wash text-kept' },
+  against: { label: 'Counts against', Icon: XIcon, cls: 'bg-broken-wash text-broken' },
+  not: { label: 'Not counted', Icon: MinusIcon, cls: 'bg-pending-wash text-pending' },
 };
 
-/** How this one action counts, in the same words the count line above the cards uses. */
-function directionLabel(direction: Direction, promiseVocabulary: boolean): string {
-  if (direction === 'neutral') return 'Not counted either way';
-  if (promiseVocabulary) return direction === 'keeps' ? 'Points toward keeping it' : 'Points toward breaking it';
-  return direction === 'keeps' ? 'Consistent with it' : 'Runs counter to it';
+const countOf = (direction: Direction, showDirection: boolean): Count =>
+  !showDirection || direction === 'neutral' ? 'not' : direction === 'keeps' ? 'toward' : 'against';
+
+/** "Thune voted no", "Thune co-sponsored it" — the act the count rests on, for the chip's explanation. */
+function actPhrase(e: DirectedAction, surname: string): string {
+  const passage = voteKind(e.passage_vote) ?? voteKind(e.vote);
+  const cloture = voteKind(e.cloture_vote);
+  const v = passage ?? cloture;
+  if (v) return `${surname} voted ${v.kind === 'yes' ? 'yes' : 'no'}${!passage && cloture ? ' to end debate' : ''}`;
+  if (e.is_sponsor) return `${surname} sponsored it`;
+  if (e.is_cosponsor) return `${surname} co-sponsored it`;
+  return surname;
+}
+
+/**
+ * What the chip means for THIS bill, in plain words. Terms like "counts
+ * against" mean nothing on their own (2026-10-11), so the chip opens this.
+ */
+function countMeaning(e: DirectedAction, count: Count, surname: string, showDirection: boolean): string {
+  const effect = String(e.bill_effect ?? '').toUpperCase();
+  if (count !== 'not') {
+    const bill = effect === 'HINDER' ? 'would set the goal in your question back' : 'would move the goal in your question forward';
+    return (
+      `${actPhrase(e, surname)} on a bill that, as we read it, ${bill}, so this ` +
+      `${count === 'toward' ? 'lines up with' : 'goes against'} the statement. ` +
+      'It is one piece of evidence; the answer at the top weighs them all together.'
+    );
+  }
+  if (!showDirection) {
+    return 'The answer as a whole doesn’t settle your question, so no single bill is counted for or against. It is shown so you can read it and judge for yourself.';
+  }
+  if (e.action_tier === 'ABSTAIN') return `${surname} didn’t cast a vote, so there is nothing here to count either way.`;
+  if (effect === 'CONTESTED') return 'This bill can reasonably be read as pushing either way on your question, so we don’t count it for or against.';
+  if (effect === 'ERROR' || (e.vote_flags ?? []).includes(EFFECT_UNREAD)) return 'We couldn’t read this bill against your question, so it isn’t counted either way.';
+  if (effect === 'NEUTRAL') return 'We read this bill as not moving the goal in your question either way, so it isn’t counted for or against.';
+  return 'This bill isn’t counted for or against the statement.';
+}
+
+/** The chip, and the plain explanation it opens. */
+function CountChip({ count, meaning }: { count: Count; meaning: string }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const chip = COUNT_CHIP[count];
+  return (
+    <>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen((v) => !v)}
+        className={`count-chip inline-flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-full px-3 text-[14px] font-semibold ${chip.cls}`}
+        data-count={count}
+      >
+        <chip.Icon className="h-4 w-4" strokeWidth={2.75} aria-hidden="true" />
+        {chip.label}
+        <InfoIcon className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+        <span className="sr-only">: what this means</span>
+      </button>
+      {/* Rendered in the page whether open or not, so it is part of the card's text. */}
+      <p id={id} hidden={!open} className="count-meaning order-last mt-2 w-full basis-full rounded-lg bg-paper px-3.5 py-2.5 text-[15px] leading-relaxed text-ink-soft">
+        <strong className="font-semibold text-ink">What “{chip.label.toLowerCase()}” means here. </strong>
+        {meaning}
+      </p>
+    </>
+  );
+}
+
+/** A path date: "Jul 23, 2026". */
+function shortDate(iso: string | null): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso ?? ''));
+  if (!m) return null;
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+  });
+}
+
+/** The bill's path, left to right. The senator's own act is the filled dot. */
+function BillPath({ steps, surname }: { steps: PathStep[]; surname: string }) {
+  return (
+    <section aria-label="The bill’s path" className="bill-path mt-4">
+      <h4 className="text-[14px] font-medium text-ink-soft">The bill’s path</h4>
+      <ol className="mt-2 flex overflow-x-auto pb-1">
+        {steps.map((st, i) => (
+          <li key={`${st.label}-${i}`} className="relative min-w-[118px] flex-1 pr-3 pt-5 text-[13px] leading-snug text-ink-soft" data-senator={st.senator ? 'true' : undefined}>
+            {i < steps.length - 1 ? <span className="absolute left-[7px] right-0 top-[9px] h-0.5 bg-rule" aria-hidden="true" /> : null}
+            <span
+              className={`absolute left-0 top-[3px] h-[14px] w-[14px] rounded-full border-2 ${
+                st.senator ? 'border-ink bg-ink' : st.outcome ? 'border-ink-soft bg-card' : 'border-rule bg-card'
+              }`}
+              aria-hidden="true"
+            />
+            <span className="block font-medium text-ink">{st.label}</span>
+            {shortDate(st.date) ? <span className="block">{shortDate(st.date)}</span> : null}
+            {st.senator ? <span className="block font-semibold text-ink">{surname}: {st.senator.act}</span> : null}
+            {st.note ? <span className="block">{st.note}</span> : null}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
 }
 
 interface Props {
@@ -291,7 +388,6 @@ export function EvidenceCard({
 }: Props) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
-  const relation = STRENGTH_PHRASE[action.strength];
   const governing = governingVoteSentence(action.vote_governing);
   const congress = action.congress ?? congressOfBillId(action.bill_id);
   const when = whenLine(action, congress);
@@ -300,12 +396,22 @@ export function EvidenceCard({
     .map((flag) => ({ flag, copy: VOTE_FLAG_COPY[flag] }))
     // The proxy-date flag is now said in the "When" line, in context. Keeping
     // it here too would say the same thing twice on every sponsorship card.
-    .filter((d): d is { flag: string; copy: string } => Boolean(d.copy) && !(d.flag === 'ACTION_DATE_PROXY' && when));
+    .filter((d): d is { flag: string; copy: string } => Boolean(d.copy) && !(d.flag === 'ACTION_DATE_PROXY' && when))
+    // Said in plain words, and only where it applies, by `leaderNote` below.
+    .filter((d) => d.flag !== 'FLOOR_LEADER');
 
+  const count = countOf(action.direction, showDirection);
+  const onPath = Boolean(action.path?.some((st) => st.note === 'the text we read'));
+  // The leadership note only where it changes the reading: a floor leader's
+  // NO on a vote to end debate can be procedure, not position. Anywhere else
+  // it says nothing a reader can use (2026-10-11).
+  const leaderNote =
+    (action.vote_flags ?? []).includes('FLOOR_LEADER') && String(action.cloture_vote ?? '').toUpperCase() === 'NAY'
+      ? `${surnameOf(senatorName)} was a floor leader at the time. Leaders sometimes vote no on ending debate so they can bring the measure back for another vote later, so that no may be procedure rather than their position.`
+      : null;
   const lines = actionLines(action);
   const effect = effectReading(action);
   const unreadSaidBelow = (action.vote_flags ?? []).includes(EFFECT_UNREAD);
-  const dir = DIRECTION_STYLE[action.direction];
   const surname = surnameOf(senatorName);
   const citation = billCitation(action.bill_id);
   const effects = action.intended_effects ? splitList(action.intended_effects) : [];
@@ -317,29 +423,31 @@ export function EvidenceCard({
       data-direction={action.direction}
     >
       <div className="p-5">
-        {/* Identity line. Bill id and Congress are what a reader needs to look
-            the bill up anywhere else; the policy area is the label retrieval
-            and the evaluators worked from. */}
-        <p className="evidence-meta flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] text-ink-soft">
-          {citation ? <span className="evidence-bill font-mono text-[13px] text-ink">{citation}</span> : null}
-          <span className={`font-mono text-[13px] ${citation ? '' : 'text-ink'}`}>{action.bill_id}</span>
-          {congress ? (
-            <GlossaryTerm id="congress">{congressLabel(congress)}</GlossaryTerm>
-          ) : null}
-          {action.primary_issue ? (
-            <span>
-              {action.primary_issue}
-              {action.sub_issue ? ` / ${action.sub_issue}` : ''}
-            </span>
-          ) : null}
-        </p>
-        <h3 className="evidence-title mt-1 font-serif text-[21px] leading-snug text-ink">{action.title}</h3>
+        {/* Identity line, with how the bill counts in the corner. Bill id and
+            Congress are what a reader needs to look the bill up anywhere else. */}
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+          <div className="min-w-0">
+            <p className="evidence-meta flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] text-ink-soft">
+              {citation ? <span className="evidence-bill font-mono text-[13px] text-ink">{citation}</span> : null}
+              <span className={`font-mono text-[13px] ${citation ? '' : 'text-ink'}`}>{action.bill_id}</span>
+              {congress ? <GlossaryTerm id="congress">{congressLabel(congress)}</GlossaryTerm> : null}
+            </p>
+            {action.primary_issue ? (
+              <p className="mt-0.5 text-[14px] text-ink-soft">
+                {action.primary_issue}
+                {action.sub_issue ? ` / ${action.sub_issue}` : ''}
+              </p>
+            ) : null}
+          </div>
+          <CountChip count={count} meaning={countMeaning(action, count, surname, showDirection)} />
+        </div>
+        <h3 className="evidence-title mt-2 font-serif text-[21px] leading-snug text-ink">{action.title}</h3>
 
         {connector ? <p className="connector mt-2 text-[16px] leading-relaxed text-ink-soft">{connector}</p> : null}
 
-        {/* Two facts that combine into the tag. */}
+        {/* The two facts the count in the corner is made of. */}
         <div className="mt-4 rounded-lg border border-rule">
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr]">
+          <div className="grid grid-cols-1 divide-y divide-rule sm:grid-cols-2 sm:divide-x sm:divide-y-0">
             <div className="behaviour p-3.5">
               <p className="text-[13px] text-ink-soft">What {surname} did</p>
               <ul className="mt-1 space-y-2">
@@ -362,13 +470,8 @@ export function EvidenceCard({
                 })}
               </ul>
             </div>
-            <div className="flex items-center justify-center border-y border-rule sm:border-y-0" aria-hidden="true">
-              <span className="-my-3 flex h-6 w-6 items-center justify-center rounded-full border border-rule bg-paper text-ink-soft sm:my-0">
-                <PlusIcon className="h-3.5 w-3.5" />
-              </span>
-            </div>
             <div className="p-3.5">
-              <p className="text-[13px] text-ink-soft">What the bill does to the goal, as we read it</p>
+              <p className="text-[13px] text-ink-soft">What the bill does to your goal, as we read it</p>
               {effect ? (
                 <p className="mt-1 flex items-center gap-1.5 text-[17px] font-semibold text-ink">
                   <effect.Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -379,20 +482,10 @@ export function EvidenceCard({
               )}
             </div>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-rule px-3.5 py-2.5">
-            {showDirection ? (
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[15px] font-semibold ${dir.cls}`}>
-                <dir.Icon className="h-4 w-4" strokeWidth={2.75} aria-hidden="true" />
-                <GlossaryTerm id="counted">{directionLabel(action.direction, promiseVocabulary)}</GlossaryTerm>
-              </span>
-            ) : (
-              <span className="text-[14px] text-ink-soft">Shown for you to read — not counted toward an answer.</span>
-            )}
-            <GlossaryTerm id="related" className="relation text-[14px] text-ink-soft">
-              {relation.charAt(0).toUpperCase() + relation.slice(1)}
-            </GlossaryTerm>
-          </div>
         </div>
+
+        {/* The bill's path, from the record. Without one, the record sentence below says what we know. */}
+        {action.path?.length ? <BillPath steps={action.path} surname={surname} /> : null}
 
         {/* What the reading rests on. Each of these changes how the row should
             be READ, so they sit on the card rather than in the drill-down. */}
@@ -402,7 +495,9 @@ export function EvidenceCard({
           {/* The record: how and when the member's name went on the bill, the
               committee path, and what became of it. Built server-side from the
               pipeline's columns, never by a model, so it is rendered as written. */}
-          {action.record ? <p className="record">{action.record}</p> : null}
+          {action.path?.length
+            ? action.record_detail ? <p className="record">{action.record_detail}</p> : null
+            : action.record ? <p className="record">{action.record}</p> : null}
           {/* Said where the history would have been, so a missing "reported by
               committee" is not read as "never reported". */}
           {action.history_unavailable ? <p className="record degraded-note">{HISTORY_UNAVAILABLE_COPY}</p> : null}
@@ -410,7 +505,10 @@ export function EvidenceCard({
           {/* Which version of the bill's text this was judged against, and what
               the bill became. Only bills whose text changed carry text_version;
               for every other bill this renders nothing. */}
-          {versionLines.length ? (
+          {/* On the path, the version in effect is marked "the text we read";
+              the sentence is still said when it is a disclosure (a later or
+              missing text was used) or when the bill was rewritten. */}
+          {versionLines.length && !(onPath && action.text_version?.status === 'SELECTED' && !action.text_version.rewritten) ? (
             <div className="text-version space-y-1">
               {versionLines.map((line) => (
                 <p key={line}>{line}</p>
@@ -426,6 +524,8 @@ export function EvidenceCard({
 
           {/* Disclosure flags. Flags with no reader copy are analyst vocabulary
               and stay in the trace. */}
+          {leaderNote ? <p className="leader-note rounded-lg bg-cantsay-wash px-3.5 py-3 text-ink">{leaderNote}</p> : null}
+
           {disclosures.length ? (
             <ul className="disclosures space-y-1.5 rounded-lg bg-cantsay-wash px-3.5 py-3 text-ink">
               {disclosures.map((d) => (
@@ -435,13 +535,13 @@ export function EvidenceCard({
           ) : null}
         </div>
 
-        <div className="mt-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <button
             type="button"
             aria-expanded={open}
             aria-controls={panelId}
             onClick={() => setOpen((v) => !v)}
-            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md text-[16px] font-medium text-ink"
+            className="inline-flex min-h-[44px] flex-1 items-center justify-between gap-2 rounded-lg border border-rule bg-paper px-3.5 text-[16px] font-medium text-ink transition-colors duration-150 hover:border-ink sm:mr-4"
           >
             What this bill does
             <ChevronDownIcon

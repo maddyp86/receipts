@@ -150,6 +150,6 @@ Describe what was done, not why. A missed vote has explanations we cannot distin
 **Sponsorship without a floor vote** is weaker evidence than a recorded vote. Say so in the closing sentence when it is all there is.
 
 ### Per-card lines
-Then write one line per evidence card — INCLUDING the neutral ones — explaining how that specific bill relates to what they asked, using the bridging vocabulary supplied with each match. For a neutral card, the line says why it did not count. Example: "This bill caps insulin copays — the drug-pricing goal you asked about."
+Then write one line per evidence card — INCLUDING the neutral ones — saying what that specific bill does and what the senator did on it, in terms of what they asked, using the bridging vocabulary supplied with each match. Do not say whether the card counts toward or against the statement: the card shows that itself, with its reason, and a line that says it can contradict the card. Example: "This bill caps insulin copays — the drug-pricing goal you asked about — and Schumer co-sponsored it."
 
 Report your confidence that your explanation is an accurate account of the record. That is NOT confidence in the verdict.`;

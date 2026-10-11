@@ -15,6 +15,8 @@ export default {
         kept: { DEFAULT: '#1F6B45', wash: '#EEF5F0' },
         broken: { DEFAULT: '#9A3324', wash: '#F9EFED' },
         cantsay: { DEFAULT: '#6A6259', wash: '#F3F1EC' },
+        // "Not counted" on an evidence card: yellow, beside kept green and broken red.
+        pending: { DEFAULT: '#7A5200', wash: '#FBF1D6' },
       },
       fontFamily: {
         serif: ['"Iowan Old Style"', '"Palatino Linotype"', 'Palatino', 'Georgia', 'serif'],

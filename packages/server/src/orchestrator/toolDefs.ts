@@ -174,7 +174,7 @@ export const TOOL_DEFINITIONS = [
               line: {
                 type: 'string',
                 description:
-                  'One line on how this bill relates to the promise, in the voter\'s vocabulary.',
+                  'One line on what this bill does and what the senator did on it, in the voter\'s vocabulary — how it relates to what they asked. Do not say whether it counts toward or against the statement: the card says that, with its reason.',
               },
             },
             required: ['action_uid', 'line'],
