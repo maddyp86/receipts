@@ -75,17 +75,87 @@ function stageIsComplete(stage: Stage, byId: Map<StepId, StepEvent>): boolean {
 }
 
 /**
- * What we are checking, said as the answer to their question: "whether
- * Schumer supports the Laken Riley Act". Clean-up writes every restated
- * question as "supports …", "opposes …" or "promised to …", so it reads as a
- * clause after the member's name. Anything else is quoted as it stands.
+ * What we look for in the record, said plainly. The check is never whether
+ * the member said or promised something — it is whether their votes and
+ * bills line up with it. "promised to lower drug prices" is checked as
+ * "whether Schumer's votes and bills follow through on a promise to lower
+ * drug prices", not "whether Schumer promised to". Clean-up writes every
+ * restated question as "supports …", "opposes …" or "promised to …";
+ * anything else is quoted as it stands.
  */
 export function checkingLine(statement: string, memberName: string, done = false): string {
   const s = statement.trim().replace(/[.。]\s*$/, '');
   const lead = done ? 'We checked' : 'We’re checking';
-  return /^(supports|opposes|promised to)\s/i.test(s)
-    ? `${lead} whether ${surnameOf(memberName)} ${s.charAt(0).toLowerCase()}${s.slice(1)}.`
-    : `${lead} it as “${s}”.`;
+  const record = `${surnameOf(memberName)}’s votes and bills`;
+  const m = /^(supports|opposes|promised to)\s+(.+)$/i.exec(s);
+  if (!m) return `${lead} ${record} against “${s}”.`;
+  const rest = m[2]!;
+  switch (m[1]!.toLowerCase()) {
+    case 'supports':
+      return `${lead} whether ${record} back ${rest}.`;
+    case 'opposes':
+      return `${lead} whether ${record} work against ${rest}.`;
+    default:
+      return `${lead} whether ${record} ${done ? 'followed' : 'follow'} through on a promise to ${rest}.`;
+  }
+}
+
+/**
+ * What they asked, what we are checking to answer it, the topic we filed it
+ * under, and one way to change it. The same card on the waiting screen and
+ * under "How we checked".
+ */
+export function QuestionCard({
+  asked,
+  statement,
+  memberName,
+  interpretation,
+  done = false,
+  onChange,
+  className = '',
+}: {
+  asked: string;
+  /** What is being checked; null until it is known. */
+  statement: string | null;
+  memberName: string;
+  interpretation: Interpretation | null;
+  done?: boolean;
+  onChange: () => void;
+  className?: string;
+}) {
+  const topics = interpretation
+    ? [interpretation.primary_issue, interpretation.sub_issue].filter((t, i, all): t is string => Boolean(t) && all.indexOf(t) === i)
+    : [];
+  return (
+    <section aria-label="Your question" className={`rounded-card border border-rule bg-card p-4 ${className}`}>
+      <p className="text-[14px] font-medium text-ink-soft">You asked</p>
+      <p className="mt-0.5 text-[16px] leading-snug text-ink-soft">“{asked}”</p>
+      {statement ? (
+        <p className={`mt-3 leading-snug text-ink ${done ? 'text-[17px] font-medium' : 'font-serif text-[20px]'}`}>
+          {checkingLine(statement, memberName, done)}
+        </p>
+      ) : null}
+      {topics.length ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-[14px] text-ink-soft">
+          <span>Filed under</span>
+          {topics.map((t) => (
+            <span key={t} className="rounded-full border border-rule bg-paper px-3 py-1">
+              {t}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {statement ? (
+        <button
+          type="button"
+          onClick={onChange}
+          className="mt-2 inline-flex min-h-[44px] items-center text-[15px] font-medium text-focus underline underline-offset-4"
+        >
+          Not quite right? Change it
+        </button>
+      ) : null}
+    </section>
+  );
 }
 
 interface Props {
@@ -150,41 +220,14 @@ export function Waiting({ member, promise, steps, interpretation, rewritten = nu
         {/* One card: what they asked, and what we are checking to answer it.
             Shown as soon as each is known — the earliest point at which a
             misread can be caught — with one way to fix it. */}
-        <div
-          aria-label="Your question"
-          className="mt-4 animate-rise-in rounded-card border border-rule bg-card p-4 shadow-soft"
-        >
-          <p className="text-[14px] font-medium text-ink-soft">You asked</p>
-          <p className="mt-0.5 text-[16px] leading-snug text-ink-soft">“{rewritten ? rewritten.original : promise}”</p>
-          {rewritten ? (
-            <p className="mt-3 font-serif text-[20px] leading-snug text-ink">
-              {checkingLine(rewritten.statement, member.name)}
-            </p>
-          ) : interpretation ? (
-            <p className="mt-3 font-serif text-[20px] leading-snug text-ink">
-              {checkingLine(interpretation.restated, member.name)}
-            </p>
-          ) : null}
-          {interpretation && (interpretation.primary_issue || interpretation.sub_issue) ? (
-            <div className="mt-3 flex flex-wrap gap-2 text-[14px] text-ink-soft">
-              {interpretation.primary_issue ? (
-                <span className="rounded-full border border-rule bg-paper px-3 py-1">{interpretation.primary_issue}</span>
-              ) : null}
-              {interpretation.sub_issue && interpretation.sub_issue !== interpretation.primary_issue ? (
-                <span className="rounded-full border border-rule bg-paper px-3 py-1">{interpretation.sub_issue}</span>
-              ) : null}
-            </div>
-          ) : null}
-          {rewritten || interpretation ? (
-            <button
-              type="button"
-              onClick={() => onChange(rewritten ? rewritten.statement : promise)}
-              className="mt-2 inline-flex min-h-[44px] items-center text-[15px] font-medium text-focus underline underline-offset-4"
-            >
-              Not quite right? Change it
-            </button>
-          ) : null}
-        </div>
+        <QuestionCard
+          className="mt-4 animate-rise-in shadow-soft"
+          asked={rewritten ? rewritten.original : promise}
+          statement={rewritten ? rewritten.statement : (interpretation?.restated ?? null)}
+          memberName={member.name}
+          interpretation={interpretation}
+          onChange={() => onChange(rewritten ? rewritten.statement : promise)}
+        />
 
         <p className="mt-4 text-[15px] text-ink-soft">
           This usually takes about a minute. <span className="tabular-nums">{elapsed}s</span> so far.
