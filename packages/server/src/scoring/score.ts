@@ -120,6 +120,12 @@ export interface ScoreInput {
    */
   gated_count?: number;
   /**
+   * The evidence floor for this answer. SIMILARITY.STRONG unless the near-miss
+   * review ran (nothing cleared the floor, and the relevance check admitted
+   * candidates from SIMILARITY.REVIEW up), when the caller passes REVIEW.
+   */
+  evidence_floor?: number;
+  /**
    * Parts of the record whose read failed for this run. A gap in a part that
    * decides the text or a gate (DECISIVE_ENRICHMENT_GAPS) lowers the band to
    * Low and withholds an accusation. Bill progress is display only and
@@ -306,14 +312,13 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
 
   // Defensive: the store should already have dropped sub-WEAK rows, but the
   // scorer owns the floor and must not depend on that.
-  const retrieved = input.matches.filter((m) => m.score >= SIMILARITY.WEAK);
-  const aboveFloor = retrieved.filter((m) => m.score >= SIMILARITY.STRONG);
-  const weakOnly = retrieved.filter(
-    (m) => m.score >= SIMILARITY.WEAK && m.score < SIMILARITY.STRONG,
-  );
+  const floor = input.evidence_floor ?? SIMILARITY.STRONG;
+  const retrieved = input.matches.filter((m) => m.score >= Math.min(SIMILARITY.WEAK, floor));
+  const aboveFloor = retrieved.filter((m) => m.score >= floor);
+  const weakOnly = retrieved.filter((m) => m.score < floor);
 
   trace.push(
-    `Retrieved ${input.matches.length} candidate actions; ${aboveFloor.length} at or above the evidence floor (${SIMILARITY.STRONG}), ${weakOnly.length} related but below it.`,
+    `Retrieved ${input.matches.length} candidate actions; ${aboveFloor.length} at or above the evidence floor (${floor}${floor < SIMILARITY.STRONG ? ', near-miss review' : ''}), ${weakOnly.length} related but below it.`,
   );
 
   // ---- G1: determinability ------------------------------------------------

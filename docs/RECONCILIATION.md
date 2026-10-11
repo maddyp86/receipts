@@ -2161,3 +2161,48 @@ word when the label flips.
 **For the pipeline.** WF3's classifier labels stored statements on its own
 terms, and WF10A reads them with v7. Not a proposal to change either until
 the stored statements are checked for the same mismatch.
+
+---
+
+## 2026-10-11 — a near-miss review below the evidence floor
+
+**What.** When the relevance check admits nothing, the best near misses
+under the floor go to the same relevance check: up to five
+(`NEAR_MISS_REVIEW_LIMIT`), scored from `SIMILARITY.REVIEW` (0.45) to just
+under 0.50 (`orchestrator/dispatch.ts`, trace stage `NEAR_MISS_REVIEW`).
+Whatever it admits is weighed: the scorer takes `evidence_floor: REVIEW`
+for that answer only. Reviewed bills are labelled loosely related. Every
+other answer keeps the 0.50 floor.
+
+**Why.** Trace `7e1e8f99` ("He promised not to raise my taxes", Schumer):
+all ten candidates scored 0.45–0.499, with the 2025 reconciliation tax law
+(`hr1-119`) at 0.473, and the answer was "nothing found". Case 10's run
+showed the trigger has to be "nothing admitted", not "nothing over the
+floor": one off-topic bill at 0.509 cleared the floor, the relevance check
+rejected it, and that alone blocked everything under it.
+
+**Measured.** Four live questions (2026-10-11):
+- drug prices, drug-price negotiation (case 10) and Dreamers: the review
+  checked five near misses each and the relevance check rejected all of
+  them, so the answer stayed "nothing found";
+- insulin: it admitted S.4886 (Medicare out-of-pocket protections) as
+  related but not specific, shown as not counting either way.
+
+No wrongly directed bill was admitted. The cost is five extra relevance
+calls, only on answers that would otherwise be empty.
+
+**Not fixed by this.** Case 51, the taxes question itself, still fails:
+- the classifier files it under Tax Cuts & Credits on some runs;
+- three bills then clear the floor, so the review never triggers;
+- it also flips between checkable and too broad.
+
+That is the vague-question problem, left for asking the reader which taxes
+they mean. Any rewording we add must be shown to them and accepted, never
+applied silently.
+
+**For the pipeline.** WF7a has no counterpart; the batch scorer has no empty
+answer to protect. Not a proposal for the pipeline.
+
+The same day, the stated-stance rule gained "promised not to …",
+"pledged not to …", "will not …" and "won't …" as Opposed
+(`evaluation/statedStance.ts`).

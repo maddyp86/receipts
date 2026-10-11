@@ -913,6 +913,44 @@
         "DID_NOTHING_WORDING"
       ],
       "note": "Topic starter under 'Voting' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+    },
+    {
+      "id": "51-schumer-promised-not-to-raise-taxes",
+      "senator": "S000148",
+      "statement": "He promised not to raise my taxes.",
+      "verdict": [
+        "KEPT",
+        "KEPT_MIXED",
+        "BROKE_JUDGED",
+        "BROKE_MIXED",
+        "WITHHELD_AFTER_REVIEW",
+        "NOT_DETERMINABLE"
+      ],
+      "nd_reasons": [
+        "ALL_NEUTRAL",
+        "WITHHELD_PENDING_REVIEW",
+        "WITHHELD_TEXT_UNAVAILABLE",
+        "WITHHELD_LOW_CONFIDENCE"
+      ],
+      "must_have": [
+        {
+          "bill": "hr1-119",
+          "direction": [
+            "runs_counter",
+            "not_counted"
+          ]
+        }
+      ],
+      "forbidden": [
+        "DID_NOTHING_WORDING",
+        {
+          "bill_direction": {
+            "bill": "hr1-119",
+            "direction": "consistent"
+          }
+        }
+      ],
+      "note": "The near-miss review (2026-10-10). Typed by a reader; trace 7e1e8f99 answered 'nothing found' with all ten candidates at 0.45–0.499 and the 2025 reconciliation tax law (hr1-119) at 0.473. The law must now be weighed. Which way it counts is left to the reader (it extended the 2017 individual cuts; a vote against it can be read as against the goal, or the bill as contested), but never as consistent with 'not raising taxes'. Must not answer NO_MATCHES. KNOWN FAILING (2026-10-11): the near-miss review does not reach hr1-119 when the classifier files this under Tax Cuts & Credits (three bills then clear the floor, hr1-119 ranks 6th–8th; runs ad9e0464, 2276f291), and the classifier also flips between checkable and too broad. A target for asking the reader which taxes they mean, with their permission."
     }
   ]
 }

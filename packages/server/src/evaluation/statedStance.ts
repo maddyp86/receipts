@@ -19,7 +19,9 @@ import type { Stance } from '@receipts/shared';
 // and "supports overturning California's electric vehicle rules" labelled
 // Opposed. Every one of them opens with a word that settles the direction.
 //
-// So when the statement opens with one, that word decides, in code. Input
+// So when the statement opens with one, that word decides, in code. A
+// promise NOT to do something ("promised not to raise my taxes") is Opposed
+// to the thing it names, the same frame as "opposes raising taxes". Input
 // clean-up writes every question it restates in this form ("supports …",
 // "opposes …", "promised to …"), so this covers nearly every query. A
 // statement with no such opening keeps the classifier's label. Anything the
@@ -28,7 +30,7 @@ import type { Stance } from '@receipts/shared';
 
 const SUBJECT = String.raw`(?:(?:he|she|they|the senator)\s+)?`;
 const FAVOR = String.raw`supports?|supported|backs?|backed|favou?rs?|favou?red|(?:promised|pledged|vowed|wants?|will work|plans?)\s+to|voted\s+for|is\s+for|are\s+for`;
-const OPPOSE = String.raw`opposes?|opposed|(?:is|are)\s+against|against|voted\s+against|rejects?|rejected`;
+const OPPOSE = String.raw`opposes?|opposed|(?:is|are)\s+against|against|voted\s+against|rejects?|rejected|(?:promised|pledged|vowed)\s+not\s+to|(?:will\s+not|won['’]t)`;
 
 const FAVOR_RE = new RegExp(`^${SUBJECT}(?:${FAVOR})\\s+\\S`, 'i');
 const OPPOSE_RE = new RegExp(`^${SUBJECT}(?:${OPPOSE})\\s+\\S`, 'i');
