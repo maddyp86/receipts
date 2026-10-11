@@ -38,6 +38,12 @@ export interface EvalCase {
   id: string;
   senator: string;
   statement: string;
+  /**
+   * When the run stops to ask which policy (or which way), the option a
+   * reader would pick, matched against the option labels (case-insensitive,
+   * substring). The harness then checks that statement, as the app does.
+   */
+  pick?: string;
   verdict: VerdictToken[];
   /** When the answer is NOT_DETERMINABLE, its reason must be one of these. */
   nd_reasons?: string[];

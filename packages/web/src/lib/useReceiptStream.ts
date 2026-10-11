@@ -102,6 +102,8 @@ export function useReceiptStream() {
       corrections?: Corrections,
       /** ISO date the statement was made. Resolves a bounded window. */
       statementDate?: string,
+      /** The reader picked this statement from options we offered: check it as it stands. */
+      opts: { chosen?: boolean } = {},
     ) => {
       close();
       // FULL RESET, including the previous result and interpretation.
@@ -120,6 +122,7 @@ export function useReceiptStream() {
       const session = sessionId();
       if (session) query.set('session', session);
       if (statementDate) query.set('date', statementDate);
+      if (opts.chosen) query.set('chosen', '1');
       if (corrections && Object.keys(corrections).length) {
         query.set('corrections', JSON.stringify(corrections));
       }
