@@ -5,7 +5,8 @@
 //
 //   plan    every candidate (up to the caps): the bill context is built and
 //           measured, and no model is called. The daily mode until cutover.
-//   sample  the first sample_size candidates go to the model; the statements
+//   sample  the bills named in sample_bills, or else the first sample_size
+//           candidates, go to the model; the statements
 //           go to core.impact_drafts, never to core.bill_impacts.
 //   live    up to cap bill-level statements and max_pairs version statements,
 //           written to core.bill_impacts. Only after cutover.
@@ -24,7 +25,9 @@ let rows = main.concat(vers);
 const spent = Number(cand.month_spend_usd) || 0;
 const budget = Number(cfg.monthly_budget_usd) || 0;
 let stopped = false;
-if (mode === 'sample') rows = rows.slice(0, Number(cfg.sample_size) || 10);
+// sample_bills names the bills to sample; otherwise the first candidates.
+const named = (cand.named || []).map((r) => Object.assign({}, r, { requested_version: '' }));
+if (mode === 'sample') rows = (named.length ? named : rows).slice(0, Number(cfg.sample_size) || 10);
 if (mode !== 'plan' && budget && spent >= budget) { stopped = true; rows = []; }
 console.log('[v2 statements] mode ' + mode + ' | ' + (cand.main || []).length + ' bills without a statement (cap ' + cap + ') | ' + vers.length + ' version pairs | ' + rows.length + ' to process' + (stopped ? ' | BUDGET STOP: ' + spent + ' of ' + budget + ' USD spent this month' : ''));
 return rows.map((r) => ({ json: Object.assign(r, { _mode: mode, _budget_stop: stopped }) }));

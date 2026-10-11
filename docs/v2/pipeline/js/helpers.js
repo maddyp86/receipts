@@ -158,6 +158,8 @@ const emit = (statements, previews, summary) => {
   summary.dry_run = dryRun;
   console.log('[v2 pipeline] ' + JSON.stringify(summary).slice(0, 3000));
   if (!statements.length) statements.push({ table: null, rows: 0, sql: 'SELECT 0 WHERE $1::text IS NOT NULL;', payload: '[]' });
-  return statements.map((s) => ({ json: Object.assign({}, s, { dry_run: dryRun, summary, previews: previews || [] }) }));
+  // Only the first item carries the previews: each holds a whole payload, and
+  // repeating them on every chunk of a large write runs n8n out of memory.
+  return statements.map((s, i) => ({ json: Object.assign({}, s, { dry_run: dryRun, summary, previews: i === 0 ? (previews || []) : [] }) }));
 };
 // ---------------------------------------------------------------------------

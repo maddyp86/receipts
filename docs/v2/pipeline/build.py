@@ -54,6 +54,10 @@ def sql(name):
 
 def code(var, name, source, helpers=True, extra=''):
     body = (HELPERS + '\n' + source) if helpers else source
+    # A Code node already runs once for all its items. executeOnce would hand it
+    # only the FIRST input item, so a node that reads $input must not have it.
+    if '$input' in source:
+        extra = extra.replace(', executeOnce: true', '')
     return f"const {var} = node({{ type: 'n8n-nodes-base.code', version: 2, config: {{ name: {J(name)}{extra}, parameters: {{ jsCode: {lit(body)} }} }}, output: [{{}}] }});"
 
 
@@ -337,12 +341,12 @@ def statements():
                   "conditions: [{ leftValue: expr(\"{{ $('Limit').first().json._mode !== 'plan' && !!$('Prepare Bill Context').item.json['Bill ID'] }}\"), operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' }, options: {} } } });")
     model_mode = ("const modelMode = ifElse({ version: 2.2, config: { name: 'Model was called?', executeOnce: true, parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' }, "
                   "conditions: [{ leftValue: expr(\"{{ $('Limit').first().json._mode !== 'plan' }}\"), operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' }, options: {} } } });")
-    fields = [('dry_run', 'boolean', True), ('statements_mode', 'string', 'plan'), ('sample_size', 'number', 10), ('cap', 'number', 60),
+    fields = [('dry_run', 'boolean', True), ('statements_mode', 'string', 'plan'), ('sample_size', 'number', 10), ('sample_bills', 'string', ''), ('cap', 'number', 60),
               ('max_pairs', 'number', 100), ('monthly_budget_usd', 'number', 25), ('usd_per_m_input', 'number', 0.75),
               ('usd_per_m_output', 'number', 4.5), ('usd_per_web_search', 'number', 0.01), ('run_label', 'string', '')]
     parts = ["import { workflow, node, trigger, sticky, ifElse, splitInBatches, nextBatch, expr } from '@n8n/workflow-sdk';",
              triggers([f[0] for f in fields]), config(fields),
-             pg('getCandidates', 'Get Candidates', sql('st_candidates.sql'), '{{ [$workflow.name] }}', extra=', executeOnce: true'),
+             pg('getCandidates', 'Get Candidates', sql('st_candidates.sql'), "{{ [$workflow.name, $('Config').first().json.sample_bills] }}", extra=', executeOnce: true'),
              sheet('getPolicy', 'Get Policy Area', TAXONOMY, 'Policy Area'),
              code('policyCode', 'Policy Area Code Node', wf5('policy_area.js'), helpers=False),
              sheet('getTaxonomy', 'Get Approved Taxonomy', TAXONOMY, 'Approved Taxonomy'),
@@ -402,7 +406,8 @@ def call(var, name, wid, inputs):
 
 
 def orchestrator(ids):
-    dry = "={{ $('Config').first().json.dry_run }}"
+    # A string: the inputs are typed string, and each sub-workflow's Config reads 'false'.
+    dry = "={{ String($('Config').first().json.dry_run) }}"
     fields = [('dry_run', 'boolean', True), ('compare_members', 'string', 'S000148,T000250')]
     cfg_node = (
         "const config = node({ type: 'n8n-nodes-base.set', version: 3.4, config: { name: 'Config', executeOnce: true, parameters: { mode: 'manual', includeOtherFields: false, "
