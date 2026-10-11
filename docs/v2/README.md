@@ -14,6 +14,8 @@ The rebuild of the record pipeline on Supabase. Start with `plan.md`.
 | `reference/vote-slot-rules.md` | The tested rules for deriving a member's cloture and passage votes, with the five known sheet errors |
 | `reference/ossoff-load-backup-2026-10-10.json` | Rows removed when the partial Jon Ossoff load was rolled back. For Phase 4 |
 | `phase-2-report.md` | Phase 2: the settings, the compat views, and gates G2 and G3 per case |
+| `phase-3-report.md` | Phase 3: the v2 pipeline workflows, the seeding, gate G4 day by day, and the statement samples beside the old pipeline's |
+| `pipeline/` | The v2 pipeline's source: `build.py` generates every n8n workflow from `js/`, `sql/` and WF5's nodes in `wf5/` |
 
 ## What a Claude Code session needs before Phase 1
 
