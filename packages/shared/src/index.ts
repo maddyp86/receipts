@@ -277,6 +277,11 @@ export interface Senator {
    * when not known (demo, fixtures, a failed read).
    */
   record_actions?: number;
+  /**
+   * The congresses collected for THIS member, when the record says. Absent
+   * means the default window (COVERAGE_CONGRESSES) applies.
+   */
+  coverage_congresses?: number[];
 }
 
 /**

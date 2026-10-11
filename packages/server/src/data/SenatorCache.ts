@@ -15,6 +15,18 @@ const { Pool } = pg;
 // most dangerous sentence. So a senator added through the pipeline appears
 // here once their record has synced, with no code change.
 //
+// LOADING IS NOT PUBLISHING. `In Scope` is also what makes the pipeline collect
+// a member, so on its own it publishes a record while it is still half loaded:
+// sponsorships in, votes not yet. Where the record carries a `Live` key (schema
+// `compat`, from core.members.live), a member is covered only when `Live` is
+// true as well. A missing or blank value is not live. The mirror has no such
+// key, so with RECORD_SCHEMA=mirror the rule is unchanged.
+//
+// `Coverage Congresses` (e.g. "118, 119") says which congresses were collected
+// for one member. It feeds the coverage sentence, which must not claim a
+// congress that was never loaded for the member in front of the reader. Blank
+// means the default, COVERAGE_CONGRESSES.
+//
 // The picker lists covered senators only. The beta note says "the senators
 // covered so far are the ones you can pick below", and a pickable senator we
 // have not analysed would make that false.
@@ -52,24 +64,43 @@ export interface PoliticianRow {
   covered: boolean;
   /** Recorded actions in the mirror: the record the search ranks. */
   actions?: number | null;
+  /** The `Coverage Congresses` value as written, e.g. "119" or "118, 119". */
+  coverage_congresses?: string | null;
 }
 
 export type LoadPoliticians = () => Promise<PoliticianRow[]>;
 
-const SQL = `
+/** The picker's read. `schema` is RECORD_SCHEMA, one of two fixed names. */
+export const sqlFor = (schema: 'mirror' | 'compat') => `
   select p.politician_id,
          coalesce(nullif(p.row->>'Full Name', ''), p.full_name) as name,
          p.row->>'Party' as party,
          p.row->>'State' as state,
-         coalesce(lower(p.row->>'In Scope') = 'true', false) and coalesce(a.n, 0) > 0 as covered,
+         p.row->>'Coverage Congresses' as coverage_congresses,
+         coalesce(lower(p.row->>'In Scope') = 'true', false)
+           and (not (p.row ? 'Live') or coalesce(lower(p.row->>'Live') = 'true', false))
+           and coalesce(a.n, 0) > 0 as covered,
          coalesce(a.n, 0)::int as actions
-    from mirror.mirror_politicians p
+    from ${schema}.mirror_politicians p
     left join (select politician_id, count(*) as n
-                 from mirror.mirror_politician_bill_actions
+                 from ${schema}.mirror_politician_bill_actions
                 group by politician_id) a on a.politician_id = p.politician_id
    where p.row->>'Chamber' = 'Senate'`;
 
 const PARTY: Record<string, Senator['party']> = { democrat: 'D', republican: 'R', independent: 'I' };
+
+/**
+ * "119" / "118, 119" -> [119] / [118, 119]. Anything that is not a plausible
+ * congress number is dropped, and an empty result means "use the default":
+ * a typo in the record must not shrink or invent a coverage window.
+ */
+export function parseCongresses(cell: string | null | undefined): number[] {
+  const found = String(cell ?? '')
+    .split(/[^0-9]+/)
+    .map((c) => Number.parseInt(c, 10))
+    .filter((c) => Number.isFinite(c) && c >= 93 && c <= 200);
+  return [...new Set(found)].sort((a, b) => a - b);
+}
 
 /** One mirror row as the picker shows it. */
 export function toSenator(r: PoliticianRow): Senator | null {
@@ -79,6 +110,7 @@ export function toSenator(r: PoliticianRow): Senator | null {
   const party = PARTY[(r.party ?? '').trim().toLowerCase()];
   const state = (r.state ?? '').trim();
   const actions = Number(r.actions);
+  const congresses = parseCongresses(r.coverage_congresses);
   return {
     politician_id: id,
     name,
@@ -86,6 +118,7 @@ export function toSenator(r: PoliticianRow): Senator | null {
     ...(party ? { party } : {}),
     ...(state ? { state } : {}),
     ...(r.covered && Number.isFinite(actions) && actions > 0 ? { record_actions: actions } : {}),
+    ...(congresses.length ? { coverage_congresses: congresses } : {}),
   };
 }
 
@@ -152,7 +185,7 @@ export class SenatorCache {
   }
 }
 
-function mirrorLoader(connectionString: string): LoadPoliticians {
+function recordLoader(connectionString: string, schema: 'mirror' | 'compat'): LoadPoliticians {
   const pool = new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
@@ -161,11 +194,14 @@ function mirrorLoader(connectionString: string): LoadPoliticians {
     connectionTimeoutMillis: 10_000,
   });
   pool.on('error', (err) => console.error('[senators] idle client error (non-fatal):', err.message));
-  return async () => (await pool.query<PoliticianRow>(SQL)).rows;
+  const sql = sqlFor(schema);
+  return async () => (await pool.query<PoliticianRow>(sql)).rows;
 }
 
 // Demo and fixture answers exist only for the seed senators, so those modes
 // keep the seed list even with a database configured.
 export const senatorCache = new SenatorCache(
-  config.database.url && !config.demoMode && !config.fixtureMode ? mirrorLoader(config.database.url) : null,
+  config.database.url && !config.demoMode && !config.fixtureMode
+    ? recordLoader(config.database.url, config.record.schema)
+    : null,
 );

@@ -53,7 +53,7 @@ export interface SearchResult {
 
 export interface ActionStore {
   /** Identifies the backing implementation for logging and the UI mode banner. */
-  readonly kind: 'fixture' | 'pinecone';
+  readonly kind: 'fixture' | 'pinecone' | 'supabase';
   /**
    * Returns matches ordered by descending similarity, already filtered to the
    * WEAK floor, plus the pre-filter counts. Never throws — an unreachable
