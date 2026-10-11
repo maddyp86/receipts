@@ -20,7 +20,7 @@ CRED = {
     'postgres': "{ postgres: { id: '3qIhuJmA7fIiofhS', name: 'Postgres account' } }",
     'openai': "{ openAiApi: { id: '8ZxNLryYxwOqNDfP', name: 'n8n OpenAI' } }",
     'congress': "{ httpQueryAuth: { id: '5UocaIVkAqR6GakY', name: 'US Gov' } }",
-    'gmail': "{ gmailOAuth2: { id: 'wix2jRXIFlzpa3H6', name: 'Gmail account' } }",
+    'gmail': "{ gmailOAuth2: { id: 'gVqIYw99SzrE88BR', name: 'Gmail account 2' } }",
 }
 TAXONOMY = '1jCZ3fFNl3ZZqiBlDmUQg_ORk2nDBnrxj4SL3MMZm7jo'
 IMPACT = '1eQFWCstVau5GpB6NnQwGHc_ZytO54Hjyj5RPEK2nOko'
@@ -326,6 +326,10 @@ def statements():
     userprompt = model['parameters']['responses']['values'][1]['content']
     prompt_chars = len(sysprompt) + len(userprompt)
     st = model['settings']
+    # The one change from WF5: the raw response, so Build Statements can read
+    # the token usage that the cost record and the monthly budget stop need.
+    # The raw response has the same `output` array WF5's Parse JSON reads.
+    model['parameters'] = dict(model['parameters'], simplify=False)
     model_node = (f"const createStatements = node({{ type: '@n8n/n8n-nodes-langchain.openAi', version: {model['typeVersion']}, config: {{ name: 'Create Impact Statements', "
                   f"retryOnFail: {J(st['retryOnFail'])}, maxTries: {st['maxTries']}, waitBetweenTries: {st['waitBetweenTries']}, alwaysOutputData: {J(st['alwaysOutputData'])}, "
                   f"onError: {J(st['onError'])}, parameters: {obj(model['parameters'])}, credentials: {CRED['openai']} }}, output: [{{}}] }});")
@@ -339,7 +343,7 @@ def statements():
     wait = "const waitNode = node({ type: 'n8n-nodes-base.wait', version: 1.1, config: { name: 'Wait', parameters: { amount: 1 } }, output: [{}] });"
     call_model = ("const callModel = ifElse({ version: 2.2, config: { name: 'Call the model?', parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' }, "
                   "conditions: [{ leftValue: expr(\"{{ $('Limit').first().json._mode !== 'plan' && !!$('Prepare Bill Context').item.json['Bill ID'] }}\"), operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' }, options: {} } } });")
-    model_mode = ("const modelMode = ifElse({ version: 2.2, config: { name: 'Model was called?', executeOnce: true, parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' }, "
+    model_mode = ("const modelMode = ifElse({ version: 2.2, config: { name: 'Model was called?', parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' }, "
                   "conditions: [{ leftValue: expr(\"{{ $('Limit').first().json._mode !== 'plan' }}\"), operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' }, options: {} } } });")
     fields = [('dry_run', 'boolean', True), ('statements_mode', 'string', 'plan'), ('sample_size', 'number', 10), ('sample_bills', 'string', ''), ('cap', 'number', 60),
               ('max_pairs', 'number', 100), ('monthly_budget_usd', 'number', 25), ('usd_per_m_input', 'number', 0.75),
