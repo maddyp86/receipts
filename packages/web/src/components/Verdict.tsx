@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from 'react';
 import {
-  ArrowDownIcon,
   CheckIcon,
   ChevronDownIcon,
   MinusIcon,
@@ -17,6 +16,7 @@ import {
   evidenceTallySentence,
   judgeDispositionSentence,
   likelyOutcomeHeadline,
+  recordBoundarySentence,
   notDeterminableHeadline,
   reusedSentence,
   searchFunnel,
@@ -267,14 +267,11 @@ function TallyBar({ result }: { result: QueryResult }) {
 }
 
 /** The verdict card: headline, the count, the reason, and what the answer rests on. */
-export function VerdictCard(props: VerdictProps) {
+/** What the card and the "Why" panel both read from one result. */
+function readResult(props: VerdictProps) {
   const { result } = props;
-  const { scored, explanation, senator } = result;
-  const feedback = feedbackContext(props);
-  const style = VERDICT_STYLE[scored.verdict] ?? VERDICT_STYLE.NOT_DETERMINABLE!;
+  const { scored, explanation } = result;
   const isND = scored.verdict === 'NOT_DETERMINABLE';
-  const promise = usesPromiseVocabulary(result);
-
   // A NOT_DETERMINABLE with no recorded reason must NOT borrow NO_MATCHES's
   // copy. "We didn't find any bills or votes in this senator's record" is the
   // strongest absence claim in the vocabulary, and defaulting to it would make
@@ -288,7 +285,6 @@ export function VerdictCard(props: VerdictProps) {
   // much scrutiny this reading got, and claiming the first when the second
   // happened overstates the care taken.
   const judgeSentence = judgeDispositionSentence(result.judge?.disposition);
-
   const level1 = isND
     ? scored.nd_reason === 'WITHHELD_PENDING_REVIEW' && judgeSentence
       ? judgeSentence
@@ -296,12 +292,22 @@ export function VerdictCard(props: VerdictProps) {
         ? ND_REASON_COPY[scored.nd_reason]
         : ND_NO_REASON_COPY
     : explanation.why;
+  return { isND, judgeSentence, level1, promise: usesPromiseVocabulary(result), feedback: feedbackContext(props) };
+}
 
+/**
+ * The answer, in one bar: the verdict, what they asked, what the search did
+ * (its three numbers), which way the bills count, and what to do next. The
+ * explanation, the receipts and how we checked sit in tabs below it.
+ */
+export function VerdictCard(props: VerdictProps) {
+  const { result } = props;
+  const { scored, senator } = result;
+  const style = VERDICT_STYLE[scored.verdict] ?? VERDICT_STYLE.NOT_DETERMINABLE!;
+  const { isND, promise } = readResult(props);
   const tally = evidenceTallySentence(result);
-  const summary = searchSummarySentence(result);
   const funnel = searchFunnel(result);
-  const reused = reusedSentence(result.reused_from?.produced_at);
-  const billCount = scored.evidence.length + (result.gated?.length ?? 0);
+  const boundary = recordBoundarySentence(result);
 
   return (
     <section
@@ -309,10 +315,10 @@ export function VerdictCard(props: VerdictProps) {
       data-verdict={scored.verdict}
       aria-label="Verdict"
     >
-      <div className={`px-6 pb-6 pt-6 ${style.wash}`}>
+      <div className={`px-5 pb-5 pt-5 sm:px-6 ${style.wash}`}>
         <div className="flex items-center gap-3">
           <span
-            className={`verdict-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white ${style.bg}`}
+            className={`verdict-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white ${style.bg}`}
             aria-hidden="true"
           >
             <style.Icon className="h-5 w-5" strokeWidth={2.75} />
@@ -326,26 +332,24 @@ export function VerdictCard(props: VerdictProps) {
             is the classifier's paraphrase; printing it in quotation marks
             beside the senator's name presented model output as something the
             senator said. */}
-        <p className="verdict-band mt-3 text-[16px] leading-snug text-ink-soft">
+        <p className="verdict-band mt-2 text-[16px] leading-snug text-ink-soft">
           {senator.name} · you asked about: <span className="text-ink">“{result.interpretation.raw}”</span>
         </p>
 
-        {/* What the search did, up front: the whole record searched, how many
-            came close, how many were about the question. The answer's own
-            receipts, before any explanation. */}
-        {summary ? <p className="search-summary mt-4 text-[17px] leading-relaxed text-ink">{summary}</p> : null}
+        {/* What the search did, as three numbers. The sentence that says it
+            in words is under "How we checked". */}
         {funnel ? (
-          <dl className="search-funnel mt-3 grid grid-cols-3 gap-2">
+          <dl className="search-funnel mt-4 flex flex-wrap gap-2">
             {[
               { n: funnel.searched, label: 'actions searched' },
               { n: funnel.close, label: 'came close' },
               { n: funnel.about, label: 'about your question' },
             ].map((x) =>
               x.n === null ? null : (
-                <div key={x.label} className="rounded-lg bg-card/70 px-3 py-2">
+                <div key={x.label} className="flex items-baseline gap-1.5 rounded-full border border-rule bg-card/80 px-3 py-1">
                   <dt className="sr-only">{x.label}</dt>
-                  <dd className="text-[20px] font-medium leading-tight text-ink">{x.n.toLocaleString('en-US')}</dd>
-                  <dd className="text-[13px] leading-snug text-ink-soft" aria-hidden="true">
+                  <dd className="text-[16px] font-medium text-ink">{x.n.toLocaleString('en-US')}</dd>
+                  <dd className="text-[14px] text-ink-soft" aria-hidden="true">
                     {x.label}
                   </dd>
                 </div>
@@ -353,6 +357,19 @@ export function VerdictCard(props: VerdictProps) {
             )}
           </dl>
         ) : null}
+
+        {/* Which way the bills count. Null for NOT_DETERMINABLE, where the
+            reason under "Why" says what is true. */}
+        {tally ? (
+          <div className="mt-4">
+            <TallyBar result={result} />
+            <p className="verdict-tally mt-1 text-[15px] leading-snug text-ink">{tally}</p>
+          </div>
+        ) : null}
+
+        {/* Nothing found: where our records start, on the answer itself, so
+            "nothing found" is never read as "did nothing". */}
+        {boundary ? <p className="record-boundary mt-4 text-[16px] leading-relaxed text-ink">{boundary}</p> : null}
 
         {props.actions ? <div className="result-actions mt-5">{props.actions}</div> : null}
 
@@ -363,108 +380,97 @@ export function VerdictCard(props: VerdictProps) {
           </p>
         ) : null}
       </div>
-
-      {/* Receipt perforation */}
-      <div className="relative" aria-hidden="true">
-        <span className="absolute -left-3 -top-3 h-6 w-6 rounded-full border border-rule bg-paper" />
-        <span className="absolute -right-3 -top-3 h-6 w-6 rounded-full border border-rule bg-paper" />
-        <div className="mx-5 border-t-2 border-dashed border-rule" />
-      </div>
-
-      <div className="space-y-5 px-6 pb-6 pt-6">
-        {/* The receipts before the explanation: how many actions we found and
-            which way each counts. Null for NOT_DETERMINABLE, where the reason
-            below says what is true. */}
-        {tally ? (
-          <div>
-            <p className="verdict-tally text-[17px] leading-relaxed text-ink">{tally}</p>
-            <TallyBar result={result} />
-          </div>
-        ) : null}
-
-        {/* On a phone the bills are a long scroll below this card. */}
-        {billCount > 0 ? (
-          <a
-            href={`#${EVIDENCE_ANCHOR}`}
-            className="inline-flex min-h-[44px] items-center gap-1.5 text-[16px] font-medium text-focus underline underline-offset-4 lg:hidden"
-          >
-            See the {billCount === 1 ? 'bill' : `${billCount} bills`} we found
-            <ArrowDownIcon className="h-4 w-4" aria-hidden="true" />
-          </a>
-        ) : null}
-
-        <div className="verdict-why">
-          <h3 className="verdict-why-label font-serif text-[22px] text-ink">Here’s why.</h3>
-          <p className="mt-2 text-[17px] leading-relaxed text-ink">{level1}</p>
-        </div>
-
-        {scored.mode === 'ranked' ? (
-          <p className="mixed-note rounded-lg bg-cantsay-wash px-3.5 py-3 text-[15px] leading-relaxed text-ink">
-            Their record here is mixed — there is real evidence pointing the other way, and it’s
-            shown below rather than averaged out.
-          </p>
-        ) : null}
-
-        {/* A published accusation that went through review says so, and shows
-            the senator's counterargument beside it. Handoff v2 §5 makes a PASS
-            invalid without one — so requiring it and then not printing it would
-            waste the entire guarantee. Skipped when the reading was withheld:
-            the level-1 copy above is already the disposition's own sentence,
-            and a counterargument to an unpublished accusation would surface the
-            accusation we just declined to make. */}
-        {result.judge && !result.judge.withheld && judgeSentence ? (
-          <div className="judge-note rounded-lg border border-rule">
-            <div className="flex gap-3 p-4">
-              <ShieldCheckIcon className="mt-0.5 h-5 w-5 shrink-0 text-ink-soft" aria-hidden="true" />
-              <p className="text-[15px] leading-relaxed text-ink-soft">{judgeSentence}</p>
-            </div>
-            {result.judge.counterargument ? (
-              <div className="counterargument flex gap-3 border-t border-rule p-4">
-                <MessageSquareQuoteIcon className="mt-0.5 h-5 w-5 shrink-0 text-ink-soft" aria-hidden="true" />
-                <p className="text-[15px] leading-relaxed text-ink">
-                  <strong className="font-semibold">The senator’s strongest response.</strong>{' '}
-                  {result.judge.counterargument}
-                </p>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {/* A stored answer, returned because the same question was asked again. */}
-        {reused ? <p className="reused-note text-[14px] leading-snug text-ink-soft">{reused}</p> : null}
-
-        {/* The boundary travels with the verdict, not only with empty results:
-            a KEPT drawn from two 118th-Congress bills is scoped by the same
-            window as a no-match, and the reader is owed it either way. */}
-        <CoverageNote coverage={result.coverage} />
-
-        {/* Reads that failed for this answer. Beside the coverage boundary
-            because it is the same kind of fact — a limit on what this answer
-            rests on — but louder, because it is a limit we did not intend. */}
-        <EnrichmentGapNote gaps={result.enrichment_gaps} />
-
-        {/* Which standard the wording follows, where it is the default. An
-            asserted promise says so in its own headline. */}
-        {!isND && !promise && result.interpretation.provenance !== 'asserted' ? (
-          <p className="text-[14px] leading-relaxed text-ink-soft">
-            We treat this as a <GlossaryTerm id="position">position</GlossaryTerm> they’ve taken unless we can
-            confirm they promised it.
-          </p>
-        ) : null}
-
-        {/* What the beta covers and what to do if this looks wrong. Only with
-            the control it points at. */}
-        {feedback ? <p className="scope-line text-[14px] leading-relaxed text-ink-soft">{RESULT_SCOPE_LINE}</p> : null}
-        {feedback ? (
-          feedback.prompts ? (
-            <FeedbackPrompt level="result" context={feedback} />
-          ) : (
-            <FeedbackControl level="result" context={feedback} />
-          )
-        ) : null}
-      </div>
     </section>
   );
+}
+
+/** The "Why" tab: the explanation, what it rests on, and its limits. */
+export function WhyPanel(props: VerdictProps) {
+  const { result } = props;
+  const { scored } = result;
+  const { isND, judgeSentence, level1, promise, feedback } = readResult(props);
+  const reused = reusedSentence(result.reused_from?.produced_at);
+
+  return (
+    <div className="space-y-5">
+      <div className="verdict-why">
+        <h3 className="verdict-why-label font-serif text-[22px] text-ink">Here’s why.</h3>
+        <p className="mt-2 text-[17px] leading-relaxed text-ink">{level1}</p>
+      </div>
+
+      {scored.mode === 'ranked' ? (
+        <p className="mixed-note rounded-lg bg-cantsay-wash px-3.5 py-3 text-[15px] leading-relaxed text-ink">
+          Their record here is mixed — there is real evidence pointing the other way, and it’s
+          shown under Receipts rather than averaged out.
+        </p>
+      ) : null}
+
+      {/* A published accusation that went through review says so, and shows
+          the senator's counterargument beside it. Handoff v2 §5 makes a PASS
+          invalid without one — so requiring it and then not printing it would
+          waste the entire guarantee. Skipped when the reading was withheld:
+          the level-1 copy above is already the disposition's own sentence,
+          and a counterargument to an unpublished accusation would surface the
+          accusation we just declined to make. */}
+      {result.judge && !result.judge.withheld && judgeSentence ? (
+        <div className="judge-note rounded-lg border border-rule">
+          <div className="flex gap-3 p-4">
+            <ShieldCheckIcon className="mt-0.5 h-5 w-5 shrink-0 text-ink-soft" aria-hidden="true" />
+            <p className="text-[15px] leading-relaxed text-ink-soft">{judgeSentence}</p>
+          </div>
+          {result.judge.counterargument ? (
+            <div className="counterargument flex gap-3 border-t border-rule p-4">
+              <MessageSquareQuoteIcon className="mt-0.5 h-5 w-5 shrink-0 text-ink-soft" aria-hidden="true" />
+              <p className="text-[15px] leading-relaxed text-ink">
+                <strong className="font-semibold">The senator’s strongest response.</strong>{' '}
+                {result.judge.counterargument}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* A stored answer, returned because the same question was asked again. */}
+      {reused ? <p className="reused-note text-[14px] leading-snug text-ink-soft">{reused}</p> : null}
+
+      {/* The boundary travels with the verdict, not only with empty results:
+          a KEPT drawn from two 118th-Congress bills is scoped by the same
+          window as a no-match, and the reader is owed it either way. On the
+          tab that opens first, so it is never a click away. */}
+      <CoverageNote coverage={result.coverage} />
+
+      {/* Reads that failed for this answer. Beside the coverage boundary
+          because it is the same kind of fact — a limit on what this answer
+          rests on — but louder, because it is a limit we did not intend. */}
+      <EnrichmentGapNote gaps={result.enrichment_gaps} />
+
+      {/* Which standard the wording follows, where it is the default. An
+          asserted promise says so in its own headline. */}
+      {!isND && !promise && result.interpretation.provenance !== 'asserted' ? (
+        <p className="text-[14px] leading-relaxed text-ink-soft">
+          We treat this as a <GlossaryTerm id="position">position</GlossaryTerm> they’ve taken unless we can
+          confirm they promised it.
+        </p>
+      ) : null}
+
+      {/* What the beta covers and what to do if this looks wrong. Only with
+          the control it points at. */}
+      {feedback ? <p className="scope-line text-[14px] leading-relaxed text-ink-soft">{RESULT_SCOPE_LINE}</p> : null}
+      {feedback ? (
+        feedback.prompts ? (
+          <FeedbackPrompt level="result" context={feedback} />
+        ) : (
+          <FeedbackControl level="result" context={feedback} />
+        )
+      ) : null}
+    </div>
+  );
+}
+
+/** What the search did, in words: the opening line of "How we checked". */
+export function SearchSummary({ result }: { result: QueryResult }) {
+  const summary = searchSummarySentence(result);
+  return summary ? <p className="search-summary text-[17px] leading-relaxed text-ink">{summary}</p> : null;
 }
 
 /** The two drill-downs: the plain-language path, then the raw values one level further. */
@@ -626,11 +632,13 @@ export function EvidenceList(props: VerdictProps) {
   );
 }
 
-/** The whole receipt in reading order: the card, the drill-downs, the bills. */
+/** The whole receipt in one flow — the card, every tab's content — for the eval harness and tests. */
 export function Verdict(props: VerdictProps) {
   return (
     <>
       <VerdictCard {...props} />
+      <WhyPanel {...props} />
+      <SearchSummary result={props.result} />
       <HowWeGotHereToggle result={props.result} />
       <EvidenceList {...props} />
     </>

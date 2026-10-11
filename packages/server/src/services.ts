@@ -4,6 +4,7 @@ import { config } from './config.js';
 import type { ActionStore } from './data/ActionStore.js';
 import { FixtureActionStore } from './data/FixtureActionStore.js';
 import { PineconeActionStore } from './data/PineconeActionStore.js';
+import { SupabaseActionStore } from './data/SupabaseActionStore.js';
 import { FixtureEmbedder, OpenAIEmbedder, type Embedder } from './embeddings/Embedder.js';
 import { NullQueryStore, type QueryStore } from './data/QueryStore.js';
 import { SupabaseQueryStore } from './data/SupabaseQueryStore.js';
@@ -16,9 +17,12 @@ import {
 } from './trace/TraceStore.js';
 
 // One place where mode selection happens, so nothing downstream branches on it.
+// ACTION_STORE picks the live store (default Pinecone); fixture mode wins over it.
 export const actionStore: ActionStore = config.fixtureMode
   ? new FixtureActionStore()
-  : new PineconeActionStore();
+  : config.retrieval.store === 'supabase'
+    ? new SupabaseActionStore()
+    : new PineconeActionStore();
 
 export const embedder: Embedder = config.fixtureMode ? new FixtureEmbedder() : new OpenAIEmbedder();
 
@@ -30,7 +34,7 @@ export const embedder: Embedder = config.fixtureMode ? new FixtureEmbedder() : n
  * that: getQuery returns null rather than reconstructing something plausible,
  * so a share link reports "not found", which is true.
  */
-export const queryStore: QueryStore = config.database.url
+export const queryStore: QueryStore = config.database.url && config.database.persistQueries
   ? new SupabaseQueryStore()
   : new NullQueryStore();
 
@@ -60,7 +64,9 @@ export const usageCounter: UsageCounter = config.database.url
  * asserted end to end without touching the filesystem or a database.
  */
 const fileTraceSink = config.trace.dir ? new FileTraceSink(config.trace.dir, config.trace.maxFiles) : null;
-const supabaseTraceSink = config.database.url ? new SupabaseTraceSink(config.database.url) : null;
+// PERSIST_QUERIES=false also keeps traces out of `app`; the file sink still runs.
+const supabaseTraceSink =
+  config.database.url && config.database.persistQueries ? new SupabaseTraceSink(config.database.url) : null;
 
 export const traceSinks: TraceSink[] = [
   ...(fileTraceSink ? [fileTraceSink] : []),

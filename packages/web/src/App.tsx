@@ -6,8 +6,9 @@ import { apiUrl } from './lib/api.js';
 import { buildRoster, type Member } from './data/roster.js';
 import { Entry } from './components/Entry.js';
 import type { StatementKind } from './components/entry/PromiseInput.js';
-import { Waiting } from './components/Waiting.js';
-import { EvidenceList, HowWeGotHereToggle, VerdictCard } from './components/Verdict.js';
+import { QuestionCard, Waiting } from './components/Waiting.js';
+import { EvidenceList, HowWeGotHereToggle, SearchSummary, VerdictCard, WhyPanel } from './components/Verdict.js';
+import { ResultTabs } from './components/ResultTabs.js';
 import { ClarifyState, DemoBanner, ErrorState, HaltState, ResultActions, SuggestedRewording, ThinResultActions, UncachedState } from './components/States.js';
 import {
   AppliedCorrections,
@@ -49,6 +50,12 @@ export default function App() {
   // Nobody is preselected: with a short list, a default is a nudge.
   const [selected, setSelected] = useState('');
   const [promise, setPromise] = useState('');
+  /**
+   * What the reader typed, kept when they pick one of our options ("which
+   * way?", "which taxes?", a rewording): the answer still says "You asked"
+   * with their words, and "We checked" with the one they picked.
+   */
+  const [askedText, setAskedText] = useState<string | null>(null);
   const [kind, setKind] = useState<StatementKind>('position');
 
   const stream = useReceiptStream();
@@ -95,12 +102,16 @@ export default function App() {
   const baseCorrections = (): Corrections | undefined =>
     modes.override && kind === 'promise' ? { assert_campaign_promise: true } : undefined;
 
-  const submit = () => stream.run(selected, promise.trim(), baseCorrections());
+  const submit = () => {
+    setAskedText(null);
+    stream.run(selected, promise.trim(), baseCorrections());
+  };
 
   // A correction re-runs the ENTIRE query from embedding. `stream.run` resets
   // state first, so the previous verdict is gone before the new one starts —
   // there is no window in which an old verdict sits beside corrected values.
-  const rerunWithCorrections = (corrections: Corrections) => stream.run(selected, promise.trim(), corrections);
+  const rerunWithCorrections = (corrections: Corrections) =>
+    stream.run(selected, promise.trim(), corrections, undefined, { chosen: askedText !== null });
 
   // A STATEMENT_DATE_REQUIRED halt is resolved by supplying the date, which
   // re-runs the whole query — the date changes `valid_until`, which is what the
@@ -109,13 +120,17 @@ export default function App() {
 
   /** Back to the entry screen with the words kept, to reword them. */
   const reword = () => stream.reset();
-  /** The reader picked a side: that statement is now what they are asking. */
+  /** The reader picked one of our options: that statement is now what they are asking. */
   const checkStatement = (statement: string) => {
+    // Picked from options we offered: checked as it stands, never asked again,
+    // and the reader's own words stay at the top of the answer.
+    setAskedText(stream.clarify?.original ?? askedText ?? promise.trim());
     setPromise(statement);
-    stream.run(selected, statement, baseCorrections());
+    stream.run(selected, statement, baseCorrections(), undefined, { chosen: true });
   };
   /** Back to the entry screen with the statement we checked, to change it. */
   const editStatement = (statement: string) => {
+    setAskedText(null);
     setPromise(statement);
     stream.reset();
   };
@@ -128,7 +143,7 @@ export default function App() {
   const otherMembers = roster.filter((m) => m.cached && m.politician_id !== selected);
   const askSameOf = (politicianId: string) => {
     setSelected(politicianId);
-    stream.run(politicianId, promise.trim(), baseCorrections());
+    stream.run(politicianId, promise.trim(), baseCorrections(), undefined, { chosen: askedText !== null });
   };
   /** Back to the picker. */
   const changeMember = () => {
@@ -145,6 +160,10 @@ export default function App() {
   const screen: 'entry' | 'waiting' | 'result' | 'stopped' =
     stream.phase === 'idle' ? 'entry' : hasResult ? 'result' : busy ? 'waiting' : 'stopped';
   const memberName = member?.name ?? stream.result?.senator.name ?? 'this member';
+  /** The chat column exists once the answer is complete and the server can answer follow-ups. */
+  const followupsShown = stream.phase === 'done' && Boolean(stream.traceId) && modes.followups;
+  /** Every bill on the Receipts tab: weighed, and set aside. */
+  const billCount = (stream.result?.scored.evidence.length ?? 0) + (stream.result?.gated?.length ?? 0);
 
   return (
     <GlossaryProvider>
@@ -177,7 +196,9 @@ export default function App() {
               steps={stream.steps}
               interpretation={stream.interpretation}
               rewritten={stream.rewritten}
+              asked={askedText}
               onCancel={reword}
+              onChange={editStatement}
             />
           </Page>
         ) : null}
@@ -190,9 +211,12 @@ export default function App() {
                 <SelectedMember member={member} onChange={changeMember} compact />
               </div>
             ) : null}
-            <p className="mt-6 text-[17px] text-ink-soft">
-              You asked about: <span className="text-ink">“{promise.trim()}”</span>
-            </p>
+            {/* "Which taxes?" names what they typed itself, beside the choices. */}
+            {stream.clarify?.reason !== 'POLICY_REQUIRED' ? (
+              <p className="mt-6 text-[17px] text-ink-soft">
+                You asked about: <span className="text-ink">“{promise.trim()}”</span>
+              </p>
+            ) : null}
             <div className="mt-5 space-y-5">
               {stream.uncached ? (
                 <UncachedState senator={stream.uncached.senator} queued={stream.uncached.queued} onReset={changeMember} />
@@ -226,103 +250,130 @@ export default function App() {
         ) : null}
 
         {screen === 'result' && stream.result && stream.interpretation ? (
-          <Page width="narrow">
+          <Page width="wide">
             <TopBar onBack={askAnother} backLabel="New question" icon="new" />
 
-            {/* ANSWER FIRST, one column. The first screen holds who was checked,
-                the answer, what the search did (with its numbers) and what to do
-                next; everything that explains or corrects the answer follows. */}
-            <div className="mt-6 space-y-5">
-              {member ? <SelectedMember member={member} onChange={changeMember} compact /> : null}
+            {/* ANSWER FIRST. The answer in one bar; under it, three tabs —
+                Why (open first), Receipts, How we checked — so the page is
+                one screen, not one long scroll. The follow-up chat sits in
+                its own column on the right, where it can grow; on a phone it
+                is a sheet. */}
+            <div
+              className={`mt-6 grid gap-6 pb-20 lg:pb-0 ${
+                followupsShown ? 'lg:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]' : 'mx-auto max-w-3xl'
+              }`}
+            >
+              <div className="min-w-0 space-y-5">
+                {member ? <SelectedMember member={member} onChange={changeMember} compact /> : null}
 
-              <h1 className="sr-only">Answer for {memberName}</h1>
-              <VerdictCard
-                result={stream.result}
-                traceId={stream.traceId}
-                feedbackAvailable={modes.feedback}
-                feedbackPrompts={modes.prompts}
-                actions={
-                  <ResultActions
-                    surname={surnameOf(memberName)}
-                    onAskAnother={askAnother}
-                    others={otherMembers}
-                    onAskSameOf={askSameOf}
-                    onChangeMember={changeMember}
-                  />
-                }
-              />
-
-              {/* "Too broad": a rewording of the reader's own topic to check instead. */}
-              {stream.suggest?.length && stream.result.scored.nd_reason === 'NOT_EVALUABLE' ? (
-                <div className="rounded-card border border-rule bg-card px-4 py-4 text-[16px] text-ink-soft">
-                  <SuggestedRewording options={stream.suggest} onPick={checkStatement} />
-                </div>
-              ) : null}
-
-              <section aria-label="How we read your statement" className="rounded-card border border-rule bg-card px-4 py-3">
-                {/* A question was restated before it was checked. Both are
-                    shown: the answer above is about the second. */}
-                {stream.rewritten ? (
-                  <div className="mb-3 border-b border-rule pb-3">
-                    <p className="text-[14px] font-medium text-ink-soft">You typed</p>
-                    <p className="mt-0.5 text-[16px] leading-snug text-ink-soft">“{stream.rewritten.original}”</p>
-                    <p className="mt-2 text-[14px] font-medium text-ink-soft">We checked it as</p>
-                    <p className="mt-0.5 text-[16px] font-medium leading-snug text-ink">“{stream.rewritten.statement}”</p>
-                    <button
-                      type="button"
-                      onClick={() => editStatement(stream.rewritten!.statement)}
-                      className="mt-1 inline-flex min-h-[44px] items-center text-[15px] font-medium text-focus underline underline-offset-4"
-                    >
-                      Not what you meant? Change it
-                    </button>
-                  </div>
-                ) : null}
-                <p className="text-[14px] font-medium text-ink-soft">How we read it</p>
-                <p className="mt-0.5 text-[16px] leading-snug text-ink">“{stream.interpretation.restated}”</p>
-              </section>
-
-              <div className="legacy">
-                <AssertedPremiseBadge interpretation={stream.interpretation} />
-                <AppliedCorrections interpretation={stream.interpretation} />
-              </div>
-
-              {/* The receipts. */}
-              <EvidenceList
-                result={stream.result}
-                traceId={stream.traceId}
-                feedbackAvailable={modes.feedback}
-                feedbackPrompts={modes.prompts}
-              />
-
-              <div className="space-y-6 border-t border-rule pt-6">
-                <HowWeGotHereToggle result={stream.result} />
-
-                {/* Offered only once the answer is complete: correcting a
-                    classification mid-flight would stage edits against
-                    values still changing. */}
-                {stream.phase === 'done' ? (
-                  <div className="legacy">
-                    <CorrectionPanel
-                      interpretation={stream.interpretation}
-                      taxonomy={taxonomy}
-                      overrideEnabled={modes.override}
-                      busy={busy}
-                      onRerun={rerunWithCorrections}
+                <h1 className="sr-only">Answer for {memberName}</h1>
+                <VerdictCard
+                  result={stream.result}
+                  traceId={stream.traceId}
+                  feedbackAvailable={modes.feedback}
+                  feedbackPrompts={modes.prompts}
+                  actions={
+                    <ResultActions
+                      surname={surnameOf(memberName)}
+                      onAskAnother={askAnother}
+                      others={otherMembers}
+                      onAskSameOf={askSameOf}
+                      onChangeMember={changeMember}
                     />
+                  }
+                />
+
+                {/* "Too broad": a rewording of the reader's own topic to check instead. */}
+                {stream.suggest?.length && stream.result.scored.nd_reason === 'NOT_EVALUABLE' ? (
+                  <div className="rounded-card border border-rule bg-card px-4 py-4 text-[16px] text-ink-soft">
+                    <SuggestedRewording options={stream.suggest} onPick={checkStatement} />
                   </div>
                 ) : null}
 
-                {/* Questions about THIS result are answered from its own
-                    record and cannot change it; a new statement is a new
-                    query. */}
-                {stream.phase === 'done' && stream.traceId ? (
-                  <div className="legacy">
-                    <FollowUp traceId={stream.traceId} available={modes.followups} senatorName={memberName} />
-                  </div>
-                ) : null}
+                <ResultTabs
+                  initial="why"
+                  tabs={[
+                    {
+                      id: 'why',
+                      label: 'Why',
+                      content: (
+                        <WhyPanel
+                          result={stream.result}
+                          traceId={stream.traceId}
+                          feedbackAvailable={modes.feedback}
+                          feedbackPrompts={modes.prompts}
+                        />
+                      ),
+                    },
+                    {
+                      id: 'receipts',
+                      label: `Receipts (${billCount})`,
+                      content: (
+                        <EvidenceList
+                          result={stream.result}
+                          traceId={stream.traceId}
+                          feedbackAvailable={modes.feedback}
+                          feedbackPrompts={modes.prompts}
+                        />
+                      ),
+                    },
+                    {
+                      id: 'how',
+                      label: 'How we checked',
+                      content: (
+                        <div className="space-y-6">
+                          {/* What they asked and what we checked to answer it:
+                              the same card as on the waiting screen, and the
+                              same way to change it. */}
+                          <QuestionCard
+                            asked={stream.rewritten ? stream.rewritten.original : (askedText ?? promise.trim())}
+                            statement={
+                              stream.rewritten ? stream.rewritten.statement : askedText ? promise.trim() : stream.interpretation.restated
+                            }
+                            memberName={memberName}
+                            interpretation={stream.interpretation}
+                            done
+                            onChange={() => editStatement(stream.rewritten ? stream.rewritten.statement : promise.trim())}
+                          />
+
+                          <div className="legacy">
+                            <AssertedPremiseBadge interpretation={stream.interpretation} />
+                            <AppliedCorrections interpretation={stream.interpretation} />
+                          </div>
+
+                          <SearchSummary result={stream.result} />
+                          <HowWeGotHereToggle result={stream.result} />
+
+                          {/* Offered only once the answer is complete: correcting a
+                              classification mid-flight would stage edits against
+                              values still changing. */}
+                          {stream.phase === 'done' ? (
+                            <div className="legacy">
+                              <CorrectionPanel
+                                interpretation={stream.interpretation}
+                                taxonomy={taxonomy}
+                                overrideEnabled={modes.override}
+                                busy={busy}
+                                onRerun={rerunWithCorrections}
+                              />
+                            </div>
+                          ) : null}
+
+                          <TraceLine traceId={stream.traceId} />
+                        </div>
+                      ),
+                    },
+                  ]}
+                />
               </div>
 
-              <TraceLine traceId={stream.traceId} />
+              {/* Questions about THIS result are answered from its own record
+                  and cannot change it; a new statement is a new query. */}
+              {followupsShown ? (
+                <aside className="lg:sticky lg:top-4 lg:self-start">
+                  <FollowUp traceId={stream.traceId!} available={modes.followups} senatorName={memberName} />
+                </aside>
+              ) : null}
             </div>
           </Page>
         ) : null}

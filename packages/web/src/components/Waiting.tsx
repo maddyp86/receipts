@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeftIcon, CheckIcon, LightbulbIcon, Loader2Icon, TriangleAlertIcon } from 'lucide-react';
-import type { Interpretation, StepEvent, StepId } from '@receipts/shared';
+import { surnameOf, type Interpretation, type StepEvent, type StepId } from '@receipts/shared';
 import type { Member } from '../data/roster.js';
 import { SelectedMember } from './members/SelectedMember.js';
 
@@ -12,8 +12,10 @@ import { SelectedMember } from './members/SelectedMember.js';
 // related actions") is printed under it. The visible progress is the
 // traceability, so nothing here is simulated.
 //
-// It also shows the reader how their words were read, as soon as that is
-// known — the earliest point at which a misread can be caught.
+// Above it, one card says what the reader asked and what we are checking to
+// answer it, as soon as that is known, with one way to change it. The check
+// keeps running meanwhile: most readings are right, and waiting on a "yes"
+// would slow every one of them.
 // ===========================================================================
 
 interface Stage {
@@ -72,10 +74,91 @@ function stageIsComplete(stage: Stage, byId: Map<StepId, StepEvent>): boolean {
   return byId.get(last)?.status === 'done';
 }
 
-const STANCE_CHIP: Record<string, string> = {
-  'In Favor': 'Wants this to happen',
-  Opposed: 'Wants to stop this',
-};
+/**
+ * What we look for in the record, said plainly. The check is never whether
+ * the member said or promised something — it is whether their votes and
+ * bills line up with it. "promised to lower drug prices" is checked as
+ * "whether Schumer's votes and bills follow through on a promise to lower
+ * drug prices", not "whether Schumer promised to". Clean-up writes every
+ * restated question as "supports …", "opposes …" or "promised to …";
+ * anything else is quoted as it stands.
+ */
+export function checkingLine(statement: string, memberName: string, done = false): string {
+  const s = statement.trim().replace(/[.。]\s*$/, '');
+  const lead = done ? 'We checked' : 'We’re checking';
+  const record = `${surnameOf(memberName)}’s votes and bills`;
+  const m = /^(supports|opposes|promised not to|promised to)\s+(.+)$/i.exec(s);
+  if (!m) return `${lead} ${record} against “${s}”.`;
+  const rest = m[2]!;
+  switch (m[1]!.toLowerCase()) {
+    case 'promised not to':
+      return `${lead} whether ${record} ${done ? 'kept' : 'keep'} a promise not to ${rest}.`;
+    case 'supports':
+      return `${lead} whether ${record} back ${rest}.`;
+    case 'opposes':
+      return `${lead} whether ${record} work against ${rest}.`;
+    default:
+      return `${lead} whether ${record} ${done ? 'followed' : 'follow'} through on a promise to ${rest}.`;
+  }
+}
+
+/**
+ * What they asked, what we are checking to answer it, the topic we filed it
+ * under, and one way to change it. The same card on the waiting screen and
+ * under "How we checked".
+ */
+export function QuestionCard({
+  asked,
+  statement,
+  memberName,
+  interpretation,
+  done = false,
+  onChange,
+  className = '',
+}: {
+  asked: string;
+  /** What is being checked; null until it is known. */
+  statement: string | null;
+  memberName: string;
+  interpretation: Interpretation | null;
+  done?: boolean;
+  onChange: () => void;
+  className?: string;
+}) {
+  const topics = interpretation
+    ? [interpretation.primary_issue, interpretation.sub_issue].filter((t, i, all): t is string => Boolean(t) && all.indexOf(t) === i)
+    : [];
+  return (
+    <section aria-label="Your question" className={`rounded-card border border-rule bg-card p-4 ${className}`}>
+      <p className="text-[14px] font-medium text-ink-soft">You asked</p>
+      <p className="mt-0.5 text-[16px] leading-snug text-ink-soft">“{asked}”</p>
+      {statement ? (
+        <p className={`mt-3 leading-snug text-ink ${done ? 'text-[17px] font-medium' : 'font-serif text-[20px]'}`}>
+          {checkingLine(statement, memberName, done)}
+        </p>
+      ) : null}
+      {topics.length ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-[14px] text-ink-soft">
+          <span>Filed under</span>
+          {topics.map((t) => (
+            <span key={t} className="rounded-full border border-rule bg-paper px-3 py-1">
+              {t}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {statement ? (
+        <button
+          type="button"
+          onClick={onChange}
+          className="mt-2 inline-flex min-h-[44px] items-center text-[15px] font-medium text-focus underline underline-offset-4"
+        >
+          Not quite right? Change it
+        </button>
+      ) : null}
+    </section>
+  );
+}
 
 interface Props {
   member: Member;
@@ -84,10 +167,14 @@ interface Props {
   interpretation: Interpretation | null;
   /** Set when the reader typed a question and a statement is being checked in its place. */
   rewritten?: { original: string; statement: string } | null;
+  /** What the reader typed, when they picked one of our options and `promise` is that option. */
+  asked?: string | null;
   onCancel: () => void;
+  /** Stop, and put the statement we were checking in the box to edit. */
+  onChange: (statement: string) => void;
 }
 
-export function Waiting({ member, promise, steps, interpretation, rewritten = null, onCancel }: Props) {
+export function Waiting({ member, promise, steps, interpretation, rewritten = null, asked = null, onCancel, onChange }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [tip, setTip] = useState(0);
   const statuses = stageStatuses(steps);
@@ -133,51 +220,25 @@ export function Waiting({ member, promise, steps, interpretation, rewritten = nu
         <h1 className="font-serif text-[28px] leading-tight text-ink sm:text-[32px]">
           Checking {member.name}’s record
         </h1>
-        {rewritten ? (
-          <div className="mt-3 animate-rise-in rounded-card border border-rule bg-card p-4 shadow-soft">
-            <p className="text-[14px] font-medium text-ink-soft">You typed</p>
-            <p className="mt-0.5 text-[16px] leading-snug text-ink-soft">“{rewritten.original}”</p>
-            <p className="mt-3 text-[14px] font-medium text-ink-soft">We’re checking it as</p>
-            <p className="mt-0.5 font-serif text-[20px] leading-snug text-ink">“{rewritten.statement}”</p>
-            <p className="mt-3 text-[14px] text-ink-soft">
-              A question has no side to check, so we check the statement it asks about. Not what you meant? Go back
-              and reword it.
-            </p>
-          </div>
-        ) : (
-          <p className="mt-3 text-[17px] text-ink-soft">
-            You asked about: <span className="text-ink">“{promise}”</span>
-          </p>
-        )}
-        <p className="mt-2 text-[15px] text-ink-soft">
+
+        {/* One card: what they asked, and what we are checking to answer it.
+            Shown as soon as each is known — the earliest point at which a
+            misread can be caught — with one way to fix it. */}
+        <QuestionCard
+          className="mt-4 animate-rise-in shadow-soft"
+          asked={rewritten ? rewritten.original : (asked ?? promise)}
+          statement={rewritten ? rewritten.statement : asked ? promise : (interpretation?.restated ?? null)}
+          memberName={member.name}
+          interpretation={interpretation}
+          onChange={() => onChange(rewritten ? rewritten.statement : promise)}
+        />
+
+        <p className="mt-4 text-[15px] text-ink-soft">
           This usually takes about a minute. <span className="tabular-nums">{elapsed}s</span> so far.
         </p>
       </section>
 
-      {/* How the statement was read — shown the moment it is known. */}
-      {interpretation ? (
-        <section
-          aria-label="How we read your statement"
-          className="mt-6 animate-rise-in rounded-card border border-rule bg-card p-4 shadow-soft"
-        >
-          <p className="text-[14px] font-medium text-ink-soft">How we read it</p>
-          <p className="mt-1 font-serif text-[20px] leading-snug text-ink">“{interpretation.restated}”</p>
-          <div className="mt-3 flex flex-wrap gap-2 text-[14px] text-ink-soft">
-            {interpretation.primary_issue ? (
-              <span className="rounded-full border border-rule bg-paper px-3 py-1">{interpretation.primary_issue}</span>
-            ) : null}
-            {interpretation.sub_issue ? (
-              <span className="rounded-full border border-rule bg-paper px-3 py-1">{interpretation.sub_issue}</span>
-            ) : null}
-            <span className="rounded-full border border-rule bg-paper px-3 py-1">
-              {STANCE_CHIP[interpretation.stance] ?? 'Unclear which way'}
-            </span>
-          </div>
-          <p className="mt-3 text-[14px] text-ink-soft">Not what you meant? Go back and reword it.</p>
-        </section>
-      ) : null}
-
-      <ol className="mt-6 space-y-1 rounded-card border border-rule bg-card p-2 shadow-soft">
+      <ol className="mt-3 space-y-1 rounded-card border border-rule bg-card p-2 shadow-soft">
         {STAGES.map((stage, i) => {
           const status = statuses[i]!;
           const detail = detailFor(stage);

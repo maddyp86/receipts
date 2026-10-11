@@ -26,6 +26,11 @@ describe('statedStance', () => {
     ['opposes ending the filibuster', 'Opposed'],
     ['She is against new tariffs', 'Opposed'],
     ['voted against the debt limit increase', 'Opposed'],
+    ['He promised not to raise my taxes.', 'Opposed'],
+    ['I support our veterans.', 'In Favor'],
+    ['We oppose new tariffs', 'Opposed'],
+    ['pledged not to cut Social Security', 'Opposed'],
+    ['He won’t raise the gas tax', 'Opposed'],
   ] as const)('%s → %s', (text, stance) => {
     expect(statedStance(text)).toBe(stance);
   });

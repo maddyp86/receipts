@@ -1,7 +1,7 @@
 import { fail, ok, type Envelope, type MatchedAction, type MatchStrength } from '@receipts/shared';
 import type { ActionStore, SearchParams, SearchResult } from './ActionStore.js';
 import { config, namespaceFor } from '../config.js';
-import { SIMILARITY } from '../scoring/config.js';
+import { SIMILARITY, NEAR_MISS_REVIEW_LIMIT } from '../scoring/config.js';
 
 // ===========================================================================
 // Live retrieval against the senator's already-embedded bill vectors.
@@ -52,7 +52,7 @@ export function strengthOf(score: number): MatchStrength {
  * congress.gov permalink from the bill identifiers. Every verdict has to trace
  * to a real document, so a match we cannot link is a match we flag.
  */
-function sourceUrl(md: Record<string, unknown>): string {
+export function sourceUrl(md: Record<string, unknown>): string {
   const explicit = str(md.source_url) || str(md.url) || str(md.congress_url);
   if (explicit) return explicit;
 
@@ -162,93 +162,115 @@ export class PineconeActionStore implements ActionStore {
       });
     }
 
-    const all = raw.map((m) => this.toMatchedAction(m)).sort((a, b) => b.score - a.score);
-    const matches = all.filter((m) => m.score >= SIMILARITY.WEAK);
-
-    // Logged as well as returned: when a query comes back empty this is the
-    // first thing anyone will want, and it should not require a database read.
-    console.info(
-      `[retrieval] ${namespaceFor(params.politicianId)} topK=${params.topK} ` +
-        `returned=${all.length} aboveFloor=${matches.length} ` +
-        `belowFloor=${all.length - matches.length} ` +
-        `topScore=${all[0]?.score?.toFixed(3) ?? 'n/a'}`,
-    );
-
-    return ok({
-      matches,
-      returned: all.length,
-      belowFloor: all.length - matches.length,
-      topScore: all[0]?.score ?? null,
-      nearMisses: all
-        .filter((m) => m.score < SIMILARITY.WEAK)
-        .map((m) => ({
-          action_uid: m.action_uid,
-          bill_id: String(m.bill_id ?? ''),
-          title: String(m.title ?? ''),
-          score: m.score,
-        })),
-    });
+    const all = raw.map((m) => toMatchedAction(m.id, m.score, m.metadata ?? {}));
+    return ok(searchResultOf(all, namespaceFor(params.politicianId), params.topK));
   }
+}
 
-  private toMatchedAction(m: PineconeMatch): MatchedAction {
-    const md = m.metadata ?? {};
-    const missing: string[] = [];
+/**
+ * The search result from every action the backend returned: floor applied,
+ * pre-floor counts kept, near misses named.
+ *
+ * Shared by every live store, so the floor and the counts cannot drift apart
+ * between them.
+ */
+export function searchResultOf(returned: MatchedAction[], label: string, topK: number): SearchResult {
+  const all = [...returned].sort((a, b) => b.score - a.score);
+  const matches = all.filter((m) => m.score >= SIMILARITY.WEAK);
 
-    /** Read a field, recording its absence rather than defaulting silently. */
-    const need = (key: string, fallback = ''): string => {
-      const v = str(md[key]);
-      if (!v) missing.push(key);
-      return v || fallback;
-    };
+  // Logged as well as returned: when a query comes back empty this is the
+  // first thing anyone will want, and it should not require a database read.
+  console.info(
+    `[retrieval] ${label} topK=${topK} ` +
+      `returned=${all.length} aboveFloor=${matches.length} ` +
+      `belowFloor=${all.length - matches.length} ` +
+      `topScore=${all[0]?.score?.toFixed(3) ?? 'n/a'}`,
+  );
 
-    // The three vote fields are distinct. 'NA' is the upstream convention for
-    // "no such vote was recorded" and is NOT the same as an abstention, so it is
-    // preserved rather than normalised away here — deriveAlignment decides.
-    //
-    // These commonly read 'NA' in current vectors: the bill-embedding step was
-    // not writing them as of 2026-08-07. Their absence is expected rather than
-    // exceptional, so it is not counted as missing metadata.
-    const vote = str(md.vote) || 'NA';
-    const cloture = str(md.cloture_vote) || 'NA';
-    const passage = str(md.passage_vote) || 'NA';
+  return {
+    matches,
+    returned: all.length,
+    belowFloor: all.length - matches.length,
+    topScore: all[0]?.score ?? null,
+    nearMisses: all
+      .filter((m) => m.score < SIMILARITY.WEAK)
+      .map((m) => ({
+        action_uid: m.action_uid,
+        bill_id: String(m.bill_id ?? ''),
+        title: String(m.title ?? ''),
+        score: m.score,
+      })),
+    reviewable: all
+      .filter((m) => m.score < SIMILARITY.WEAK && m.score >= SIMILARITY.REVIEW)
+      .slice(0, NEAR_MISS_REVIEW_LIMIT),
+  };
+}
 
-    const url = sourceUrl(md);
-    if (!url) missing.push('source_url');
+/**
+ * One returned action, from fields named as the bill-embedding workflow (WF6)
+ * names them in Pinecone metadata.
+ *
+ * Shared by every live store: SupabaseActionStore builds the same record from
+ * `core` and passes it here, so both stores hand the evaluator identical fields
+ * read by identical rules.
+ */
+export function toMatchedAction(id: string, score: number, md: Record<string, unknown>): MatchedAction {
+  const missing: string[] = [];
 
-    const keywords = list(md.bill_keywords);
-    if (!keywords.length) missing.push('bill_keywords');
+  /** Read a field, recording its absence rather than defaulting silently. */
+  const need = (key: string, fallback = ''): string => {
+    const v = str(md[key]);
+    if (!v) missing.push(key);
+    return v || fallback;
+  };
 
-    return {
-      action_uid: m.id,
-      bill_id: need('bill_id', m.id),
-      bill_number: str(md.bill_number) || undefined,
-      // Drives the OBSERVED coverage window. Read defensively: a vector
-      // embedded before the field existed simply has no congress, which is
-      // 'unknown', not zero.
-      congress: Number.parseInt(String(md.congress ?? ''), 10) || undefined,
-      bill_type: str(md.bill_type) || undefined,
-      title: need('title', 'Untitled action'),
-      summary: need('summary'),
-      intended_effects: need('intended_effects'),
-      mechanisms: need('mechanisms'),
-      affected_stakeholders: str(md.affected_stakeholders) || undefined,
+  // The three vote fields are distinct. 'NA' is the upstream convention for
+  // "no such vote was recorded" and is NOT the same as an abstention, so it is
+  // preserved rather than normalised away here — deriveAlignment decides.
+  //
+  // These commonly read 'NA' in current vectors: the bill-embedding step was
+  // not writing them as of 2026-08-07. Their absence is expected rather than
+  // exceptional, so it is not counted as missing metadata.
+  const vote = str(md.vote) || 'NA';
+  const cloture = str(md.cloture_vote) || 'NA';
+  const passage = str(md.passage_vote) || 'NA';
 
-      action_type: str(md.action_type) || 'unknown',
-      is_sponsor: bool(md.is_sponsor),
-      is_cosponsor: bool(md.is_cosponsor),
+  const url = sourceUrl(md);
+  if (!url) missing.push('source_url');
 
-      vote,
-      cloture_vote: cloture,
-      passage_vote: passage,
+  const keywords = list(md.bill_keywords);
+  if (!keywords.length) missing.push('bill_keywords');
 
-      bill_keywords: keywords,
-      primary_issue: str(md.primary_issue),
-      sub_issue: str(md.sub_issue),
-      source_url: url,
+  return {
+    action_uid: id,
+    bill_id: need('bill_id', id),
+    bill_number: str(md.bill_number) || undefined,
+    // Drives the OBSERVED coverage window. Read defensively: a vector
+    // embedded before the field existed simply has no congress, which is
+    // 'unknown', not zero.
+    congress: Number.parseInt(String(md.congress ?? ''), 10) || undefined,
+    bill_type: str(md.bill_type) || undefined,
+    title: need('title', 'Untitled action'),
+    summary: need('summary'),
+    intended_effects: need('intended_effects'),
+    mechanisms: need('mechanisms'),
+    affected_stakeholders: str(md.affected_stakeholders) || undefined,
 
-      score: m.score,
-      strength: strengthOf(m.score),
-      missing_fields: missing,
-    };
-  }
+    action_type: str(md.action_type) || 'unknown',
+    is_sponsor: bool(md.is_sponsor),
+    is_cosponsor: bool(md.is_cosponsor),
+
+    vote,
+    cloture_vote: cloture,
+    passage_vote: passage,
+
+    bill_keywords: keywords,
+    primary_issue: str(md.primary_issue),
+    sub_issue: str(md.sub_issue),
+    source_url: url,
+
+    score,
+    strength: strengthOf(score),
+    missing_fields: missing,
+  };
 }

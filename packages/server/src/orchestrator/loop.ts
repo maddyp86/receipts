@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { clarifyFor } from '@receipts/shared';
+import { clarifyFor, whichPolicyFor } from '@receipts/shared';
 import type { GatedAction, QueryResult, RewrittenEvent, StepId, StreamEvent, ToolError } from '@receipts/shared';
 import { config } from '../config.js';
 import { dispatchTool, newSession, type QuerySession } from './dispatch.js';
@@ -12,11 +12,13 @@ import {
   traceStep,
   withTrace,
   type TraceStage,
+  type TraceStep,
 } from '../trace/Trace.js';
 import type { AuditEvent, StoredAlignment, StoredMatch } from '../data/QueryStore.js';
 import { derivePartialSubtype, describeExclusions } from '../evaluation/evidenceGate.js';
 import { classifyScope, haltForScope } from '../scope/classifyScope.js';
 import { cleanUpInput, needsCleanUp, suggestRewording } from '../cleanup/cleanUpInput.js';
+import { askWhichPolicy } from '../cleanup/askWhich.js';
 import { asReaderQuestion } from '../scope/readerQuestion.js';
 import { describeCoverage } from '../scoring/coverage.js';
 import { cacheKey, isCacheable, resultCache } from '../data/ResultCache.js';
@@ -168,7 +170,7 @@ export function finish(session: QuerySession, emit: Emit): boolean {
     // `session.matches` is the pre-gate candidate set, which is the right input:
     // the question is what the SEARCH covered, and a row the gates later closed
     // was still inside the window that was searched.
-    coverage: describeCoverage(session.matches ?? []),
+    coverage: describeCoverage(session.matches ?? [], session.senator.coverage_congresses),
     // Reads that failed on this run, grouped as a reader would recognise them.
     // Set only when something failed, so every clean result is unchanged.
     ...(session.enrichmentFailures?.length
@@ -1124,7 +1126,13 @@ export async function runQuery(
   promiseText: string,
   emit: Emit,
   corrections?: Corrections,
-  meta: { userAgent?: string; statementDate?: string; sessionKey?: string } = {},
+  meta: {
+    userAgent?: string;
+    statementDate?: string;
+    sessionKey?: string;
+    /** The reader picked this statement from our options: check it as it stands, without asking again. */
+    chosen?: boolean;
+  } = {},
 ): Promise<void> {
   // ---- PER-SESSION REPLAY CACHE ------------------------------------------
   //
@@ -1232,6 +1240,43 @@ export async function runQuery(
     await cleanupTrace.close('cleanup');
   }
 
+  // ---- "WHICH POLICY?" (cleanup/askWhich.ts) ---------------------------------
+  //
+  // A statement that takes a side on a whole area ("He promised not to raise my
+  // taxes") is offered a few specific readings, and nothing is checked until
+  // the reader picks one. Never for a statement the reader picked from our own
+  // options (`meta.chosen`): it is checked as it stands. Behind the same flag
+  // as clean-up. Its own short trace run, like clean-up's.
+  // When it asks, its steps are a run of their own (nothing else ran). When it
+  // does not, they are adopted into the run that checks the statement, so a
+  // plain query is still one run.
+  let whichSteps: TraceStep[] = [];
+  if (config.features.queryCleanup && !meta.chosen) {
+    const whichTrace = new QueryTrace(traceSinks, { politicianId, promiseText, meta: { ...traceMeta, which: true } });
+    whichTrace.record({
+      stage: 'REQUEST', kind: 'control',
+      label: `"which policy?" · "${promiseText.slice(0, 80)}${promiseText.length > 80 ? '…' : ''}"`,
+      input: { politician_id: politicianId, promise_text: promiseText, rewritten_from: rewritten?.original ?? null, ...traceMeta },
+    });
+    const which = await withTrace(whichTrace, () => askWhichPolicy(promiseText));
+    if (which.action === 'ASK_WHICH') {
+      const clarify = whichPolicyFor(rewritten ? rewritten.original : promiseText, which.topic, which.options, which.question);
+      const events: StreamEvent[] = [{ type: 'trace', run_id: whichTrace.runId }, { type: 'clarify', clarify }, { type: 'done' }];
+      whichTrace.record({
+        stage: 'CLARIFY', kind: 'control',
+        label: `asked which ${which.topic} — nothing was checked`,
+        output: clarify,
+      });
+      console.info(`[which] asked which ${which.topic}: ${which.options.map((o) => o.statement).join(' / ')}`);
+      for (const event of events) emit(event);
+      resultCache.set(key, events);
+      await whichTrace.close('clarify');
+      return;
+    }
+    // Not closed, so never written on its own.
+    whichSteps = whichTrace.steps.filter((st) => st.stage !== 'REQUEST');
+  }
+
   // ---- ANSWER REUSE (data/AnswerCache.ts) -----------------------------------
   //
   // Across sessions: the same senator and question get the stored answer. The
@@ -1250,6 +1295,7 @@ export async function runQuery(
     if (reused) {
       console.info(`[reuse] serving the answer produced at ${reused.producedAt} (run ${reused.runId ?? 'unknown'})`);
       const reuseTrace = new QueryTrace(traceSinks, { politicianId, promiseText, meta: traceMeta });
+      reuseTrace.adopt(whichSteps);
       reuseTrace.record({
         stage: 'ANSWER_REUSE', kind: 'control',
         label: `reused the answer produced at ${reused.producedAt} by run ${reused.runId ?? 'unknown'} — no model was called`,
@@ -1264,6 +1310,7 @@ export async function runQuery(
 
   const session = newSession(politicianId, promiseText, corrections, meta.statementDate);
   const trace = new QueryTrace(traceSinks, { politicianId, promiseText, meta: traceMeta });
+  trace.adopt(whichSteps);
 
   // Every event this run produces, so a cacheable run can be replayed later.
   // The terminal events are mirrored into the trace as they pass, so a halt,

@@ -13,6 +13,7 @@ The rebuild of the record pipeline on Supabase. Start with `plan.md`.
 | `reference/sources.md` | Every sheet, tab, column, file path, workflow id and index the old system uses |
 | `reference/vote-slot-rules.md` | The tested rules for deriving a member's cloture and passage votes, with the five known sheet errors |
 | `reference/ossoff-load-backup-2026-10-10.json` | Rows removed when the partial Jon Ossoff load was rolled back. For Phase 4 |
+| `phase-2-report.md` | Phase 2: the settings, the compat views, and gates G2 and G3 per case |
 
 ## What a Claude Code session needs before Phase 1
 

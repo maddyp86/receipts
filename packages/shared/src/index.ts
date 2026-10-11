@@ -277,6 +277,11 @@ export interface Senator {
    * when not known (demo, fixtures, a failed read).
    */
   record_actions?: number;
+  /**
+   * The congresses collected for THIS member, when the record says. Absent
+   * means the default window (COVERAGE_CONGRESSES) applies.
+   */
+  coverage_congresses?: number[];
 }
 
 /**
@@ -1244,12 +1249,26 @@ export interface ClarifyOption {
  * scored. Unlike a halt, the reader can go on with one tap.
  */
 export interface QueryClarify {
-  reason: 'SIDE_REQUIRED';
-  /** The neutral proposition both options are built from. */
+  /**
+   * SIDE_REQUIRED: a subject with no side ("which way?").
+   * POLICY_REQUIRED: a side on a whole area several policies could mean
+   * ("which taxes?"). Either way nothing was checked, and each option is
+   * checked only if the reader picks it.
+   */
+  reason: 'SIDE_REQUIRED' | 'POLICY_REQUIRED';
+  /** SIDE_REQUIRED: the neutral proposition both options are built from. POLICY_REQUIRED: the area, in the reader's words. */
   proposition: string;
+  /** The question to the reader, e.g. "Which taxes do you mean?". */
+  title?: string;
   /** User-facing copy. Safe to render verbatim. */
   message: string;
-  /** Always both sides, "supports" first — a fixed order, never chosen per member. */
+  /** POLICY_REQUIRED: what the reader typed, shown above the choices. */
+  original?: string;
+  /**
+   * SIDE_REQUIRED: always both sides, "supports" first — a fixed order, never
+   * chosen per member. POLICY_REQUIRED: 2–4 readings on the reader's own side,
+   * each showing the exact statement that would be checked.
+   */
   options: ClarifyOption[];
 }
 
@@ -1271,6 +1290,23 @@ export function clarifyFor(proposition: string): QueryClarify {
       { label: `Supports ${p}`, statement: `supports ${p}` },
       { label: `Opposes ${p}`, statement: `opposes ${p}` },
     ],
+  };
+}
+
+/** Readings of a broad statement for the reader to choose from. The only place they are built. */
+export function whichPolicyFor(original: string, topic: string, options: ClarifyOption[], question?: string): QueryClarify {
+  const t = topic.trim();
+  return {
+    reason: 'POLICY_REQUIRED',
+    proposition: t,
+    // Written by the model and checked in code (cleanup/askWhich.ts): "Which
+    // taxes do you mean?" reads right; "Which the economy do you mean?" would not.
+    title: question?.trim() || 'Which one do you mean?',
+    original: original.trim(),
+    message:
+      'That covers several different policies, and the answer depends on which one. We won’t guess. ' +
+      'Pick the one you mean, and we’ll check only that.',
+    options,
   };
 }
 
@@ -1460,6 +1496,24 @@ export function searchSummarySentence(result: QueryResult): string | null {
   const s = result.search!;
   if (!s.relevance_applied) return `${lead} ${countWord(f.close)} came close to your question.`;
   return `${lead} ${countWord(f.close)} came close to your question, and ${countWord(f.about).toLowerCase()} ${f.about === 1 ? 'was' : 'were'} actually about it.`;
+}
+
+/**
+ * The record's boundary, said on the answer itself when the search found
+ * nothing: "Our records start in January 2023. If they acted on this before
+ * then, it isn't in what we searched."
+ *
+ * An empty search is where false absence bites hardest — the 2022 drug
+ * pricing and insulin laws are before the record, and a reader who sees
+ * "nothing found" without this reads it as "did nothing". The coverage line
+ * says the same thing under "Why"; this puts it where the answer is. Null
+ * for any other answer, and when the record's start is not known (the
+ * coverage line then says the search window itself is unknown).
+ */
+export function recordBoundarySentence(result: QueryResult): string | null {
+  if (result.scored.verdict !== 'NOT_DETERMINABLE' || result.scored.nd_reason !== 'NO_MATCHES') return null;
+  const since = recordStart(result.coverage);
+  return since ? `Our records start in ${since}. If they acted on this before then, it isn’t in what we searched.` : null;
 }
 
 /**

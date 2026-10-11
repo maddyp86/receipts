@@ -1,9 +1,11 @@
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { searchFunnel, searchSummarySentence, type QueryResult } from '@receipts/shared';
+import { recordBoundarySentence, searchFunnel, searchSummarySentence, type QueryResult } from '@receipts/shared';
 import { toSenator } from '../../../server/src/data/SenatorCache.js';
-import { VerdictCard } from './Verdict.js';
+import { SearchSummary, VerdictCard, WhyPanel } from './Verdict.js';
+import { ResultTabs } from './ResultTabs.js';
+import { FollowUp } from './FollowUp.js';
 import { ResultActions } from './States.js';
 
 // The test runner compiles JSX with the classic transform.
@@ -81,14 +83,15 @@ describe('the first screen of an answer', () => {
   const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
   const at = (s: string) => text.indexOf(s);
 
-  it('headline, then the search summary and its numbers, then what to do next, then the explanation', () => {
+  it('the bar holds the headline, the three numbers and what to do next — not the explanation', () => {
     expect(at('We couldn')).toBeGreaterThanOrEqual(0);
-    expect(at('We couldn')).toBeLessThan(at('We searched all 609'));
-    expect(at('We searched all 609')).toBeLessThan(at('609 actions searched'));
+    expect(at('We couldn')).toBeLessThan(at('609 actions searched'));
     expect(at('2 came close')).toBeGreaterThan(0);
     expect(at('0 about your question')).toBeGreaterThan(0);
     expect(at('about your question')).toBeLessThan(at('Check something else about Schumer'));
-    expect(at('Check something else about Schumer')).toBeLessThan(at('Here’s why'));
+    // The explanation is the "Why" tab; the summary sentence is "How we checked".
+    expect(at('Here’s why')).toBe(-1);
+    expect(at('We searched all 609')).toBe(-1);
   });
 
   it('with one other covered member, the second button asks the same question about them', () => {
@@ -103,5 +106,80 @@ describe('the second button', () => {
     expect(render([{ politician_id: 'a', name: 'A' }, { politician_id: 'b', name: 'B' }])).toContain('Check someone else');
     expect(render([])).not.toContain('Check someone else');
     expect(render([])).not.toContain('Ask this about');
+  });
+});
+
+describe('the tabs under the answer', () => {
+  const r = result();
+  const html = renderToStaticMarkup(
+    React.createElement(ResultTabs, {
+      initial: 'why',
+      tabs: [
+        { id: 'why', label: 'Why', content: React.createElement(WhyPanel, { result: r }) },
+        { id: 'receipts', label: 'Receipts (0)', content: React.createElement('p', null, 'the bills') },
+        { id: 'how', label: 'How we checked', content: React.createElement(SearchSummary, { result: r }) },
+      ],
+    }),
+  );
+  const panels = [...html.matchAll(/<div role="tabpanel"[^>]*>/g)].map((m) => m[0]);
+
+  it('opens on Why, and the other two are in the page but hidden', () => {
+    expect(html).toMatch(/aria-selected="true"[^>]*>Why</);
+    expect(panels).toHaveLength(3);
+    expect(panels[0]).not.toContain('hidden');
+    expect(panels[1]).toContain('hidden');
+    expect(panels[2]).toContain('hidden');
+  });
+
+  it('Why carries the explanation and the coverage boundary; How we checked carries the summary sentence', () => {
+    const [why, , how] = html.split(/<div role="tabpanel"/).slice(1);
+    expect(why).toContain('Here’s why');
+    expect(why).toContain('coverage-note');
+    expect(how).toContain('We searched all 609');
+  });
+});
+
+describe('the follow-up chat', () => {
+  const html = renderToStaticMarkup(React.createElement(FollowUp, { traceId: 't', available: true, senatorName: 'Charles E. Schumer' }));
+
+  it('is a panel for wide screens and a pinned button for phones', () => {
+    expect(html).toContain('aria-label="Ask about this result"');
+    expect(html).toMatch(/hidden lg:block/);
+    expect(html).toMatch(/fixed bottom-4[^"]*lg:hidden/);
+  });
+
+  it('is absent when the server cannot answer follow-ups', () => {
+    expect(renderToStaticMarkup(React.createElement(FollowUp, { traceId: 't', available: false, senatorName: 'x' }))).toBe('');
+  });
+});
+
+describe('a search that found nothing says where our records start', () => {
+  const BOUNDARY = 'Our records start in January 2023. If they acted on this before then, it isn’t in what we searched.';
+
+  it('on a no-results answer (the drug prices question, trace 5bda0373)', () => {
+    expect(recordBoundarySentence(result())).toBe(BOUNDARY);
+  });
+
+  it('on the answer bar itself, before the buttons', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(VerdictCard, {
+        result: result(),
+        actions: React.createElement(ResultActions, { surname: 'Schumer', onAskAnother: () => {}, others: [], onAskSameOf: () => {}, onChangeMember: () => {} }),
+      }),
+    );
+    const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    expect(text).toContain(BOUNDARY);
+    expect(text.indexOf(BOUNDARY)).toBeLessThan(text.indexOf('Check something else about Schumer'));
+  });
+
+  it('not on any other answer, and not when the record’s start is unknown', () => {
+    expect(recordBoundarySentence(result({ nd: null }))).toBeNull();
+    expect(recordBoundarySentence(result({ nd: 'ALL_NEUTRAL' }))).toBeNull();
+    const unknown = { ...result(), coverage: { congresses: [], observed: null, unknown: true } } as unknown as QueryResult;
+    expect(recordBoundarySentence(unknown)).toBeNull();
+  });
+
+  it('never says the senator did nothing', () => {
+    expect(BOUNDARY).not.toMatch(/did nothing|no record|never/i);
   });
 });
