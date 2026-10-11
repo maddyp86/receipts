@@ -62,7 +62,9 @@ Index `bills-promises`, 1024 dimensions, cosine.
 
 The index is tagged `text-embedding-3-large`, but the embedding workflow calls `text-embedding-3-small` with `dimensions: 1024`. Check a sample before trusting either.
 
-The Pinecone connector tools cannot return vector values. Copying vectors needs the Pinecone API key and a direct call to the index host.
+The Pinecone connector tools cannot return vector values. Copy vectors through an n8n HTTP node that calls the index host (`bills-promises-zp2qtjn.svc.aped-4627-b74a.pinecone.io`) with the `Pinecone API` credential n8n already holds.
+
+The query tool's own setting is `text-embedding-3-small` at 1024 dimensions, the same as the embedding workflow, so the index tag is believed to be stale.
 
 ## Supabase
 
@@ -74,6 +76,8 @@ The Pinecone connector tools cannot return vector values. Copying vectors needs 
 ## n8n
 
 Instance `maddyp.app.n8n.cloud`, project "Politician Trustworthy".
+
+Credentials already stored there: `Google Sheets account`, `Postgres account`, `Pinecone API`, `n8n OpenAI`.
 
 | Workflow | Id |
 |---|---|
