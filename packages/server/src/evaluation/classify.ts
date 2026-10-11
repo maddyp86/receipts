@@ -64,7 +64,9 @@ Classify by the policy, program or instrument the statement is about, not by how
 
 ## STANCE
 
-\`stance\` is what the statement WANTS, not how it is phrased. "Protect", "preserve" and "defend" mean the speaker wants the thing to continue — that is In Favor of that goal, not opposition.
+\`stance\` is the statement's direction toward the policy its own words name, because the next step reads the statement and the stance together. "Supports ending tariffs" is In Favor — of ending tariffs — not Opposed to tariffs. "Opposes cuts to Medicaid" is Opposed — to the cuts. "Protect", "preserve" and "defend" mean the speaker wants the thing to continue — that is In Favor of that goal, not opposition.
+
+Write \`restated\` in the same frame as the stance: the same goal, the same direction.
 
 ## KEY POLICY TERMS
 

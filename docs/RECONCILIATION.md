@@ -2123,3 +2123,41 @@ penalty and the broad-vehicle and policy-position caps. Lost: the model's
 **For the pipeline.** WF10A still runs v7, so the senator profile still
 judges bill and action together. Not a proposal to change WF10A until the
 batch pipeline is measured for the same leak.
+
+---
+
+## 2026-10-10 — the statement's own words set its stance
+
+**What.** `interpret_promise` (`orchestrator/dispatch.ts`) now takes the stance
+from the statement's opening word when it has one
+(`evaluation/statedStance.ts`): "supports …", "promised to …", "voted for …"
+are In Favor; "opposes …", "against …", "voted against …" are Opposed. That
+word wins over the orchestrator and the classifier; a reader's correction
+still wins over it. When it overrides the classifier, the disagreement is
+logged with the others. And when the classifier's paraphrase is in the other
+frame, the reader is shown the statement itself instead. A statement with no
+such opening keeps the classifier's label. The classifier prompt gained the
+same rule: stance is relative to the policy the statement's own words name,
+and `restated` is written in that frame.
+
+**Why.** Evaluator v8 reads the statement as typed together with the stance
+label: the goal is "the direction the statement wants". The classifier
+sometimes labelled the underlying object instead. Eval case 40, run
+`fb5fcdba-4d23-4427-abb5-5b56165de898`: "supports ending tariffs on imported
+goods" was labelled Opposed (to tariffs). The evaluator then wrote "the
+statement is opposed to ending tariffs on imported goods" and read two of
+three identical resolutions ending the tariff emergencies as HINDER. The
+verdict was withheld, not published. The same day's traces had "supports
+overturning California's electric vehicle rules" and "supports restricting
+abortion" labelled Opposed, and "supports protecting clean air standards from
+rollback" paraphrased as "Opposes elimination or weakening of …" beside an In
+Favor label.
+
+**What it does not change.** The evaluator prompt and its input format are
+unchanged (the golden snapshot still passes); only the label's value changes.
+The label is also in the embedded text, so the query vector moves by that one
+word when the label flips.
+
+**For the pipeline.** WF3's classifier labels stored statements on its own
+terms, and WF10A reads them with v7. Not a proposal to change either until
+the stored statements are checked for the same mismatch.
