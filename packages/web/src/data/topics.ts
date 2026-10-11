@@ -137,7 +137,7 @@ export const topics: Topic[] = [
 export const askingPairs: ReadonlyArray<{ instead: string; tries: readonly string[] }> = [
   {
     instead: 'What is their stance on abortion?',
-    tries: ['Did they vote to protect abortion access?', 'Did they vote to limit abortion after 15 weeks?'],
+    tries: ['Did they vote to protect abortion access?', 'Do they support restricting abortion?'],
   },
   {
     instead: 'Do they support our veterans?',

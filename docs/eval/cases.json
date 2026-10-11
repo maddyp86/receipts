@@ -468,16 +468,16 @@
       "senator": "T000250",
       "statement": "Did they vote to limit abortion after 15 weeks?",
       "verdict": [
-        "KEPT",
-        "KEPT_MIXED",
-        "BROKE_JUDGED",
-        "BROKE_MIXED"
+        "NOT_DETERMINABLE"
+      ],
+      "nd_reasons": [
+        "ALL_NEUTRAL"
       ],
       "must_have": [],
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "A question-box example (2026-10-10): every example must return a real verdict, not a refusal. Senator is the one it is most likely tried on (a guess; change freely). A 'How to ask' Try example."
+      "note": "Was a 'How to ask' Try example; replaced on 2026-10-10 by case 29's question. The record holds no 15-week bill. Before the stance fix (#64) it passed as KEPT · Low on one stretched reading (a pro-access resolution read as hindering a 15-week limit). With the label matching the words, the reader calls the abortion funding bills and that resolution a different object, twice (runs 11e3eca1, 3281112b). Kept as the honest answer: it doesn't settle it, and must never say the senator did nothing."
     },
     {
       "id": "23-schumer-va-health-care-question",
@@ -592,7 +592,7 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Abortion' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Abortion' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Also a 'How to ask' Try example from 2026-10-10 (replacing case 22): KEPT · Medium after the stance fix, run ab2449ce."
     },
     {
       "id": "30-thune-topic-oppose-federal-funding-for-abortion",
