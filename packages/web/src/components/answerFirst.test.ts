@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { searchFunnel, searchSummarySentence, type QueryResult } from '@receipts/shared';
+import { recordBoundarySentence, searchFunnel, searchSummarySentence, type QueryResult } from '@receipts/shared';
 import { toSenator } from '../../../server/src/data/SenatorCache.js';
 import { SearchSummary, VerdictCard, WhyPanel } from './Verdict.js';
 import { ResultTabs } from './ResultTabs.js';
@@ -150,5 +150,36 @@ describe('the follow-up chat', () => {
 
   it('is absent when the server cannot answer follow-ups', () => {
     expect(renderToStaticMarkup(React.createElement(FollowUp, { traceId: 't', available: false, senatorName: 'x' }))).toBe('');
+  });
+});
+
+describe('a search that found nothing says where our records start', () => {
+  const BOUNDARY = 'Our records start in January 2023. If they acted on this before then, it isn’t in what we searched.';
+
+  it('on a no-results answer (the drug prices question, trace 5bda0373)', () => {
+    expect(recordBoundarySentence(result())).toBe(BOUNDARY);
+  });
+
+  it('on the answer bar itself, before the buttons', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(VerdictCard, {
+        result: result(),
+        actions: React.createElement(ResultActions, { surname: 'Schumer', onAskAnother: () => {}, others: [], onAskSameOf: () => {}, onChangeMember: () => {} }),
+      }),
+    );
+    const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    expect(text).toContain(BOUNDARY);
+    expect(text.indexOf(BOUNDARY)).toBeLessThan(text.indexOf('Check something else about Schumer'));
+  });
+
+  it('not on any other answer, and not when the record’s start is unknown', () => {
+    expect(recordBoundarySentence(result({ nd: null }))).toBeNull();
+    expect(recordBoundarySentence(result({ nd: 'ALL_NEUTRAL' }))).toBeNull();
+    const unknown = { ...result(), coverage: { congresses: [], observed: null, unknown: true } } as unknown as QueryResult;
+    expect(recordBoundarySentence(unknown)).toBeNull();
+  });
+
+  it('never says the senator did nothing', () => {
+    expect(BOUNDARY).not.toMatch(/did nothing|no record|never/i);
   });
 });
