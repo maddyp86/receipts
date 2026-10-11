@@ -18,7 +18,9 @@ const body = $('Fetch Bill Summary').item.json.data || '';
 // versions, so WF5b falls back to the PDF url; fetched as text that is binary
 // noise and the model would fall back to the Official Title. A PDF header, a
 // low readable-character ratio, or a body under 400 chars flags the row instead.
-if (requestedVersion) {
+// v2 (2026-10-11): a bill-level request with a text link is inlined the same way.
+const inlineLabel = requestedVersion || 'current text';
+if (item['version_fetch_url']) {
   const raw = String(body || '');
   let text = raw
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -39,7 +41,7 @@ if (requestedVersion) {
     const why = looksPdf ? 'PDF, not text'
       : tooShort ? ('only ' + text.length + ' chars')
       : ('readable ratio ' + readableRatio.toFixed(2));
-    console.log('[WF5] ' + item['Bill ID'] + ' ' + requestedVersion +
+    console.log('[WF5] ' + item['Bill ID'] + ' ' + inlineLabel +
       ': VERSION TEXT UNUSABLE (' + why + ') - row flagged, summary not trustworthy');
     return [{ json: { ...item,
       bill_summary_text: '',
@@ -56,7 +58,7 @@ if (requestedVersion) {
     text = text.slice(0, LIMIT);
     note = 'version text truncated at ' + LIMIT + ' of ' + fullLen + ' chars';
   }
-  console.log('[WF5] ' + item['Bill ID'] + ' ' + requestedVersion + ': inlined ' +
+  console.log('[WF5] ' + item['Bill ID'] + ' ' + inlineLabel + ': inlined ' +
     Math.min(fullLen, LIMIT) + ' chars' + (note ? ' (' + note + ')' : ''));
   return [{ json: { ...item,
     bill_summary_text: text,

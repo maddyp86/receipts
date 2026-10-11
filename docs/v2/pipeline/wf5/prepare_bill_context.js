@@ -16,7 +16,10 @@ const LARGE_BILL_KEYWORDS = [
   'Further Consolidated',
   'Further Additional Continuing',
   'Continuing Appropriations',
-  'Continuing Resolution'
+  'Continuing Resolution',
+  // v2 (2026-10-11): reconciliation bills are as long as an omnibus; hr1-119's
+  // statement summarised its appropriations and missed every tax provision.
+  'provide for reconciliation'
 ];
 
 const isLargeBill = LARGE_BILL_KEYWORDS.some(k =>
@@ -38,10 +41,15 @@ const isLargeBill = LARGE_BILL_KEYWORDS.some(k =>
 // Now the version's text is FETCHED by Fetch Bill Summary and handed to the
 // model inline, the same way a BILLSTATUS summary is. The model is given no
 // URL to browse and no opportunity to substitute metadata.
-const versionFetchUrl = requestedVersion ? htmUrl : '';
-const contentSource = requestedVersion
-  ? 'BILLSTATUS_SUMMARY'   // inline text supplied; prompt forbids fetching
-  : (isLargeBill ? 'BILLSTATUS_SUMMARY' : 'FULL_TEXT');
+//
+// v2 (2026-10-11): EVERY BILL IS FETCHED, NOT BROWSED. The same failure hit
+// bill-level statements: told to read the Bill Text URL, the model made no web
+// search for hr5334-119 or sres13-118 and wrote "the supplied bill text was
+// unavailable". A bill-level request now gets its text inline too; a large bill
+// keeps the BILLSTATUS summary; a bill with no published text gets the
+// BILLSTATUS summary rather than its title alone. Nothing is left to browse.
+const versionFetchUrl = requestedVersion || (!isLargeBill && htmUrl) ? htmUrl : '';
+const contentSource = 'BILLSTATUS_SUMMARY';   // inline text or summary supplied; prompt forbids fetching
 
 if (!htmUrl) {
   console.warn(`No Bill Text URL for ${item['Bill ID']} - model will rely on BILLSTATUS summary or metadata only`);

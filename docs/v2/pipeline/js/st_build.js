@@ -21,7 +21,9 @@ const perBill = limitRows.map((r, idx) => {
   const p = runOf('Prepare Bill Context', idx) || {};
   const x = runOf('Extract Bill Summary', idx) || {};
   const textChars = S(x.bill_summary_text).length;
-  const titleOnly = !S(r.requested_version) && p.bill_content_source === 'FULL_TEXT' && !S(p.bill_text_url) && !textChars;
+  // Title only: no published text and no summary either. Text that was fetched
+  // but unusable is flagged instead, so the bill is not re-run every day.
+  const titleOnly = !S(r.requested_version) && !S(p.bill_text_url) && !textChars;
   return { bill_id: r['Bill ID'], version: S(r.requested_version) || null, content_source: p.bill_content_source || null,
     text_chars: textChars, title_only: titleOnly, summary_error: S(x.bill_summary_error) || null, redo_title_only: !!r.redo_title_only };
 });
@@ -97,8 +99,8 @@ for (const f of flat) {
       mechanisms: f.mechanisms || null, summary: f.neutral_summary || null,
       reverses_existing_policy: ra.reverses_existing_policy === true, target_type: ra.target_type || null, target_name: ra.target_name || null,
       target_source: ra.target_source || null, target_effect: ra.target_effect || null, direction_confidence: ra.direction_confidence,
-      // WF5 writes Flagged For Review on version rows only.
-      flagged_for_review: ver ? (flags.flag_for_review || /unusable/.test(S(pb.summary_error))) : false,
+      // WF5 flags version rows only; v2 flags bill-level rows too, now that their text is fetched.
+      flagged_for_review: flags.flag_for_review || /unusable/.test(S(pb.summary_error)),
       taxonomy_divergent: ver ? !!f.taxonomy_divergent : null, taxonomy_divergence_detail: ver ? (f.taxonomy_divergence_detail || 'NA') : null,
       version_mismatch: ver ? flags.source_version_mismatch : null, version_title_source: ver ? (p.version_title_source || 'NA') : null,
       title_only: !!pb.title_only, stakeholders: stake,
