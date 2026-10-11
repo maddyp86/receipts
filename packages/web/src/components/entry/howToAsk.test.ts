@@ -47,7 +47,7 @@ describe('How to ask', () => {
     for (const s of [
       '"What is their stance on abortion?"',
       '"Did they vote to protect abortion access?"',
-      '"Did they vote to limit abortion after 15 weeks?"',
+      '"Do they support restricting abortion?"',
       '"Do they support our veterans?"',
       '"Have they backed expanding VA health care?"',
       `"Did they vote to raise veterans' disability pay?"`,
@@ -63,7 +63,7 @@ describe('How to ask', () => {
     );
     expect(buttons).toEqual([
       '"Did they vote to protect abortion access?"',
-      '"Did they vote to limit abortion after 15 weeks?"',
+      '"Do they support restricting abortion?"',
       '"Have they backed expanding VA health care?"',
       `"Did they vote to raise veterans' disability pay?"`,
     ]);
