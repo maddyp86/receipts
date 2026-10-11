@@ -58,7 +58,7 @@ Run A's 49 saved query vectors against both stores, at the query path's own top 
 
 - **Size of the error:** across all 128 differing score pairs, the most Pinecone is off by is 0.0011, and the mean is 0.0004.
 - **Reordering:** all 17 swapped pairs are bills whose exact scores differ by at most 0.00062, inside that error. That includes the one bill swapped at the rank-10 cutoff (case 13: s2515-118 and s587-119, both 0.481).
-- **Consequence for the gate:** the "equal to three decimals" test can't be met against an approximate reference. I propose G2 be read as "same bills; any order or score difference within Pinecone's measured error". On that reading G2 passes for all 49.
+- **Consequence for the gate:** the "equal to three decimals" test can't be met against an approximate reference. **Decided with Matt on 10 October 2026:** G2 is read as "same bills; any order or score difference within Pinecone's measured error". On that reading G2 passes for all 49.
 
 **Fields that differ for the same bill, which matter for G3:**
 
