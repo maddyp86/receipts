@@ -285,7 +285,15 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
 
   private readonly pool: pg.Pool;
 
-  constructor(connectionString: string = config.database.url) {
+  /**
+   * @param schema RECORD_SCHEMA: `mirror`, or `compat` (views over `core` in
+   *   the mirror's exact shape). Only the schema differs; table names, columns
+   *   and row keys are the same, so every read below is unchanged.
+   */
+  constructor(
+    connectionString: string = config.database.url,
+    private readonly schema: 'mirror' | 'compat' = config.record.schema,
+  ) {
     this.pool = new Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
@@ -327,7 +335,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
   private async loadRoles(report?: EnrichmentReport): Promise<Map<string, string>> {
     try {
       const { rows } = await this.pool.query<{ politician_id: string; role: string | null }>(
-        `select politician_id, row->>'Role' as role from mirror.mirror_politicians`,
+        `select politician_id, row->>'Role' as role from ${this.schema}.mirror_politicians`,
       );
       const out = new Map<string, string>();
       for (const r of rows) if (S(r.role)) out.set(S(r.politician_id), S(r.role));
@@ -347,7 +355,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
       const { rows } = await this.pool.query<{ vote_id: string; result: string | null }>(
         `select vote_id,
                 coalesce(row->>'Result', row->>'Results', row->>'Vote Result', row->>'Outcome') as result
-           from mirror.mirror_roll_call_votes`,
+           from ${this.schema}.mirror_roll_call_votes`,
       );
       const out = new Map<string, string>();
       for (const r of rows) {
@@ -377,7 +385,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
         row: Record<string, unknown>;
       }>(
         `select action_uid, row
-           from mirror.mirror_politician_bill_actions
+           from ${this.schema}.mirror_politician_bill_actions
           where action_uid = any($1::text[])`,
         [uids],
       );
@@ -406,7 +414,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
       try {
         const { rows } = await this.pool.query<{ vote_id: string; vote: string | null }>(
           `select vote_id, row->>'Vote' as vote
-             from mirror.mirror_party_vote_positions
+             from ${this.schema}.mirror_party_vote_positions
             where vote_id = any($1::text[])`,
           [clotureIds],
         );
@@ -427,7 +435,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
       try {
         const { rows } = await this.pool.query<{ vote_id: string; question: string | null }>(
           `select vote_id, coalesce(nullif(row->>'Question', ''), row->>'Result') as question
-             from mirror.mirror_roll_call_votes
+             from ${this.schema}.mirror_roll_call_votes
             where vote_id = any($1::text[])`,
           [clotureIds],
         );
@@ -465,7 +473,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
         row: Record<string, unknown>;
       }>(
         `select bill_id, row
-           from mirror.mirror_bills_master
+           from ${this.schema}.mirror_bills_master
           where bill_id = any($1::text[])`,
         [ids],
       );
@@ -494,7 +502,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
     try {
       const { rows } = await this.pool.query<VersionMirrorRow>(
         `select impact_version_uid, bill_id, text_version_code, text_version_date, row
-           from mirror.mirror_impact_statement_versions
+           from ${this.schema}.mirror_impact_statement_versions
           where bill_id = any($1::text[])`,
         [ids],
       );
@@ -528,7 +536,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
     try {
       const { rows } = await this.pool.query<{ bill_id: string; row: Record<string, unknown> }>(
         `select bill_id, row
-           from mirror.mirror_impact_statements
+           from ${this.schema}.mirror_impact_statements
           where bill_id = any($1::text[])`,
         [ids],
       );
@@ -545,7 +553,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
   async dataVersion(): Promise<string | null> {
     try {
       const { rows } = await this.pool.query<{ v: Date | string | null }>(
-        `select greatest(${MIRROR_TABLES_READ.map((t) => `(select max(synced_at) from mirror.${t})`).join(', ')}) as v`,
+        `select greatest(${MIRROR_TABLES_READ.map((t) => `(select max(synced_at) from ${this.schema}.${t})`).join(', ')}) as v`,
       );
       const v = rows[0]?.v;
       return v ? new Date(v).toISOString() : null;

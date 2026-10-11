@@ -67,6 +67,43 @@ const demoMode = demoOverride ?? anthropicKey === '';
 const fixtureMode =
   fixtureOverride ?? (openaiKey === '' || pineconeKey === '' || pineconeHost === '');
 
+/**
+ * A setting that must be one of a few exact values.
+ *
+ * Unlike the credentials, a wrong value here is REFUSED at startup rather than
+ * degraded around: a typo in RECORD_SCHEMA would otherwise make every
+ * enrichment read fail open, and the tool would keep answering with its gates
+ * quietly off. A deploy that will not start is the louder, safer failure.
+ */
+function oneOf<T extends string>(name: string, raw: string | undefined, allowed: readonly T[], fallback: T): T {
+  const v = str(raw).toLowerCase();
+  if (!v) return fallback;
+  if ((allowed as readonly string[]).includes(v)) return v as T;
+  throw new Error(`${name}="${raw}" is not one of: ${allowed.join(', ')}. Refusing to start.`);
+}
+
+/**
+ * Where the legislative record is read from (docs/v2/plan.md, Phase 2).
+ *
+ *   mirror  the Supabase mirror of the Sheets pipeline. Today's source.
+ *   compat  views over schema `core` in exactly the mirror's shape
+ *           (docs/supabase-migration-015-compat-views.sql).
+ *
+ * Only the schema changes: table names, columns and row keys are identical,
+ * so every reader is the same code either way.
+ */
+const recordSchema = oneOf('RECORD_SCHEMA', process.env.RECORD_SCHEMA, ['mirror', 'compat'] as const, 'mirror');
+
+/**
+ * Which store the bill search runs against.
+ *
+ *   pinecone  one vector per member and bill, a namespace per member. Today's.
+ *   supabase  one vector per bill in `core`, ranked by core.match_member_bills.
+ *
+ * Fixture mode still wins over both.
+ */
+const actionStoreKind = oneOf('ACTION_STORE', process.env.ACTION_STORE, ['pinecone', 'supabase'] as const, 'pinecone');
+
 export const config = {
   // API_PORT first, then the conventional PORT, then a default.
   //
@@ -214,6 +251,13 @@ export const config = {
 
   retrieval: {
     topK: num(process.env.RETRIEVAL_TOP_K, 10),
+    /** ACTION_STORE. See `actionStoreKind`. */
+    store: actionStoreKind,
+  },
+
+  /** RECORD_SCHEMA. See `recordSchema`. */
+  record: {
+    schema: recordSchema,
   },
 
   /**
@@ -260,6 +304,14 @@ export const config = {
      * pattern as the other credentials.
      */
     url: databaseUrl,
+    /**
+     * PERSIST_QUERIES. Default true. False keeps DATABASE_URL for READING the
+     * record but writes nothing to `app`: no session, query, audit event or
+     * Supabase trace (local trace files still work). For verification runs,
+     * such as the v2 eval comparison, that must read production data without
+     * adding synthetic queries to it.
+     */
+    persistQueries: boolOverride(process.env.PERSIST_QUERIES) ?? true,
   },
 
   /**
@@ -429,8 +481,12 @@ export function describeMode(): string {
   const llm = config.demoMode
     ? 'DEMO (stubbed interpret/explain)'
     : `live (${config.models.explain})`;
-  const data = config.fixtureMode ? 'FIXTURE (canned matches)' : 'live (Pinecone)';
-  return `llm=${llm}  data=${data}`;
+  const data = config.fixtureMode
+    ? 'FIXTURE (canned matches)'
+    : config.retrieval.store === 'supabase'
+      ? 'live (Supabase core)'
+      : 'live (Pinecone)';
+  return `llm=${llm}  data=${data}  record=${config.record.schema}`;
 }
 
 /**

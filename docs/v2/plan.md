@@ -88,7 +88,7 @@ Counts are as read on 10 October 2026, after the partial Ossoff load was rolled 
 | Gate | Test | Pass means |
 |---|---|---|
 | G1 Record | Compatibility views against the current mirror, row by row, for Schumer and Thune | Identical, except the five known corrections listed in `vote-slot-rules.md` |
-| G2 Search | The same query vectors against Pinecone and Supabase | Same bills, same order, scores equal to three decimals |
+| G2 Search | The same query vectors against Pinecone and Supabase | Same bills; any difference in order or score within Pinecone's measured error (its scores are approximate; decided 10 October 2026, see `phase-2-report.md`) |
 | G3 End to end | The 18-case eval set on the new store | Same pass rate as the old store |
 | G4 Daily run | New pipeline for three consecutive days | Clean runs, no drift against the old pipeline |
 
