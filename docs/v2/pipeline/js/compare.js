@@ -49,7 +49,8 @@ const vote = (v) => { const s = nz(v); return s === null ? null : s.charAt(0).to
 const diffs = { bills: [], sponsorships: [], roll_calls: [], votes: [] };
 // By design, not a fault: v2 fills a bill's missing text link once congress.gov
 // publishes one; the old pipeline sets it when it first sees the bill and never
-// again. Only a link where the sheet has none qualifies.
+// again. Only a link where the sheet has none qualifies. Matt agreed this
+// reading for G4 on 2026-10-11.
 const byDesign = (field, sheet, coreVal) => field === 'bill_text_url' && sheet === null && /^https:[/][/]www[.]congress[.]gov[/]/.test(coreVal || '')
   ? 'By design: v2 fills a missing text link; the old pipeline never backfills it' : null;
 const add = (cat, key, field, sheet, coreVal) => {
