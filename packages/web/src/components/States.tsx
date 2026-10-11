@@ -221,6 +221,43 @@ export function ErrorState({
   );
 }
 
+/**
+ * What to do next, in the answer's first screen. When exactly one other
+ * member is covered, the second button asks the SAME question about them —
+ * the comparison most readers want next. With more, it goes to the picker.
+ */
+export function ResultActions({
+  surname,
+  onAskAnother,
+  others,
+  onAskSameOf,
+  onChangeMember,
+}: {
+  surname: string;
+  onAskAnother: () => void;
+  others: ReadonlyArray<{ politician_id: string; name: string }>;
+  onAskSameOf: (politicianId: string) => void;
+  onChangeMember: () => void;
+}) {
+  const only = others.length === 1 ? others[0]! : null;
+  return (
+    <div className="flex flex-col gap-2.5">
+      <button type="button" className={`${BTN_PRIMARY} w-full`} onClick={onAskAnother}>
+        Check something else about {surname}
+      </button>
+      {only ? (
+        <button type="button" className={`${BTN_SECONDARY} w-full`} onClick={() => onAskSameOf(only.politician_id)}>
+          Ask this about {only.name}
+        </button>
+      ) : others.length > 1 ? (
+        <button type="button" className={`${BTN_SECONDARY} w-full`} onClick={onChangeMember}>
+          Check someone else
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function ThinResultActions({
   onReset,
   onChangeMember,

@@ -271,6 +271,12 @@ export interface Senator {
   cached: boolean;
   party?: 'D' | 'R' | 'I';
   state?: string;
+  /**
+   * How many recorded actions of theirs the search ranks — the whole record
+   * we hold for them. For the "we searched all N" line on a result. Absent
+   * when not known (demo, fixtures, a failed read).
+   */
+  record_actions?: number;
 }
 
 /**
@@ -1400,6 +1406,60 @@ export function likelyOutcomeHeadline(
   }
 
   return bucket === 'KEPT' ? 'Likely kept' : 'Likely broken';
+}
+
+/** The search, as the three numbers a reader can check: searched, close, about it. */
+export interface SearchFunnel {
+  /** The senator's whole record the search ranked. Null when not known. */
+  searched: number | null;
+  /** Came close enough to the question to be read. */
+  close: number;
+  /** Of those, actually about the question. */
+  about: number;
+}
+
+export function searchFunnel(result: QueryResult): SearchFunnel | null {
+  const s = result.search;
+  if (!s) return null;
+  return { searched: result.senator.record_actions ?? null, close: s.evaluated, about: s.admitted };
+}
+
+const COUNT_WORD = ['None', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
+const countWord = (n: number) => COUNT_WORD[n] ?? String(n);
+
+/** "January 2023" for the first Congress the record covers, or null. */
+function recordStart(coverage: CoverageWindow | undefined): string | null {
+  if (!coverage || coverage.unknown) return null;
+  const first = coverage.congresses.length ? Math.min(...coverage.congresses) : coverage.observed?.min;
+  return first ? `January ${1789 + (first - 1) * 2}` : null;
+}
+
+/**
+ * What the search did, in one or two sentences at the top of an answer:
+ * "We searched all 609 of Schumer's recorded actions since January 2023. Two
+ * came close, but neither was actually about this."
+ *
+ * Says what was SEARCHED and what came of it, never that the senator did
+ * nothing: an empty search is a fact about our record, which the coverage
+ * line bounds. Null when no search ran.
+ */
+export function searchSummarySentence(result: QueryResult): string | null {
+  const f = searchFunnel(result);
+  if (!f) return null;
+  const surname = surnameOf(result.senator.name);
+  const since = recordStart(result.coverage);
+  const lead =
+    (f.searched
+      ? `We searched all ${f.searched.toLocaleString('en-US')} of ${surname}’s recorded actions`
+      : `We searched ${surname}’s recorded actions`) + (since ? ` since ${since}.` : '.');
+  if (f.close === 0) return `${lead} None came close to your question.`;
+  if (f.about === 0) {
+    const none = f.close === 1 ? 'it wasn’t' : f.close === 2 ? 'neither was' : 'none was';
+    return `${lead} ${countWord(f.close)} came close, but ${none} actually about this.`;
+  }
+  const s = result.search!;
+  if (!s.relevance_applied) return `${lead} ${countWord(f.close)} came close to your question.`;
+  return `${lead} ${countWord(f.close)} came close to your question, and ${countWord(f.about).toLowerCase()} ${f.about === 1 ? 'was' : 'were'} actually about it.`;
 }
 
 /**

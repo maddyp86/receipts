@@ -19,6 +19,8 @@ import {
   likelyOutcomeHeadline,
   notDeterminableHeadline,
   reusedSentence,
+  searchFunnel,
+  searchSummarySentence,
   verdictWord,
   type QueryResult,
 } from '@receipts/shared';
@@ -220,6 +222,11 @@ interface VerdictProps {
   feedbackAvailable?: boolean;
   /** Ask "Did this answer what you asked?" and, per bill, "Is this bill about what you asked?". */
   feedbackPrompts?: boolean;
+  /**
+   * What to do next, shown in the answer's first screen right under the
+   * search summary, so a reader never has to scroll to find it.
+   */
+  actions?: ReactNode;
 }
 
 /**
@@ -291,6 +298,8 @@ export function VerdictCard(props: VerdictProps) {
     : explanation.why;
 
   const tally = evidenceTallySentence(result);
+  const summary = searchSummarySentence(result);
+  const funnel = searchFunnel(result);
   const reused = reusedSentence(result.reused_from?.produced_at);
   const billCount = scored.evidence.length + (result.gated?.length ?? 0);
 
@@ -320,8 +329,36 @@ export function VerdictCard(props: VerdictProps) {
         <p className="verdict-band mt-3 text-[16px] leading-snug text-ink-soft">
           {senator.name} · you asked about: <span className="text-ink">“{result.interpretation.raw}”</span>
         </p>
+
+        {/* What the search did, up front: the whole record searched, how many
+            came close, how many were about the question. The answer's own
+            receipts, before any explanation. */}
+        {summary ? <p className="search-summary mt-4 text-[17px] leading-relaxed text-ink">{summary}</p> : null}
+        {funnel ? (
+          <dl className="search-funnel mt-3 grid grid-cols-3 gap-2">
+            {[
+              { n: funnel.searched, label: 'actions searched' },
+              { n: funnel.close, label: 'came close' },
+              { n: funnel.about, label: 'about your question' },
+            ].map((x) =>
+              x.n === null ? null : (
+                <div key={x.label} className="rounded-lg bg-card/70 px-3 py-2">
+                  <dt className="sr-only">{x.label}</dt>
+                  <dd className="text-[20px] font-medium leading-tight text-ink">{x.n.toLocaleString('en-US')}</dd>
+                  <dd className="text-[13px] leading-snug text-ink-soft" aria-hidden="true">
+                    {x.label}
+                  </dd>
+                </div>
+              ),
+            )}
+          </dl>
+        ) : null}
+
+        {props.actions ? <div className="result-actions mt-5">{props.actions}</div> : null}
+
+        {/* After the actions, so on a phone both buttons stay in the first screen. */}
         {isND ? (
-          <p className="mt-3 text-[15px] leading-relaxed text-ink-soft">
+          <p className="mt-4 text-[15px] leading-relaxed text-ink-soft">
             This is not a yes or a no. It doesn’t mean their record matches, and it doesn’t mean it goes against it.
           </p>
         ) : null}

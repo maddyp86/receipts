@@ -50,6 +50,8 @@ export interface PoliticianRow {
   party: string | null;
   state: string | null;
   covered: boolean;
+  /** Recorded actions in the mirror: the record the search ranks. */
+  actions?: number | null;
 }
 
 export type LoadPoliticians = () => Promise<PoliticianRow[]>;
@@ -59,10 +61,12 @@ const SQL = `
          coalesce(nullif(p.row->>'Full Name', ''), p.full_name) as name,
          p.row->>'Party' as party,
          p.row->>'State' as state,
-         coalesce(lower(p.row->>'In Scope') = 'true', false)
-           and exists (select 1 from mirror.mirror_politician_bill_actions a
-                        where a.politician_id = p.politician_id) as covered
+         coalesce(lower(p.row->>'In Scope') = 'true', false) and coalesce(a.n, 0) > 0 as covered,
+         coalesce(a.n, 0)::int as actions
     from mirror.mirror_politicians p
+    left join (select politician_id, count(*) as n
+                 from mirror.mirror_politician_bill_actions
+                group by politician_id) a on a.politician_id = p.politician_id
    where p.row->>'Chamber' = 'Senate'`;
 
 const PARTY: Record<string, Senator['party']> = { democrat: 'D', republican: 'R', independent: 'I' };
@@ -74,7 +78,15 @@ export function toSenator(r: PoliticianRow): Senator | null {
   if (!id || !name) return null;
   const party = PARTY[(r.party ?? '').trim().toLowerCase()];
   const state = (r.state ?? '').trim();
-  return { politician_id: id, name, cached: Boolean(r.covered), ...(party ? { party } : {}), ...(state ? { state } : {}) };
+  const actions = Number(r.actions);
+  return {
+    politician_id: id,
+    name,
+    cached: Boolean(r.covered),
+    ...(party ? { party } : {}),
+    ...(state ? { state } : {}),
+    ...(r.covered && Number.isFinite(actions) && actions > 0 ? { record_actions: actions } : {}),
+  };
 }
 
 /** By surname, then full name: a stable order that does not favour anyone. */

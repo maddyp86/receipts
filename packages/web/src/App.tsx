@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ArrowLeftIcon, RotateCcwIcon } from 'lucide-react';
-import type { Corrections, Senator } from '@receipts/shared';
+import { surnameOf, type Corrections, type Senator } from '@receipts/shared';
 import { useReceiptStream } from './lib/useReceiptStream.js';
 import { apiUrl } from './lib/api.js';
 import { buildRoster, type Member } from './data/roster.js';
@@ -8,7 +8,7 @@ import { Entry } from './components/Entry.js';
 import type { StatementKind } from './components/entry/PromiseInput.js';
 import { Waiting } from './components/Waiting.js';
 import { EvidenceList, HowWeGotHereToggle, VerdictCard } from './components/Verdict.js';
-import { ClarifyState, DemoBanner, ErrorState, HaltState, SuggestedRewording, ThinResultActions, UncachedState } from './components/States.js';
+import { ClarifyState, DemoBanner, ErrorState, HaltState, ResultActions, SuggestedRewording, ThinResultActions, UncachedState } from './components/States.js';
 import {
   AppliedCorrections,
   AssertedPremiseBadge,
@@ -124,6 +124,12 @@ export default function App() {
     stream.reset();
     setPromise('');
   };
+  /** The same question, about another member who is covered. */
+  const otherMembers = roster.filter((m) => m.cached && m.politician_id !== selected);
+  const askSameOf = (politicianId: string) => {
+    setSelected(politicianId);
+    stream.run(politicianId, promise.trim(), baseCorrections());
+  };
   /** Back to the picker. */
   const changeMember = () => {
     stream.reset();
@@ -220,106 +226,103 @@ export default function App() {
         ) : null}
 
         {screen === 'result' && stream.result && stream.interpretation ? (
-          <Page width="wide">
+          <Page width="narrow">
             <TopBar onBack={askAnother} backLabel="New question" icon="new" />
 
-            <div className="mt-6 grid gap-10 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] lg:gap-14">
-              {/* The answer, beside the bills on a wide screen. Not pinned: the
-                  explanation is the longest thing on the page, and pinning the
-                  column would cut it off or make it scroll inside itself. */}
-              <div className="min-w-0 space-y-5">
-                {member ? <SelectedMember member={member} onChange={changeMember} compact /> : null}
+            {/* ANSWER FIRST, one column. The first screen holds who was checked,
+                the answer, what the search did (with its numbers) and what to do
+                next; everything that explains or corrects the answer follows. */}
+            <div className="mt-6 space-y-5">
+              {member ? <SelectedMember member={member} onChange={changeMember} compact /> : null}
 
-                <section aria-label="How we read your statement" className="rounded-card border border-rule bg-card px-4 py-3">
-                  {/* A question was restated before it was checked. Both are
-                      shown: the answer below is about the second. */}
-                  {stream.rewritten ? (
-                    <div className="mb-3 border-b border-rule pb-3">
-                      <p className="text-[14px] font-medium text-ink-soft">You typed</p>
-                      <p className="mt-0.5 text-[16px] leading-snug text-ink-soft">“{stream.rewritten.original}”</p>
-                      <p className="mt-2 text-[14px] font-medium text-ink-soft">We checked it as</p>
-                      <p className="mt-0.5 text-[16px] font-medium leading-snug text-ink">“{stream.rewritten.statement}”</p>
-                      <button
-                        type="button"
-                        onClick={() => editStatement(stream.rewritten!.statement)}
-                        className="mt-1 inline-flex min-h-[44px] items-center text-[15px] font-medium text-focus underline underline-offset-4"
-                      >
-                        Not what you meant? Change it
-                      </button>
-                    </div>
-                  ) : null}
-                  <p className="text-[14px] font-medium text-ink-soft">How we read it</p>
-                  <p className="mt-0.5 text-[16px] leading-snug text-ink">“{stream.interpretation.restated}”</p>
-                </section>
+              <h1 className="sr-only">Answer for {memberName}</h1>
+              <VerdictCard
+                result={stream.result}
+                traceId={stream.traceId}
+                feedbackAvailable={modes.feedback}
+                feedbackPrompts={modes.prompts}
+                actions={
+                  <ResultActions
+                    surname={surnameOf(memberName)}
+                    onAskAnother={askAnother}
+                    others={otherMembers}
+                    onAskSameOf={askSameOf}
+                    onChangeMember={changeMember}
+                  />
+                }
+              />
 
-                <div className="legacy">
-                  <AssertedPremiseBadge interpretation={stream.interpretation} />
-                  <AppliedCorrections interpretation={stream.interpretation} />
+              {/* "Too broad": a rewording of the reader's own topic to check instead. */}
+              {stream.suggest?.length && stream.result.scored.nd_reason === 'NOT_EVALUABLE' ? (
+                <div className="rounded-card border border-rule bg-card px-4 py-4 text-[16px] text-ink-soft">
+                  <SuggestedRewording options={stream.suggest} onPick={checkStatement} />
                 </div>
+              ) : null}
 
-                <h1 className="sr-only">Answer for {memberName}</h1>
-                <VerdictCard
-                  result={stream.result}
-                  traceId={stream.traceId}
-                  feedbackAvailable={modes.feedback}
-                  feedbackPrompts={modes.prompts}
-                />
-
-                {/* "Too broad": a rewording of the reader's own topic to check instead. */}
-                {stream.suggest?.length && stream.result.scored.nd_reason === 'NOT_EVALUABLE' ? (
-                  <div className="rounded-card border border-rule bg-card px-4 py-4 text-[16px] text-ink-soft">
-                    <SuggestedRewording options={stream.suggest} onPick={checkStatement} />
+              <section aria-label="How we read your statement" className="rounded-card border border-rule bg-card px-4 py-3">
+                {/* A question was restated before it was checked. Both are
+                    shown: the answer above is about the second. */}
+                {stream.rewritten ? (
+                  <div className="mb-3 border-b border-rule pb-3">
+                    <p className="text-[14px] font-medium text-ink-soft">You typed</p>
+                    <p className="mt-0.5 text-[16px] leading-snug text-ink-soft">“{stream.rewritten.original}”</p>
+                    <p className="mt-2 text-[14px] font-medium text-ink-soft">We checked it as</p>
+                    <p className="mt-0.5 text-[16px] font-medium leading-snug text-ink">“{stream.rewritten.statement}”</p>
+                    <button
+                      type="button"
+                      onClick={() => editStatement(stream.rewritten!.statement)}
+                      className="mt-1 inline-flex min-h-[44px] items-center text-[15px] font-medium text-focus underline underline-offset-4"
+                    >
+                      Not what you meant? Change it
+                    </button>
                   </div>
                 ) : null}
+                <p className="text-[14px] font-medium text-ink-soft">How we read it</p>
+                <p className="mt-0.5 text-[16px] leading-snug text-ink">“{stream.interpretation.restated}”</p>
+              </section>
 
-                <div className="hidden lg:block">
-                  <ThinResultActions onReset={askAnother} onChangeMember={changeMember} senatorName={memberName} />
-                </div>
+              <div className="legacy">
+                <AssertedPremiseBadge interpretation={stream.interpretation} />
+                <AppliedCorrections interpretation={stream.interpretation} />
               </div>
 
               {/* The receipts. */}
-              <div className="min-w-0 space-y-8">
-                <EvidenceList
-                  result={stream.result}
-                  traceId={stream.traceId}
-                  feedbackAvailable={modes.feedback}
-                  feedbackPrompts={modes.prompts}
-                />
+              <EvidenceList
+                result={stream.result}
+                traceId={stream.traceId}
+                feedbackAvailable={modes.feedback}
+                feedbackPrompts={modes.prompts}
+              />
 
-                <div className="space-y-6 border-t border-rule pt-6">
-                  <HowWeGotHereToggle result={stream.result} />
+              <div className="space-y-6 border-t border-rule pt-6">
+                <HowWeGotHereToggle result={stream.result} />
 
-                  {/* Offered only once the answer is complete: correcting a
-                      classification mid-flight would stage edits against
-                      values still changing. */}
-                  {stream.phase === 'done' ? (
-                    <div className="legacy">
-                      <CorrectionPanel
-                        interpretation={stream.interpretation}
-                        taxonomy={taxonomy}
-                        overrideEnabled={modes.override}
-                        busy={busy}
-                        onRerun={rerunWithCorrections}
-                      />
-                    </div>
-                  ) : null}
+                {/* Offered only once the answer is complete: correcting a
+                    classification mid-flight would stage edits against
+                    values still changing. */}
+                {stream.phase === 'done' ? (
+                  <div className="legacy">
+                    <CorrectionPanel
+                      interpretation={stream.interpretation}
+                      taxonomy={taxonomy}
+                      overrideEnabled={modes.override}
+                      busy={busy}
+                      onRerun={rerunWithCorrections}
+                    />
+                  </div>
+                ) : null}
 
-                  {/* Questions about THIS result are answered from its own
-                      record and cannot change it; a new statement is a new
-                      query. */}
-                  {stream.phase === 'done' && stream.traceId ? (
-                    <div className="legacy">
-                      <FollowUp traceId={stream.traceId} available={modes.followups} senatorName={memberName} />
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="border-t border-rule pt-6 lg:hidden">
-                  <ThinResultActions onReset={askAnother} onChangeMember={changeMember} senatorName={memberName} />
-                </div>
-
-                <TraceLine traceId={stream.traceId} />
+                {/* Questions about THIS result are answered from its own
+                    record and cannot change it; a new statement is a new
+                    query. */}
+                {stream.phase === 'done' && stream.traceId ? (
+                  <div className="legacy">
+                    <FollowUp traceId={stream.traceId} available={modes.followups} senatorName={memberName} />
+                  </div>
+                ) : null}
               </div>
+
+              <TraceLine traceId={stream.traceId} />
             </div>
           </Page>
         ) : null}
