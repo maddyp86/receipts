@@ -52,7 +52,7 @@ const withLis = rows.filter((r) => r.lis_id);
 const statements = []
   .concat(upsert('members', SPEC, ['member_id'], rows, { guard: true, onlyCols: REFRESHED }))
   // Every member here exists by now: the statement above inserted the new ones.
-  .concat(upsert('members', { member_id: 'text', lis_id: 'text' }, ['member_id'], withLis, { guard: true, onlyCols: ['lis_id'] }));
+  .concat(update('members', { member_id: 'text', lis_id: 'text' }, ['member_id'], withLis));
 const previews = [
   preview('members', SPEC, ['member_id'], rows, { onlyCols: REFRESHED }),
   preview('members', { member_id: 'text', lis_id: 'text' }, ['member_id'], withLis, { onlyCols: ['lis_id'] }),

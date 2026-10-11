@@ -126,6 +126,34 @@ const upsert = (table, spec, key, rows, opts) => {
   return out;
 };
 
+// UPDATE existing rows only, for a write that carries some of a table's
+// columns. An upsert cannot do it: Postgres checks NOT NULL on the row it
+// would insert before it finds the conflict. Rows not in the table are skipped.
+// opts.guard: the columns compared (default every non-key column); a row
+//             changes only when one differs. opts.where: an extra condition.
+const update = (table, spec, key, rows, opts) => {
+  opts = opts || {};
+  const chunk = opts.chunk || 300;
+  const touch = opts.touch !== false;
+  const cols = Object.keys(spec);
+  const q = (c) => '"' + c + '"';
+  const setCols = cols.filter((c) => key.indexOf(c) === -1);
+  const guard = opts.guard || setCols;
+  const set = setCols.map((c) => q(c) + ' = x.' + q(c));
+  if (touch) set.push('updated_at = now()');
+  const where = key.map((k) => 't.' + q(k) + ' = x.' + q(k))
+    .concat(['(' + guard.map((c) => 't.' + q(c)).join(', ') + ') IS DISTINCT FROM (' + guard.map((c) => 'x.' + q(c)).join(', ') + ')'])
+    .concat(opts.where ? [opts.where] : []).join(' AND ');
+  const out = [];
+  for (let i = 0; i < rows.length; i += chunk) {
+    const slice = rows.slice(i, i + chunk);
+    const sql = 'UPDATE core.' + table + ' AS t SET ' + set.join(', ') + ' ' +
+      'FROM jsonb_to_recordset($1::jsonb) AS x(' + cols.map((c) => q(c) + ' ' + spec[c]).join(', ') + ') WHERE ' + where + ';';
+    out.push({ table, rows: slice.length, sql, payload: JSON.stringify(slice) });
+  }
+  return out;
+};
+
 // What an upsert WOULD do, without doing it: rows new to the table, and for
 // existing rows the number that would change per column, with a few samples.
 // Used on dry runs, and on write runs before the write, so every run reports

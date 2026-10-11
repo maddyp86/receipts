@@ -342,10 +342,8 @@ const SF = { path: 'text', kind: 'text', ref_id: 'text', md5: 'text', size: 'big
 // unchanged file writes nothing.
 const statements = []
   .concat(upsert('bills', BILL_NEW, ['bill_id'], newBills))
-  .concat(upsert('bills', BILL_CHANGED, ['bill_id'], changedBills, { guard: true, onlyCols: REFRESH.concat(['status_checked_at', 'progress_checked_at']) })
-    .map((s) => Object.assign(s, { sql: s.sql.replace(/ WHERE [(].*$/, ' WHERE (' + REFRESH.map((c) => 't."' + c + '"').join(', ') + ') IS DISTINCT FROM (' + REFRESH.map((c) => 'EXCLUDED."' + c + '"').join(', ') + ');') })))
-  .concat(upsert('bills', { bill_id: 'text', bill_text_url: 'text' }, ['bill_id'], withText, { guard: true, onlyCols: ['bill_text_url'] })
-    .map((s) => Object.assign(s, { sql: s.sql.replace(' WHERE (', ' WHERE t.bill_text_url IS NULL AND (') })))
+  .concat(update('bills', BILL_CHANGED, ['bill_id'], changedBills, { guard: REFRESH }))
+  .concat(update('bills', { bill_id: 'text', bill_text_url: 'text' }, ['bill_id'], withText, { where: 't.bill_text_url IS NULL' }))
   .concat(upsert('sponsorships', SP, ['bill_id', 'member_id'], sponsorships, { guard: true, onlyCols: Object.keys(SP).filter((c) => c !== 'bill_id' && c !== 'member_id') })
     .map((s) => Object.assign(s, { sql: s.sql.replace(/ WHERE [(].*$/, ' WHERE (' + SP_COMPARE.map((c) => 't."' + c + '"').join(', ') + ') IS DISTINCT FROM (' + SP_COMPARE.map((c) => 'EXCLUDED."' + c + '"').join(', ') + ');') })))
   .concat(upsert('action_uids', AU, ['action_uid'], actionUids, { touch: false, onlyCols: [] }))
