@@ -47,8 +47,13 @@ const num = (v) => { const s = nz(v); if (s === null) return 0; const n = Number
 const vote = (v) => { const s = nz(v); return s === null ? null : s.charAt(0).toUpperCase() + s.slice(1).toLowerCase(); };
 
 const diffs = { bills: [], sponsorships: [], roll_calls: [], votes: [] };
+// By design, not a fault: v2 fills a bill's missing text link once congress.gov
+// publishes one; the old pipeline sets it when it first sees the bill and never
+// again. Only a link where the sheet has none qualifies.
+const byDesign = (field, sheet, coreVal) => field === 'bill_text_url' && sheet === null && /^https:[/][/]www[.]congress[.]gov[/]/.test(coreVal || '')
+  ? 'By design: v2 fills a missing text link; the old pipeline never backfills it' : null;
 const add = (cat, key, field, sheet, coreVal) => {
-  const why = EXPLAINED[key] || null;
+  const why = EXPLAINED[key] || byDesign(field, sheet, coreVal);
   diffs[cat].push({ key, field, sheet, core: coreVal, explained: why });
 };
 
