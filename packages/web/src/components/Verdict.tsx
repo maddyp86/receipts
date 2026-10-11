@@ -16,6 +16,7 @@ import {
   evidenceTallySentence,
   judgeDispositionSentence,
   likelyOutcomeHeadline,
+  recordBoundarySentence,
   notDeterminableHeadline,
   reusedSentence,
   searchFunnel,
@@ -306,6 +307,7 @@ export function VerdictCard(props: VerdictProps) {
   const { isND, promise } = readResult(props);
   const tally = evidenceTallySentence(result);
   const funnel = searchFunnel(result);
+  const boundary = recordBoundarySentence(result);
 
   return (
     <section
@@ -364,6 +366,10 @@ export function VerdictCard(props: VerdictProps) {
             <p className="verdict-tally mt-1 text-[15px] leading-snug text-ink">{tally}</p>
           </div>
         ) : null}
+
+        {/* Nothing found: where our records start, on the answer itself, so
+            "nothing found" is never read as "did nothing". */}
+        {boundary ? <p className="record-boundary mt-4 text-[16px] leading-relaxed text-ink">{boundary}</p> : null}
 
         {props.actions ? <div className="result-actions mt-5">{props.actions}</div> : null}
 

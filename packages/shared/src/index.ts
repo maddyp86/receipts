@@ -1463,6 +1463,24 @@ export function searchSummarySentence(result: QueryResult): string | null {
 }
 
 /**
+ * The record's boundary, said on the answer itself when the search found
+ * nothing: "Our records start in January 2023. If they acted on this before
+ * then, it isn't in what we searched."
+ *
+ * An empty search is where false absence bites hardest — the 2022 drug
+ * pricing and insulin laws are before the record, and a reader who sees
+ * "nothing found" without this reads it as "did nothing". The coverage line
+ * says the same thing under "Why"; this puts it where the answer is. Null
+ * for any other answer, and when the record's start is not known (the
+ * coverage line then says the search window itself is unknown).
+ */
+export function recordBoundarySentence(result: QueryResult): string | null {
+  if (result.scored.verdict !== 'NOT_DETERMINABLE' || result.scored.nd_reason !== 'NO_MATCHES') return null;
+  const since = recordStart(result.coverage);
+  return since ? `Our records start in ${since}. If they acted on this before then, it isn’t in what we searched.` : null;
+}
+
+/**
  * The count-first line at the top of an answer: the receipts before the
  * explanation. Built from the result's own fields; no model is involved.
  *
