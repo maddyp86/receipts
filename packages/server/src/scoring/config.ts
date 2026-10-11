@@ -48,7 +48,24 @@ export const SIMILARITY = {
    * evidence. Below this, dropped entirely.
    */
   WEAK: 0.5,
+
+  /**
+   * RECEIPTS — the near-miss review floor. When NOTHING clears WEAK, the best
+   * candidates at or above this go to the relevance check anyway (at most
+   * NEAR_MISS_REVIEW_LIMIT), and whatever it admits is weighed. Only on an
+   * otherwise-empty answer — where false absence bites — and never as a
+   * shortcut past the relevance check, which still has to accept each one.
+   *
+   * Set on 2026-10-10 from trace 7e1e8f99 ("He promised not to raise my
+   * taxes", Schumer): all ten candidates scored 0.45–0.499, the 2025
+   * reconciliation tax law (hr1-119) among them at 0.473, and the answer was
+   * "nothing found". See docs/RECONCILIATION.md, 2026-10-10.
+   */
+  REVIEW: 0.45,
 } as const;
+
+/** RECEIPTS — how many near misses the review sends to the relevance check. */
+export const NEAR_MISS_REVIEW_LIMIT = 5;
 
 /**
  * RECEIPTS — average match strength required for a High band.

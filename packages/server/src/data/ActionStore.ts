@@ -49,6 +49,12 @@ export interface SearchResult {
    * counts, opposite diagnoses.
    */
   nearMisses: Array<{ action_uid: string; bill_id: string; title: string; score: number }>;
+  /**
+   * The best near misses at or above SIMILARITY.REVIEW, at most
+   * NEAR_MISS_REVIEW_LIMIT, whole: what the relevance check reads when
+   * nothing cleared the floor. Absent from stores that do not offer it.
+   */
+  reviewable?: MatchedAction[];
 }
 
 export interface ActionStore {

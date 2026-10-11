@@ -56,6 +56,7 @@ import { classifyPromise, type ClassifyFetcher } from '../evaluation/classify.js
 import { statedStance } from '../evaluation/statedStance.js';
 import type { CorrectionDelta, Corrections } from '@receipts/shared';
 import { scoreMatches, type ScorableMatch } from '../scoring/score.js';
+import { NEAR_MISS_REVIEW_LIMIT, SIMILARITY } from '../scoring/config.js';
 import { withholdForUnreadRecord } from '../scoring/withholding.js';
 import { config, namespaceFor } from '../config.js';
 import { traceStep, type TraceUsage } from '../trace/Trace.js';
@@ -121,6 +122,8 @@ export interface QuerySession {
   retrieval?: { returned: number; belowFloor: number; topScore: number | null; topK: number };
   /** Candidates dropped at the WEAK floor, kept so a near-miss set is reviewable. */
   nearMisses?: Array<{ action_uid: string; bill_id: string; title: string; score: number }>;
+  /** True when nothing cleared the floor and the best near misses were reviewed instead. */
+  nearMissReview?: boolean;
   /** Fulfillment results keyed by action_uid, from evaluate_effects. */
   fulfillment?: Record<string, import('../evaluation/fulfillment.js').FulfillmentResult>;
   /** Injected in tests/fixtures; live path builds its own. */
@@ -729,7 +732,7 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
     return result;
   }
 
-  const candidatesIn = result.data.matches;
+  let candidatesIn = result.data.matches;
   // GATE: the similarity floor. What came back, what cleared WEAK, and the
   // near misses that did not — with scores, because "thin namespace" and
   // "wrong vector" look identical from the survivor count alone.
@@ -810,8 +813,8 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
   // Runs BEFORE the model sees anything, so the model never judges effect on a
   // bill the gate would have excluded.
   const relevanceFetcher = session.relevanceFetcher ?? liveResponsesFetcher('relevance');
-  const evaluated = await evaluateRelevance(
-    candidatesIn.map((m) => toRelevanceCandidate(session, m)),
+  const checkRelevance = (rows: MatchedAction[]) => evaluateRelevance(
+    rows.map((m) => toRelevanceCandidate(session, m)),
     relevanceFetcher,
     {
       // GATE: one model call per candidate. The full user message, the raw
@@ -832,7 +835,31 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
     },
   );
 
-  const gate = applyEvidenceGate(evaluated);
+  let evaluated = await checkRelevance(candidatesIn);
+  let gate = applyEvidenceGate(evaluated);
+
+  // NEAR-MISS REVIEW. When the relevance check admits nothing, the answer is
+  // about to be "nothing found" — the strongest absence claim we make, and the
+  // one most often wrong for a vague question (trace 7e1e8f99: the 2025 tax
+  // law at 0.473 for "promised not to raise my taxes"; case 10: one
+  // off-topic bill cleared the floor and blocked everything under it). So the
+  // best near misses below the floor go to the same relevance check, which
+  // still has to accept each one. Labelled loosely related, never closely;
+  // weighed from the REVIEW floor in scoring.
+  const reviewable = (result.data.reviewable ?? []).filter((m) => !candidatesIn.some((c) => c.action_uid === m.action_uid));
+  if (gate.admitted.length === 0 && reviewable.length) {
+    const reviewed = reviewable.map((m) => ({ ...m, strength: 'WEAK' as const }));
+    session.nearMissReview = true;
+    traceStep({
+      stage: 'NEAR_MISS_REVIEW', kind: 'deterministic',
+      label: `relevance admitted nothing above ${SIMILARITY.WEAK} · ${reviewed.length} near miss(es) from ${SIMILARITY.REVIEW} sent to the relevance check`,
+      input: { review_floor: SIMILARITY.REVIEW, limit: NEAR_MISS_REVIEW_LIMIT, above_floor_checked: candidatesIn.length },
+      output: { reviewed: reviewed.map((m) => ({ action_uid: m.action_uid, bill_id: m.bill_id, score: m.score })) },
+    });
+    evaluated = [...evaluated, ...(await checkRelevance(reviewed))];
+    candidatesIn = [...candidatesIn, ...reviewed];
+    gate = applyEvidenceGate(evaluated);
+  }
   session.evaluated = evaluated;
 
   // GATE: the evidence gate. Derived from the four axes, never asked of the
@@ -1306,6 +1333,9 @@ async function evaluateEffectsTool(
     // Without this the scorer cannot tell "retrieval found nothing" from "the
     // gates closed everything retrieval found" — `scorable` is empty either way.
     gated_count: gatedRows.length,
+    // Reviewed near misses are weighed from the REVIEW floor; every other
+    // answer keeps the evidence floor.
+    evidence_floor: session.nearMissReview ? SIMILARITY.REVIEW : undefined,
     // A failed record read lowers the band and can withhold an accusation.
     enrichment_gaps: [...new Set((session.enrichmentFailures ?? []).map((f) => ENRICHMENT_GAP_OF[f.part]))],
   });

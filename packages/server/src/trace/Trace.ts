@@ -63,6 +63,8 @@ export type TraceStage =
   | 'UNCACHED'
   | 'EMBED'
   | 'RETRIEVE'
+  /** Nothing cleared the floor; the best near misses went to the relevance check anyway. */
+  | 'NEAR_MISS_REVIEW'
   | 'RELEVANCE'
   | 'EVIDENCE_GATE'
   | 'SEARCH'

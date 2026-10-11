@@ -1,7 +1,7 @@
 import { fail, ok, type Envelope, type MatchedAction, type MatchStrength } from '@receipts/shared';
 import type { ActionStore, SearchParams, SearchResult } from './ActionStore.js';
 import { config, namespaceFor } from '../config.js';
-import { SIMILARITY } from '../scoring/config.js';
+import { SIMILARITY, NEAR_MISS_REVIEW_LIMIT } from '../scoring/config.js';
 
 // ===========================================================================
 // Live retrieval against the senator's already-embedded bill vectors.
@@ -200,6 +200,9 @@ export function searchResultOf(returned: MatchedAction[], label: string, topK: n
         title: String(m.title ?? ''),
         score: m.score,
       })),
+    reviewable: all
+      .filter((m) => m.score < SIMILARITY.WEAK && m.score >= SIMILARITY.REVIEW)
+      .slice(0, NEAR_MISS_REVIEW_LIMIT),
   };
 }
 
