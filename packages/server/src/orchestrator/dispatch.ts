@@ -53,6 +53,7 @@ import {
   type DispositionResult,
 } from '../judge/dispositions.js';
 import { classifyPromise, type ClassifyFetcher } from '../evaluation/classify.js';
+import { statedStance } from '../evaluation/statedStance.js';
 import type { CorrectionDelta, Corrections } from '@receipts/shared';
 import { scoreMatches, type ScorableMatch } from '../scoring/score.js';
 import { withholdForUnreadRecord } from '../scoring/withholding.js';
@@ -283,6 +284,28 @@ async function interpretPromise(
         message: `Classification failed: ${err instanceof Error ? err.message : String(err)}`,
         recoverable: true,
       });
+    }
+  }
+
+  // ---- THE STATEMENT'S OWN WORDS SET THE STANCE ---------------------------
+  // The bill reader reads the statement as typed together with this label, so
+  // the label must be relative to those words. When the statement opens with
+  // one that settles it ("supports ending tariffs" is In Favor, of ending
+  // tariffs), that word wins over both models (evaluation/statedStance.ts).
+  // A paraphrase written in the other frame is replaced by the statement
+  // itself, so the reader is never shown "Opposes tariffs" beside "In favor".
+  // User corrections, below, still win over this.
+  const stated = statedStance(session.promiseText);
+  if (stated) {
+    const labelled = String(input.stance ?? '').trim();
+    const restated = String(input.restated ?? '').trim();
+    const restatedStance = statedStance(restated);
+    if (labelled !== stated) {
+      disagreements.push(`stance: the statement's own words say "${stated}", the classifier said "${labelled || '(none)'}" (the statement's words win)`);
+    }
+    if (labelled !== stated || (restatedStance && restatedStance !== stated)) {
+      const typed = session.promiseText.trim().replace(/[.。]\s*$/, '');
+      input = { ...input, stance: stated, restated: `${typed.charAt(0).toUpperCase()}${typed.slice(1)}.` };
     }
   }
 
