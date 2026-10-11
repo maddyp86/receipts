@@ -12,12 +12,12 @@ Everything here is read-only for v2 work until cutover.
 
 | Tab | Rows | Goes to | Columns |
 |---|---|---|---|
-| `Politicians` | 541: 100 Senate, 441 House including delegates | `members`. Only Schumer and Thune are In Scope. | Politician ID, Full Name, In Scope, Chamber, LIS ID, openSecretsID, Party, State, Class, Role, District, Term Start, Term End, Website |
+| `Politicians` | 538: 100 Senate, 438 House including delegates. The grid is 542 rows tall and its last three rows are empty, so counting grid rows gives 541 | `members`. Only Schumer and Thune are In Scope. Only 8 senators have an LIS ID | Politician ID, Full Name, In Scope, Chamber, LIS ID, openSecretsID, Party, State, Class, Role, District, Term Start, Term End, Website |
 | ` Politician Bill Actions` | 1,162 | `sponsorships` (votes are re-read from source) | see below |
-| `Bills Master` | 973 | `bills` | Bill ID, Congress, Bill Type, Bill Number, Bill Base, Date, Official Title, Short Title, Popular Title, Subject, Subjects, Summary, Status, Active, Primary Sponsor, Bill Status URL, Bill Text URL, Status Changed At, Status Checked At, Progress Stage, Progress Outcome, Progress Stage At, Progress Checked At, Last Action At, Last Action Text, Committee Activity, Referred Committees, Cosponsor Count, Enacted Via, Source Updated At, Source Changed |
+| `Bills Master` | 973 | `bills`. `Date` is the date of the bill's current status (`status_at` in the bill file), not the introduction date; this tab has no introduction date | Bill ID, Congress, Bill Type, Bill Number, Bill Base, Date, Official Title, Short Title, Popular Title, Subject, Subjects, Summary, Status, Active, Primary Sponsor, Bill Status URL, Bill Text URL, Status Changed At, Status Checked At, Progress Stage, Progress Outcome, Progress Stage At, Progress Checked At, Last Action At, Last Action Text, Committee Activity, Referred Committees, Cosponsor Count, Enacted Via, Source Updated At, Source Changed |
 | `Roll Call Votes` | about 228 | the list of roll calls to re-read | Vote ID, Session, Chamber, Roll Call No, Bill Type, Bill No, Congress, Bill Base, Bill ID, Date, Category, Question, Type, Result, URL |
 | `Party Vote Positions` | about 456 | derived in v2 from `member_votes` and roles | UID, Politician ID, Vote ID, Name, Party, State, Vote, Bill Type, Bill No, Congress, Bill ID |
-| `Party Whips` | 6 | `members` roles | Politician ID, LIS ID, Full Name, Congress, Party, Chamber, State, Class, District, Term Start, Term End, Website |
+| `Party Whips` | 4: Durbin and Barrasso for the 119th, Thune and Durbin for the 118th | `members` roles. Lists Thune's state as WY | Politician ID, LIS ID, Full Name, Congress, Party, Chamber, State, Class, District, Term Start, Term End, Website |
 | `Donors` | about 884 | `donors`, copied as is | Donor UID, Politician ID, openSecretsID, Cycle, Contributor, Industry, PAC Sector, Policy Area, Primary Issue, Sub Issue, Description, Total Amount, PAC Amount, Individual Amount |
 
 The leading space in ` Politician Bill Actions` is the tab's real name. Trimming it breaks the read.
