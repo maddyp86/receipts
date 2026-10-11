@@ -11,7 +11,7 @@ import {
 } from '@receipts/shared';
 import { scoreMatches, type ScorableMatch } from '../../../server/src/scoring/score.js';
 import { ClarifyState } from './States.js';
-import { Waiting, checkingLine } from './Waiting.js';
+import { QuestionCard, Waiting, checkingLine } from './Waiting.js';
 import { Verdict } from './Verdict.js';
 
 // The test runner compiles JSX with the classic transform.
@@ -70,7 +70,7 @@ describe('the waiting screen and a rewritten question', () => {
   it('says what they asked, then what we are checking to answer it', () => {
     const page = text(render({ original: 'Did she vote to repeal the widget tax?', statement: 'supports repealing the widget tax' }));
     const typed = page.indexOf('You asked “Did she vote to repeal the widget tax?”');
-    const checked = page.indexOf('We’re checking whether Example supports repealing the widget tax.');
+    const checked = page.indexOf('We’re checking whether Example’s votes and bills back repealing the widget tax.');
     expect(typed).toBeGreaterThan(-1);
     expect(checked).toBeGreaterThan(typed);
     expect(page).toContain('Not quite right? Change it');
@@ -100,24 +100,45 @@ describe('the waiting screen and a rewritten question', () => {
   it('with no rewrite, shows what they typed, and how we read it once that is known', () => {
     expect(text(render(null))).toContain('You asked “supports the widget tax”');
     expect(text(render(null))).not.toContain('Change it');
-    expect(text(render(null, interpretation))).toContain('We’re checking it as “Support passage of the widget tax repeal”.');
+    expect(text(render(null, interpretation))).toContain('We’re checking Example’s votes and bills against “Support passage of the widget tax repeal”.');
   });
 });
 
 describe('checkingLine', () => {
   it.each([
-    ['supports the Laken Riley Act', 'We’re checking whether Schumer supports the Laken Riley Act.'],
-    ['opposes federal funding for abortion.', 'We’re checking whether Schumer opposes federal funding for abortion.'],
-    ['promised to require photo ID to vote', 'We’re checking whether Schumer promised to require photo ID to vote.'],
-    ['Protect clean air standards', 'We’re checking it as “Protect clean air standards”.'],
+    ['supports the Laken Riley Act', 'We’re checking whether Schumer’s votes and bills back the Laken Riley Act.'],
+    ['opposes federal funding for abortion.', 'We’re checking whether Schumer’s votes and bills work against federal funding for abortion.'],
+    ['promised to lower drug prices', 'We’re checking whether Schumer’s votes and bills follow through on a promise to lower drug prices.'],
+    ['Protect clean air standards', 'We’re checking Schumer’s votes and bills against “Protect clean air standards”.'],
   ])('%s', (statement, line) => {
     expect(checkingLine(statement, 'Charles E. Schumer')).toBe(line);
   });
 
+  it('never says we are checking whether they made the promise (2026-10-10)', () => {
+    expect(checkingLine('promised to lower drug prices', 'Charles E. Schumer', true)).toBe(
+      'We checked whether Schumer’s votes and bills followed through on a promise to lower drug prices.',
+    );
+    for (const st of ['promised to lower drug prices', 'supports the Laken Riley Act', 'opposes new tariffs']) {
+      expect(checkingLine(st, 'Charles E. Schumer')).not.toMatch(/whether Schumer (promised|supports|opposes)/);
+    }
+  });
+
   it('says it in the past once the answer is in', () => {
     expect(checkingLine('supports the Laken Riley Act', 'Charles E. Schumer', true)).toBe(
-      'We checked whether Schumer supports the Laken Riley Act.',
+      'We checked whether Schumer’s votes and bills back the Laken Riley Act.',
     );
+  });
+
+  it('the card says what we filed it under', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(QuestionCard, {
+        asked: 'He promised to lower drug prices. What did he do to follow through on that?',
+        statement: 'promised to lower drug prices', memberName: 'Charles E. Schumer', done: true, onChange: () => {},
+        interpretation: { primary_issue: 'Health Care', sub_issue: 'Prescription Drugs' } as unknown as Interpretation,
+      }),
+    );
+    expect(text(html)).toContain('Filed under Health Care Prescription Drugs');
+    expect(text(html)).toContain('Not quite right? Change it');
   });
 });
 
