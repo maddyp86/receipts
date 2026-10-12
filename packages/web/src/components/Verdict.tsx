@@ -16,6 +16,7 @@ import {
   evidenceTallySentence,
   judgeDispositionSentence,
   likelyOutcomeHeadline,
+  notDeterminableReason,
   recordBoundarySentence,
   notDeterminableHeadline,
   reusedSentence,
@@ -285,14 +286,17 @@ function readResult(props: VerdictProps) {
   // much scrutiny this reading got, and claiming the first when the second
   // happened overstates the care taken.
   const judgeSentence = judgeDispositionSentence(result.judge?.disposition);
-  const level1 = isND
-    ? scored.nd_reason === 'WITHHELD_PENDING_REVIEW' && judgeSentence
-      ? judgeSentence
-      : scored.nd_reason
-        ? ND_REASON_COPY[scored.nd_reason]
-        : ND_NO_REASON_COPY
-    : explanation.why;
-  return { isND, judgeSentence, level1, promise: usesPromiseVocabulary(result), feedback: feedbackContext(props) };
+  // "Doesn't settle it" gets the explainer's paragraph like any other answer
+  // (2026-10-11): it was written for this question, names the bills and says
+  // what was set aside, and the server holds it to the verdict — no kept,
+  // broke, lines up with or runs counter on a not-determinable answer. The
+  // specific reason goes under it as a fixed sentence. Without a paragraph,
+  // the reason alone is the answer, as before.
+  const reason = isND ? notDeterminableReason(result) : null;
+  const written = String(explanation.why ?? '').trim();
+  const level1 = isND ? written || reason || ND_NO_REASON_COPY : explanation.why;
+  const reasonLine = isND && written ? reason : null;
+  return { isND, judgeSentence, level1, reasonLine, promise: usesPromiseVocabulary(result), feedback: feedbackContext(props) };
 }
 
 /**
@@ -388,7 +392,7 @@ export function VerdictCard(props: VerdictProps) {
 export function WhyPanel(props: VerdictProps) {
   const { result } = props;
   const { scored } = result;
-  const { isND, judgeSentence, level1, promise, feedback } = readResult(props);
+  const { isND, judgeSentence, level1, reasonLine, promise, feedback } = readResult(props);
   const reused = reusedSentence(result.reused_from?.produced_at);
 
   return (
@@ -396,6 +400,12 @@ export function WhyPanel(props: VerdictProps) {
       <div className="verdict-why">
         <h3 className="verdict-why-label font-serif text-[22px] text-ink">Here’s why.</h3>
         <p className="mt-2 text-[17px] leading-relaxed text-ink">{level1}</p>
+        {reasonLine ? (
+          <p className="nd-reason mt-3 rounded-lg bg-pending-wash px-3.5 py-3 text-[15px] leading-relaxed text-ink">
+            <strong className="font-semibold">Why there’s no verdict. </strong>
+            {reasonLine}
+          </p>
+        ) : null}
       </div>
 
       {scored.mode === 'ranked' ? (

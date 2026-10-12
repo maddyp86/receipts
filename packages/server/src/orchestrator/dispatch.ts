@@ -1762,6 +1762,36 @@ function vocabularyFor(statementType: string): string {
  * into "kept the promise" asserts a commitment nobody made — the exact claim
  * the provenance rules exist to prevent.
  */
+/** Direction words, said as a finding. */
+const DIRECTION_FINDING = /\b(runs? counter|ran counter|running counter|inconsistent with|goes against|went against|going against|(?:is|was|are|were|be|being) consistent with|lines? up with|lined up with|leans? (?:toward|towards|against))\b/g;
+/**
+ * A negation or an open question in the few words just before the phrase:
+ * "doesn't line up with", "neither bill is consistent with", "whether
+ * Schumer's actions line up with" — none of them a finding.
+ */
+const NEGATED = /\b(not|n't|never|neither|nor|whether|if)\b(?:\s+[\w'-]+){0,4}\s*$/;
+
+/**
+ * Does the text say the record lines up with or runs against the statement?
+ * Negated uses — "it doesn't line up with it or run against it" — are not.
+ * A phrase chained to a negated one by "or"/"nor" shares its negation.
+ */
+export function affirmsDirection(text: string): boolean {
+  const t = text.replace(/[’']/g, "'").replace(/n't\b/g, " n't");
+  let lastEnd = -1;
+  let lastNegated = false;
+  for (const m of t.matchAll(DIRECTION_FINDING)) {
+    const start = m.index!;
+    const between = lastEnd >= 0 ? t.slice(lastEnd, start) : '';
+    const chained = lastNegated && lastEnd >= 0 && between.length < 40 && /\b(or|nor)\b/.test(between) && !/[.;:]/.test(between);
+    const negated = chained || NEGATED.test(t.slice(Math.max(0, start - 50), start));
+    if (!negated) return true;
+    lastEnd = start + m[0].length;
+    lastNegated = true;
+  }
+  return false;
+}
+
 export function explanationProblems(
   why: string,
   verdict: string,
@@ -1807,6 +1837,15 @@ export function explanationProblems(
   if (verdict === 'NOT_DETERMINABLE' && (saysKept || saysBroke)) {
     problems.push(
       'the verdict is NOT_DETERMINABLE — do not say the promise was kept or broken',
+    );
+  }
+  // The paragraph is shown on a not-determinable answer (2026-10-11), and on a
+  // reading held back after review a line saying the record "runs counter"
+  // would publish the accusation we declined to make. Direction words are
+  // refused there unless negated ("doesn't line up with or run against").
+  if (verdict === 'NOT_DETERMINABLE' && affirmsDirection(text)) {
+    problems.push(
+      'the verdict is NOT_DETERMINABLE — do not say the record lines up with, is consistent with, goes against or runs counter to the statement; say it does not settle the question, and why',
     );
   }
 

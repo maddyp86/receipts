@@ -183,3 +183,31 @@ describe('a search that found nothing says where our records start', () => {
     expect(BOUNDARY).not.toMatch(/did nothing|no record|never/i);
   });
 });
+
+describe('"Why" on an answer that doesn\'t settle it (2026-10-11)', () => {
+  const withheld = (why: string) =>
+    ({
+      ...result({ nd: 'WITHHELD_PENDING_REVIEW', evaluated: 7, admitted: 2 }),
+      explanation: { why, connectors: {}, confidence: 0.6 },
+      judge: { disposition: 'REVIEW_REQUIRED_JUDGE_CORRECTED', withheld: true, unavailable: false, counterargument: null, failed_test: 'T3', failure_class: 'BROAD_VEHICLE' },
+    }) as unknown as QueryResult;
+  const why = (r: QueryResult) => renderToStaticMarkup(React.createElement(WhyPanel, { result: r })).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+
+  it('shows the explainer\'s paragraph, then the specific reason in plain words', () => {
+    const t = why(withheld('You asked about income taxes. We found H.R. 1 and Schumer voted no on it.'));
+    expect(t).toContain('You asked about income taxes. We found H.R. 1 and Schumer voted no on it.');
+    expect(t).toContain('Why there’s no verdict. The deciding vote was on a large bill that covers many subjects');
+    expect(t).not.toMatch(/adversarial|did not sustain/);
+  });
+
+  it('without a paragraph, the reason alone is the answer', () => {
+    const t = why(withheld(''));
+    expect(t).toContain('The deciding vote was on a large bill that covers many subjects');
+    expect(t).not.toContain('Why there’s no verdict.');
+  });
+
+  it('nothing found: the reason is the scorer\'s, and the bills are on the Receipts tab, not "below"', () => {
+    const t = why(result());
+    expect(t).not.toMatch(/\bbelow\b/);
+  });
+});
