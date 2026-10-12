@@ -126,6 +126,10 @@ export interface QuerySession {
   nearMisses?: Array<{ action_uid: string; bill_id: string; title: string; score: number }>;
   /** True when nothing cleared the floor and the best near misses were reviewed instead. */
   nearMissReview?: boolean;
+  /** Near misses not yet reviewed, for the second pass when nothing admitted counts. */
+  reviewable?: MatchedAction[];
+  /** The bill reader's results by action, so a second pass never reads a bill twice. */
+  fulfillmentMemo?: Map<string, import('../evaluation/fulfillment.js').EvaluatedFulfillment>;
   /** Fulfillment results keyed by action_uid, from evaluate_effects. */
   fulfillment?: Record<string, import('../evaluation/fulfillment.js').FulfillmentResult>;
   /** Injected in tests/fixtures; live path builds its own. */
@@ -700,6 +704,35 @@ function congressOf(billId: string): string {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * The relevance check on a set of candidates, one model call each, traced.
+ * Used by the search and again by the near-miss review's second pass.
+ */
+function checkRelevance(session: QuerySession, rows: MatchedAction[]) {
+  const relevanceFetcher = session.relevanceFetcher ?? liveResponsesFetcher('relevance');
+  return evaluateRelevance(
+    rows.map((m) => toRelevanceCandidate(session, m)),
+    relevanceFetcher,
+    {
+      // GATE: one model call per candidate. The full user message, the raw
+      // text back, and the parse — the three things that decide whether a
+      // bill is "about" the promise, side by side.
+      observe: (o) =>
+        traceStep({
+          stage: 'RELEVANCE', kind: 'model',
+          status: o.error ? 'error' : o.result.verdict === 'ERROR' ? 'rejected' : 'ok',
+          subject: o.candidate.action_uid ?? o.candidate.bill_id,
+          label: `${o.candidate.bill_id} → ${o.result.verdict} @ ${o.result.confidence} · ${o.result.action_type} · topic ${o.result.topic_relevant} / action ${o.result.action_relevant} / effort ${o.result.effort_relevant} / specificity ${o.result.specificity_match}`,
+          model: o.request.model, prompt_version: RELEVANCE_PROMPT_CACHE_KEY, prompt_text: RELEVANCE_SYSTEM_PROMPT,
+          usage: responsesUsage(o.envelope), duration_ms: o.durationMs,
+          input: { user_message: o.request.input.find((m) => m.role === 'user')?.content ?? '', reasoning_effort: o.request.reasoning.effort, top_p: o.request.top_p },
+          output: { raw_text: o.rawText, parsed: o.result },
+          error: o.error ?? o.result.error ?? null,
+        }),
+    },
+  );
+}
+
 async function searchActions(session: QuerySession): Promise<Envelope<unknown>> {
   if (!session.vector || !session.senator) {
     return fail({
@@ -814,30 +847,7 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
   //
   // Runs BEFORE the model sees anything, so the model never judges effect on a
   // bill the gate would have excluded.
-  const relevanceFetcher = session.relevanceFetcher ?? liveResponsesFetcher('relevance');
-  const checkRelevance = (rows: MatchedAction[]) => evaluateRelevance(
-    rows.map((m) => toRelevanceCandidate(session, m)),
-    relevanceFetcher,
-    {
-      // GATE: one model call per candidate. The full user message, the raw
-      // text back, and the parse — the three things that decide whether a
-      // bill is "about" the promise, side by side.
-      observe: (o) =>
-        traceStep({
-          stage: 'RELEVANCE', kind: 'model',
-          status: o.error ? 'error' : o.result.verdict === 'ERROR' ? 'rejected' : 'ok',
-          subject: o.candidate.action_uid ?? o.candidate.bill_id,
-          label: `${o.candidate.bill_id} → ${o.result.verdict} @ ${o.result.confidence} · ${o.result.action_type} · topic ${o.result.topic_relevant} / action ${o.result.action_relevant} / effort ${o.result.effort_relevant} / specificity ${o.result.specificity_match}`,
-          model: o.request.model, prompt_version: RELEVANCE_PROMPT_CACHE_KEY, prompt_text: RELEVANCE_SYSTEM_PROMPT,
-          usage: responsesUsage(o.envelope), duration_ms: o.durationMs,
-          input: { user_message: o.request.input.find((m) => m.role === 'user')?.content ?? '', reasoning_effort: o.request.reasoning.effort, top_p: o.request.top_p },
-          output: { raw_text: o.rawText, parsed: o.result },
-          error: o.error ?? o.result.error ?? null,
-        }),
-    },
-  );
-
-  let evaluated = await checkRelevance(candidatesIn);
+  let evaluated = await checkRelevance(session, candidatesIn);
   let gate = applyEvidenceGate(evaluated);
 
   // NEAR-MISS REVIEW. When the relevance check admits nothing, the answer is
@@ -858,9 +868,13 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
       input: { review_floor: SIMILARITY.REVIEW, limit: NEAR_MISS_REVIEW_LIMIT, above_floor_checked: candidatesIn.length },
       output: { reviewed: reviewed.map((m) => ({ action_uid: m.action_uid, bill_id: m.bill_id, score: m.score })) },
     });
-    evaluated = [...evaluated, ...(await checkRelevance(reviewed))];
+    evaluated = [...evaluated, ...(await checkRelevance(session, reviewed))];
     candidatesIn = [...candidatesIn, ...reviewed];
     gate = applyEvidenceGate(evaluated);
+  } else {
+    // Not reviewed now: kept, in case everything admitted turns out not to
+    // count once the bills are read (evaluateEffectsTool, second pass).
+    session.reviewable = reviewable.map((m) => ({ ...m, strength: 'WEAK' as const }));
   }
   session.evaluated = evaluated;
 
@@ -936,7 +950,60 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
 
 // ---------------------------------------------------------------------------
 
+/** "Doesn't settle it" because nothing admitted counts — not because a reading was held back. */
+const NOTHING_COUNTS = new Set(['NO_MATCHES', 'ALL_NEUTRAL', 'GATED', 'UNDIRECTABLE_METADATA']);
+
+/**
+ * Read the bills and score, and once more with the near misses when nothing
+ * admitted turned out to count.
+ *
+ * The search reviews near misses only when the relevance check admits
+ * nothing. One admitted bill that the reader then finds neutral blocked that
+ * (case 51, run 34e21977: a savings-account bill admitted, read as neutral,
+ * and the 2025 tax law at 0.483 never looked at). So when the answer is
+ * "doesn't settle it" for that reason, the unreviewed near misses go to the
+ * relevance check, and whatever it admits is read and scored with the rest.
+ * Once per run. A reading held back after review is not "nothing counts" and
+ * never triggers it.
+ */
 async function evaluateEffectsTool(
+  session: QuerySession,
+  input: Record<string, unknown>,
+): Promise<Envelope<unknown>> {
+  const first = await evaluateEffectsOnce(session, input);
+  const s = session.scored;
+  const pending = session.reviewable ?? [];
+  if (!first.ok || session.nearMissReview || !pending.length || !s) return first;
+  if (s.verdict !== 'NOT_DETERMINABLE' || !NOTHING_COUNTS.has(String(s.nd_reason))) return first;
+
+  session.nearMissReview = true;
+  session.reviewable = [];
+  traceStep({
+    stage: 'NEAR_MISS_REVIEW', kind: 'deterministic',
+    label: `nothing admitted counts (${s.nd_reason}) · ${pending.length} near miss(es) from ${SIMILARITY.REVIEW} sent to the relevance check`,
+    input: { review_floor: SIMILARITY.REVIEW, limit: NEAR_MISS_REVIEW_LIMIT, nd_reason: s.nd_reason },
+    output: { reviewed: pending.map((m) => ({ action_uid: m.action_uid, bill_id: m.bill_id, score: m.score })) },
+  });
+  const checked = await checkRelevance(session, pending);
+  const all = [...(session.evaluated ?? []), ...checked];
+  const gate = applyEvidenceGate(all);
+  const added = new Set(gate.admitted.map((c) => String(c.action_uid ?? '')));
+  const admitted = pending.filter((m) => added.has(m.action_uid));
+  session.evaluated = all;
+  session.relevance = gate;
+  traceStep({
+    stage: 'EVIDENCE_GATE', kind: 'deterministic',
+    label: `near-miss review admitted ${admitted.length} of ${pending.length}`,
+    input: { candidates: checked.map((c) => ({ action_uid: c.action_uid, bill_id: c.bill_id, verdict: c.relevance.verdict })) },
+    output: { admitted: admitted.map((m) => m.action_uid) },
+  });
+  if (!admitted.length) return first;
+
+  session.matches = [...(session.matches ?? []), ...admitted];
+  return evaluateEffectsOnce(session, input);
+}
+
+async function evaluateEffectsOnce(
   session: QuerySession,
   input: Record<string, unknown>,
 ): Promise<Envelope<unknown>> {
@@ -1194,10 +1261,14 @@ async function evaluateEffectsTool(
   const canEvaluateFulfillment =
     Boolean(session.fulfillmentFetcher) || Boolean(config.embeddings.apiKey);
 
-  const evaluated =
-    scorableMatches.length && canEvaluateFulfillment
+  // Each bill is read once per run: a second pass (the near-miss review)
+  // reuses the first pass's readings and pays only for the bills it added.
+  const memo = (session.fulfillmentMemo ??= new Map());
+  const unread = scorableMatches.filter((m) => !memo.has(m.action_uid));
+  const fresh =
+    unread.length && canEvaluateFulfillment
       ? await evaluateFulfillment(
-          scorableMatches.map((m) =>
+          unread.map((m) =>
             toFulfillmentCandidate(
               session,
               m,
@@ -1229,6 +1300,10 @@ async function evaluateEffectsTool(
           },
         )
       : [];
+  for (const e of fresh) memo.set(e.action_uid, e);
+  const evaluated = canEvaluateFulfillment
+    ? scorableMatches.map((m) => memo.get(m.action_uid)).filter((e): e is NonNullable<typeof e> => Boolean(e))
+    : [];
   if (scorableMatches.length && !canEvaluateFulfillment) {
     traceStep({
       stage: 'FULFILLMENT', kind: 'model', status: 'skipped',
