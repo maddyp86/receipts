@@ -25,7 +25,7 @@ READ FIRST
    docs/v2/reference/vote-slot-rules.md (how a member's votes are derived)
 4. docs/v2/pipeline/: build.py generates every v2 workflow from js/ and sql/.
    Change the source, rebuild, then push to n8n. Never edit n8n by hand only.
-5. RECONCILIATION.md: the durable record of decisions
+5. docs/RECONCILIATION.md: the durable record of decisions
 6. The definition of the view core.member_bill_actions (pg_get_viewdef)
 
 WHAT IS SENATE-ONLY TODAY (the work)
