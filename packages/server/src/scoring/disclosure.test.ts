@@ -192,7 +192,7 @@ describe('the judge disposition copy', () => {
   });
 
   it('says a review DID happen where one did', () => {
-    expect(JUDGE_DISPOSITION_COPY.REVIEW_REQUIRED!.toLowerCase()).toMatch(/did not sustain/);
+    expect(JUDGE_DISPOSITION_COPY.REVIEW_REQUIRED!.toLowerCase()).toMatch(/a second check of this reading disagreed with it/);
     expect(JUDGE_DISPOSITION_COPY.PASS!.toLowerCase()).toMatch(/did not overturn/);
   });
 
@@ -230,5 +230,27 @@ describe('the analyst trace writes absence in words, never as a number', () => {
 
   it('does not treat NaN as a measurement', () => {
     expect(confidenceTraceLabel(Number.NaN)).toBe('not recorded');
+  });
+});
+
+describe('why there is no verdict, in plain words (2026-10-11)', () => {
+  it('has a sentence for every kind of objection the second check can raise', async () => {
+    const { JUDGE_REASON_COPY } = await import('@receipts/shared');
+    const { JUDGE_SYSTEM_PROMPT } = await import('../judge/judgePrompt.js');
+    const classes = /"failure_class": "([^"]+)"/.exec(JUDGE_SYSTEM_PROMPT)![1]!.split('|').map((c) => c.trim()).filter((c) => c && c !== 'null');
+    for (const c of classes) expect(JUDGE_REASON_COPY[c], c).toBeTruthy();
+    for (const copy of Object.values(JUDGE_REASON_COPY)) {
+      for (const term of [...BANNED_LEVEL1_TERMS, ...BANNED_MOTIVE_TERMS, 'adversarial', 'sustain']) {
+        expect(copy.toLowerCase(), `"${term}"`).not.toContain(term.toLowerCase());
+      }
+      expect(copy).not.toMatch(/runs counter|lines up with|kept|broke/i);
+    }
+  });
+
+  it('never says the bills are "below": they are on the Receipts tab', async () => {
+    const shared = await import('@receipts/shared');
+    for (const copy of [...Object.values(shared.JUDGE_DISPOSITION_COPY), ...Object.values(shared.ND_REASON_COPY), shared.ND_NO_REASON_COPY]) {
+      expect(copy).not.toMatch(/\bare below\b|\bis below\b/);
+    }
   });
 });

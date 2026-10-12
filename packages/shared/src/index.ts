@@ -451,12 +451,41 @@ export interface DirectedAction extends MatchedAction {
   record?: string;
 
   /**
+   * The bill's path, left to right: introduced, its versions, the senator's own
+   * act, and how it ended. Built in code from the record (scoring/billPath.ts);
+   * a step the record does not hold is left out, never guessed, and a step
+   * whose date is unknown has `date: null`.
+   */
+  path?: PathStep[];
+
+  /**
+   * The parts of `record` the path cannot show — how and when the senator's
+   * name went on the bill, the committee they sit on, text enacted through
+   * another bill. Absent when the path says it all.
+   */
+  record_detail?: string;
+
+  /**
    * True when the bill's history — how far it got, which committees acted —
    * could not be read for this answer. Display only: the card says so, so
    * that a missing "reported by committee" is not read as "never reported".
    * Never read for scoring.
    */
   history_unavailable?: boolean;
+}
+
+/** One step on a bill's path. */
+export interface PathStep {
+  /** "Introduced", "Passed the House", "Final vote", "Became law" … */
+  label: string;
+  /** YYYY-MM-DD, or null when the record has no date for it. */
+  date: string | null;
+  /** The senator's own act on the bill: their vote ("Yes"/"No"), or sponsorship. */
+  senator?: { act: string } | null;
+  /** A short note on this step, e.g. "the text we read". */
+  note?: string | null;
+  /** The last step: how the bill ended, or where it stands. */
+  outcome?: boolean;
 }
 
 /**
@@ -892,6 +921,57 @@ export interface JudgeDisclosure {
 }
 
 /**
+ * Why a held-back reading was held back, in a reader's words: one sentence per
+ * kind of objection the second check raises (`failure_class`). Written here,
+ * not taken from the check's own critique, because the critique argues about
+ * the accusation we chose not to make and can lean toward it. None of this is
+ * exculpatory: an objection to a reading is not a finding the other way.
+ */
+export const JUDGE_REASON_COPY: Record<string, string> = {
+  BROAD_VEHICLE:
+    'The deciding vote was on a large bill that covers many subjects, so one vote on it can’t be read as a position on this one.',
+  RETRIEVAL_MISMATCH:
+    'On a closer look, the bill is about something next to your question rather than your question itself.',
+  BILL_EFFECT_INVERTED:
+    'A closer reading found the bill may push the other way from how it was first read, so we aren’t relying on that reading.',
+  WRONG_TEXT_VERSION:
+    'The bill’s text changed over time, and the reading may rest on a different version from the one the senator acted on.',
+  CONTESTED_DIRECTION:
+    'Which way this bill pushes on your question is itself what the two parties disagree about, and we don’t take a side in that.',
+  HINDER_BY_OMISSION:
+    'The first reading counted the bill against the goal for what it leaves out, and leaving something out is not the same as working against it.',
+  IMPACT_CONFLICT: 'The bill’s own descriptions disagree about what it does, so no single reading of it is safe.',
+  LEADER_SWITCH:
+    'As a party leader, the senator’s no may have been a procedural step to bring the measure back for another vote, not a position on it.',
+  SPLIT_VOTE: 'The senator’s votes on this bill went different ways, and the first reading didn’t account for both.',
+  VOTE_PAIRING_ERROR: 'The votes on this bill may come from different versions of it, so they can’t be read together.',
+  STANCE_DOUBLE_APPLIED: 'The first reading may have turned around which way your question points, so we aren’t relying on it.',
+  BOUNDED_PROMISE: 'The statement was tied to a particular time or bill, and this vote falls outside it.',
+  ADMIN_MISMATCH: 'The statement was about a different administration than the one this vote took place under.',
+  STATEMENT_EXTRACTION: 'The statement as worded couldn’t be matched cleanly to one specific commitment.',
+  UNDISCLOSED_CAVEAT: 'The evidence isn’t strong enough to make this claim without a caveat the reading left out.',
+  OVERCONFIDENT: 'The evidence isn’t strong enough to make this claim with the confidence it was made.',
+  HALLUCINATED_LINK: 'The first reading tied the bill to your question in a way the record doesn’t support.',
+};
+
+/**
+ * Why an answer is "doesn't settle it", in one plain sentence: the specific
+ * objection when a reading was held back after a second check, otherwise the
+ * reason the scorer recorded. Shown under "Why" beside the explanation.
+ */
+export function notDeterminableReason(result: QueryResult): string | null {
+  const s = result.scored;
+  if (s.verdict !== 'NOT_DETERMINABLE') return null;
+  if (s.nd_reason === 'WITHHELD_PENDING_REVIEW') {
+    const cls = result.judge?.failure_class;
+    if (cls && JUDGE_REASON_COPY[cls]) return JUDGE_REASON_COPY[cls]!;
+    const sentence = judgeDispositionSentence(result.judge?.disposition);
+    if (sentence) return sentence;
+  }
+  return s.nd_reason ? (ND_REASON_COPY[s.nd_reason] ?? ND_NO_REASON_COPY) : ND_NO_REASON_COPY;
+}
+
+/**
  * Plain-language copy per judge disposition.
  *
  * Same discipline as ND_REASON_COPY: the wording lives here so it cannot drift,
@@ -900,20 +980,20 @@ export interface JudgeDisclosure {
  * review that cleared him.
  */
 export const JUDGE_DISPOSITION_COPY: Record<string, string> = {
-  PASS: 'This reading was put to a second, adversarial review, which did not overturn it.',
+  PASS: 'This reading was put to a second check, which tried to find fault with it and did not overturn it.',
   PASS_ON_RETRY:
-    'This reading did not survive a first adversarial review. It was re-examined and passed on the second look, and is held to a lower confidence as a result.',
+    'A second check found fault with this reading at first. It was looked at again and passed, and is held to a lower confidence as a result.',
   REVIEW_REQUIRED:
-    'A second, adversarial review did not sustain this reading, and offered no correction we could stand behind. We are not publishing it. The bills and votes are below — read them and judge for yourself.',
+    'A second check of this reading disagreed with it, and offered no reading of its own we could stand behind, so we are not publishing it. The bills and votes are on the Receipts tab — read them and judge for yourself.',
   // The query tool withholds here; it does not publish the judge's correction
   // as its own verdict. The sentence must not claim a corrected reading is on
   // screen — nothing is.
   REVIEW_REQUIRED_JUDGE_CORRECTED:
-    'A second, adversarial review did not sustain this reading and read the record differently, so we are not publishing it. The bills and votes are below — read them and judge for yourself.',
+    'A second check of this reading disagreed with it and read the record differently, so we are not publishing it. The bills and votes are on the Receipts tab — read them and judge for yourself.',
   // NOT "a reviewer disagreed". Nobody looked, and saying otherwise would claim
   // a scrutiny this reading never received.
   JUDGE_ERROR:
-    'The second-opinion review could not run, so this reading has not been checked by anything but the evaluator. We do not publish an accusation no reviewer has seen. The bills and votes are below — read them and judge for yourself.',
+    'The second-opinion review could not run, so this reading has not been checked by anything but the evaluator. We do not publish an accusation no reviewer has seen. The bills and votes are on the Receipts tab — read them and judge for yourself.',
 };
 
 /**
@@ -927,7 +1007,7 @@ export function judgeDispositionSentence(disposition: string | null | undefined)
   if (!disposition) return null;
   if (JUDGE_DISPOSITION_COPY[disposition]) return JUDGE_DISPOSITION_COPY[disposition]!;
   if (disposition.startsWith('GATED_')) {
-    return 'A rule-based check stopped this reading before it reached review, so we are not publishing it. The bills and votes are below — read them and judge for yourself.';
+    return 'A rule-based check stopped this reading before it reached review, so we are not publishing it. The bills and votes are on the Receipts tab — read them and judge for yourself.';
   }
   return null;
 }
@@ -1677,21 +1757,21 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   // Deliberately NOT exculpatory. Withholding an accusation is not a finding
   // that he kept it, and this sentence must never be readable as one.
   WITHHELD_LOW_CONFIDENCE:
-    "Our reading of the record leans against this statement, but not clearly enough for us to say so. The bills and votes are below — read them and judge for yourself.",
+    "Our reading of the record leans against this statement, but not clearly enough for us to say so. The bills and votes are on the Receipts tab — read them and judge for yourself.",
   // Also deliberately not exculpatory. "A reviewer disagreed" is not "he kept
   // it", and the sentence must not be readable as either an accusation or a
   // clearing.
   WITHHELD_PENDING_REVIEW:
-    "A second review didn't back this reading, so we're not publishing it. The bills and votes are below — read them and judge for yourself.",
+    "A second review didn't back this reading, so we're not publishing it. The bills and votes are on the Receipts tab — read them and judge for yourself.",
   // Not exculpatory either. We lack a reliable summary of the text the senator
   // acted on — missing, or flagged as wrong — which says nothing about which
   // way they acted.
   WITHHELD_TEXT_UNAVAILABLE:
-    "We don't have a reliable summary of the version of the bill in effect when the senator acted, so it could only be read against a later version, which may say something different. We won't make a call against the senator on the strength of a text they may not have voted on. The bills and votes are below — read them and judge for yourself.",
+    "We don't have a reliable summary of the version of the bill in effect when the senator acted, so it could only be read against a later version, which may say something different. We won't make a call against the senator on the strength of a text they may not have voted on. The bills and votes are on the Receipts tab — read them and judge for yourself.",
   // Neither exculpatory nor accusatory, and not "no effect": we did not
   // finish reading the bills, so we say that and nothing more.
   EVALUATION_FAILED:
-    "We couldn't finish checking this: a step failed for this answer — either reading the bills against this statement, or reading the part of the record we check them against. That says nothing about the senator either way. The bills and votes are below, and trying again may complete the check.",
+    "We couldn't finish checking this: a step failed for this answer — either reading the bills against this statement, or reading the part of the record we check them against. That says nothing about the senator either way. The bills and votes are on the Receipts tab, and trying again may complete the check.",
   // The record, and only the record. A missed vote has reasons the data can't
   // tell apart, so this sentence names none and implies none — and it is not
   // "no effect", which is a claim about the bills.
@@ -1700,7 +1780,7 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   // Not "can't settle": the gates are rules, and the copy says a rule set the
   // bills aside rather than that the bills are incapable of bearing on it.
   CONTESTED_READING:
-    "We found bills on this subject, but at least one can reasonably be read either way — as advancing the goal in this statement or as setting it back — and we couldn't settle which, so it isn't counted in either direction. The bills and votes are below — read them and judge for yourself.",
+    "We found bills on this subject, but at least one can reasonably be read either way — as advancing the goal in this statement or as setting it back — and we couldn't settle which, so it isn't counted in either direction. The bills and votes are on the Receipts tab — read them and judge for yourself.",
   GATED:
     "Our rules set aside everything we found before weighing it — the window the statement applied to had closed, or the bills were too broad to say anything about it specifically. Each item below says which.",
 };
@@ -1717,7 +1797,7 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
  * Says only what is actually known: no defensible reading, reason unrecorded.
  */
 export const ND_NO_REASON_COPY =
-  "We couldn't reach a defensible reading here, and the specific reason wasn't recorded. Anything we did find is below — read it and judge for yourself.";
+  "We couldn't reach a defensible reading here, and the specific reason wasn't recorded. Anything we did find is on the Receipts tab — read it and judge for yourself.";
 
 /**
  * Plain-language rendering of `vote_governing`, for Level 1.
