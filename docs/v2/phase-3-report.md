@@ -1,8 +1,8 @@
 # Phase 3 report: the v2 pipeline, running beside the old one
 
-Built and published 10–11 October 2026. **Nothing is cut over**: the old pipeline still writes the Sheets, and the live tool still reads `mirror` and Pinecone. The v2 pipeline writes only `core`.
+Built and published 10–11 October 2026. **Cut over on 12 October 2026** (evening, Pacific): the live tool reads `core`, the v2 pipeline writes it, and the old pipeline is unscheduled. See "Cutover" below.
 
-Status: **G4 day 1 of 3 passed** (11 October). Days 2 and 3 run on 12 and 13 October.
+Status: G4 passed on two clean days (11 and 12 October); Matt accepted two days in place of three. Rollback stays available until 26 October.
 
 ## What exists
 
@@ -39,14 +39,13 @@ A day passes when every run is clean and no difference is unexplained.
 | Day | Runs | Member-bill rows (Sheets / core) | Bills | Roll calls (Sheets / core) | Differences | Unexplained |
 |---|---|---|---|---|---|---|
 | 11 Oct | all ok | 1,162 / 1,164 | 973 | 228 / 228 | 76 explained | **0** |
-| 12 Oct | | | | | | |
-| 13 Oct | | | | | | |
+| 12 Oct | all ok | 1,162 / 1,164 | 973 | 228 / 228 | 76 explained | **0** |
 
 The explained differences:
 - **5 Phase 1 vote corrections** (8 rows), where the Sheets are wrong and core is right: Schumer's hr5371-119 passage vote, Thune's sres13-118 and sres21-118 rows, and the s870-118 passage vote for both senators.
 - **68 text links by design** (agreed 11 October): v2 fills a bill's text link once congress.gov publishes it; the old pipeline sets the link only when it first sees a bill.
 
-**Caution.** Day 1 had nothing new: no unread vote file, no changed bill file, no new sponsorship pair, on both pipelines. The Senate is likely out until after the 3 November election, so days 2 and 3 may be the same. Two consequences:
+**Caution.** Day 1 had nothing new: no unread vote file, no changed bill file, no new sponsorship pair, on both pipelines. Day 2 was the same. The Senate is likely out until after the 3 November election. Two consequences:
 - The changed-bill and vote paths *were* exercised end to end during seeding, on every file, with zero differences.
 - The new-bill and new-pair paths were tested only locally (35 bills). No n8n run has written one yet.
 
@@ -84,6 +83,23 @@ Ten bills, `statements_mode: sample`, drafts in `core.impact_drafts` (run 43). T
 All three passed the parser's checks, with no flags and no missing fields. They cost $0.115 in all, with no web searches. Fetching the text is also cheaper: about $0.04 a bill.
 
 **Cost.** $0.61 for the ten (380,438 input tokens, 14,490 output, 26 web searches), about $0.06 a bill. A first run cost about the same but wrote only one draft: a bug, fixed below. The samples cost about $1.20 in all, against a $5 build budget. With the text fetched inline, a statement costs about $0.04; at the cap of 60 bills a day, live mode costs at most about $2.40 a day. The monthly budget stop is $25.
+
+## Cutover, 12 October 2026
+
+Done with Matt present, in the order `plan.md` sets.
+
+1. **Gates.** G2 and G3 passed in Phase 2. G4 passed on 11 and 12 October; Matt accepted two days in place of three.
+2. **Statements.** The v2 orchestrator calls impact statements in `live` mode, and its statement copy from the Sheets is disabled, not deleted. A dry run first: live mode found no bill needing a statement and wrote nothing. Published as version `cb0bc487`.
+3. **Render.** `RECORD_SCHEMA=compat` and `ACTION_STORE=supabase` were set on service `receipts`. The deploy carried #76. `/api/health` reports `store: supabase`, and `/api/senators` returns Schumer and Thune with `coverage_congresses` [118, 119], a key only `core` has.
+4. **Eval on the production settings.** All 50 cases, run locally with the two settings: **42 pass**, and the 8 failures are exactly the cases that failed in both Phase 2 runs (1, 3, 8, 12, 15, 22, 23, 29), with the same verdicts. Nothing new failed. Case 34 (Thune border), which failed only on the old store, passes on core. Cost $5.00. Report: `.data/eval/2026-10-13T05-04-39-095Z.json`.
+5. **Old workflows unpublished, not deleted:** the old orchestrator `JWMFbg6I0cDTxzwu` (version `bd64efc5`) and Mirror Sync `tGcHOxabA29Tjob2` (version `54961739`).
+6. **Workbooks view-only:** Matt.
+
+**Rollback, until 26 October:** set `RECORD_SCHEMA=mirror` and `ACTION_STORE=pinecone` on Render, then republish the two old workflows. The Sheets and `mirror` stop updating from tonight, so a rollback serves the record as of 12 October until the old pipeline catches up on its first run.
+
+**After two clean weeks:** delete the old workflows, drop the `mirror` schema, remove the Pinecone code path, and delete the Pinecone bill namespaces.
+
+**Still running daily:** the G4 comparison in the orchestrator. The Sheets no longer update, so from now on it will report differences as `core` moves ahead. That's expected, and it can be switched off once the rollback window closes.
 
 ## Bugs found by running on n8n, all fixed
 
