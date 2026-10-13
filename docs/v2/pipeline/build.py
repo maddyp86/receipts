@@ -400,11 +400,12 @@ def statements():
     return '\n'.join(parts)
 
 
-def call(var, name, wid, inputs):
-    """Execute a v2 sub-workflow and wait for it. inputs: {name: expression}."""
+def call(var, name, wid, inputs, disabled=False):
+    """Execute a v2 sub-workflow and wait for it. inputs: {name: expression}.
+    A disabled node passes its input straight through to the next one."""
     schema = ', '.join(f"{{ id: {J(k)}, displayName: {J(k)}, required: false, defaultMatch: false, display: true, canBeUsedToMatch: true, type: 'string', removed: false }}" for k in inputs)
     vals = ', '.join(f"{J(k)}: {J(v)}" for k, v in inputs.items())
-    return (f"const {var} = node({{ type: 'n8n-nodes-base.executeWorkflow', version: 1.2, config: {{ name: {J(name)}, parameters: {{ source: 'database', "
+    return (f"const {var} = node({{ type: 'n8n-nodes-base.executeWorkflow', version: 1.2, config: {{ name: {J(name)}, " + ("disabled: true, " if disabled else "") + f"parameters: {{ source: 'database', "
             f"workflowId: {{ __rl: true, mode: 'id', value: {J(wid)} }}, workflowInputs: {{ mappingMode: 'defineBelow', value: {{ {vals} }}, matchingColumns: [], "
             f"schema: [{schema}], attemptToConvertTypes: false, convertFieldsToString: true }}, options: {{ waitForSubWorkflow: true }} }} }}, output: [{{}}] }});")
 
@@ -429,8 +430,9 @@ def orchestrator(ids):
              cfg_node,
              call('rollCalls', 'Roll calls', ids['rollcalls'], {'dry_run': dry}),
              call('sponsorships', 'Sponsorships and bills', ids['sponsorships'], {'dry_run': dry}),
-             call('copyStatements', 'Statement copy', ids['copy'], {'dry_run': dry}),
-             call('statements', 'Impact statements (plan)', ids['statements'], {'dry_run': dry, 'statements_mode': 'plan'}),
+             # Cutover, 12 Oct 2026: v2 writes the statements; the copy from the Sheets is off.
+             call('copyStatements', 'Statement copy', ids['copy'], {'dry_run': dry}, disabled=True),
+             call('statements', 'Impact statements (live)', ids['statements'], {'dry_run': dry, 'statements_mode': 'live'}),
              call('embeddings', 'Embeddings', ids['embeddings'], {'dry_run': dry}),
              weekly,
              call('members', 'Members (Mondays)', ids['members'], {'dry_run': dry}),
