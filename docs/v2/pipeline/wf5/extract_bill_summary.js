@@ -8,14 +8,22 @@ let body = $('Fetch Bill Summary').item.json.data || '';
 // an empty body (s2853-118 ... s3037-118) and were written as "text
 // unavailable". It is also the fallback for a bill sent down the summary path
 // that has no BILLSTATUS summary (s3352-118: its title cites the NDAA).
+// GovInfo publishes the same GPO file; congress.gov sometimes answers a bill
+// with a 503 page for hours (s2938-118, s2967-118, s2994-118 on 14 Oct).
+const govinfoUrl = (url) => {
+  const m = String(url || '').match(/congress\.gov\/\d+\/bills\/[a-z]+\d+\/(BILLS-[0-9a-z]+)\.htm$/i);
+  return m ? 'https://www.govinfo.gov/content/pkg/' + m[1] + '/html/' + m[1] + '.htm' : '';
+};
 const fetchText = async (url) => {
-  for (let i = 0; i < 3; i++) {
-    try {
-      const res = await this.helpers.httpRequest({ url, timeout: 30000, json: false });
-      const t = typeof res === 'string' ? res : String(res || '');
-      if (t.trim()) return t;
-    } catch (e) { /* retried below */ }
-    await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+  for (const u of [url, govinfoUrl(url)].filter(Boolean)) {
+    for (let i = 0; i < 3; i++) {
+      try {
+        const res = await this.helpers.httpRequest({ url: u, timeout: 30000, json: false });
+        const t = typeof res === 'string' ? res : String(res || '');
+        if (t.trim()) return t;
+      } catch (e) { /* retried below */ }
+      await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+    }
   }
   return '';
 };
