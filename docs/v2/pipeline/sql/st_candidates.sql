@@ -25,7 +25,7 @@ rowof AS (
   FROM core.bills b JOIN (SELECT DISTINCT bill_id FROM linked) l USING (bill_id)
 ),
 main AS (
-  SELECT r.bill_id, r.r || jsonb_build_object('redo_title_only', coalesce(i.title_only, false)) AS r
+  SELECT r.bill_id, r.r || jsonb_build_object('redo_title_only', coalesce(i.title_only, false), 'existing_impact_id', i.impact_id) AS r
     FROM rowof r
     LEFT JOIN core.bill_impacts i ON i.bill_id = r.bill_id AND i.version_code IS NULL
    WHERE i.impact_id IS NULL
