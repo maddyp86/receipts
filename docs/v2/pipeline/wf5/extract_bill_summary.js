@@ -32,8 +32,11 @@ if (item['version_fetch_url']) {
     .trim();
 
   const looksPdf = /^%PDF-/.test(raw.trim());
-  const readable = (text.match(/[A-Za-z0-9 .,;:()'"-]/g) || []).length;
-  const readableRatio = text.length ? readable / text.length : 0;
+  // GPO's ruled lines (runs of underscores) are layout, not noise: in a short
+  // bill they alone pushed the ratio under the line (s1337-119, 0.849).
+  const measured = text.replace(/_{3,}/g, ' ');
+  const readable = (measured.match(/[A-Za-z0-9 .,;:()'"`\[\]<>&\/-]/g) || []).length;
+  const readableRatio = measured.length ? readable / measured.length : 0;
   const tooShort = text.length < 400;
   const unusable = looksPdf || tooShort || readableRatio < 0.85;
 
