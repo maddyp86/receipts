@@ -1,7 +1,24 @@
 const item = $('Prepare Bill Context').item.json;
 const contentSource = item['bill_content_source'];
 const requestedVersion = String(item['requested_version'] || '').trim();
-const body = $('Fetch Bill Summary').item.json.data || '';
+let body = $('Fetch Bill Summary').item.json.data || '';
+
+// v2 (2026-10-14): a second fetch, made here. Fetch Bill Summary swallows its
+// errors (onError: continue), and on 14 Oct seven bills in a row came back as
+// an empty body (s2853-118 ... s3037-118) and were written as "text
+// unavailable". It is also the fallback for a bill sent down the summary path
+// that has no BILLSTATUS summary (s3352-118: its title cites the NDAA).
+const fetchText = async (url) => {
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await this.helpers.httpRequest({ url, timeout: 30000, json: false });
+      const t = typeof res === 'string' ? res : String(res || '');
+      if (t.trim()) return t;
+    } catch (e) { /* retried below */ }
+    await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+  }
+  return '';
+};
 
 // VERSIONED REQUEST: inline the version's OWN text.
 //
@@ -20,8 +37,8 @@ const body = $('Fetch Bill Summary').item.json.data || '';
 // low readable-character ratio, or a body under 400 chars flags the row instead.
 // v2 (2026-10-11): a bill-level request with a text link is inlined the same way.
 const inlineLabel = requestedVersion || 'current text';
-if (item['version_fetch_url']) {
-  const raw = String(body || '');
+const inline = (raw, fallbackNote) => {
+  raw = String(raw || '');
   let text = raw
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -56,10 +73,10 @@ if (item['version_fetch_url']) {
 
   const fullLen = text.length;
   const LIMIT = 30000;
-  let note = '';
+  let note = fallbackNote || '';
   if (fullLen > LIMIT) {
     text = text.slice(0, LIMIT);
-    note = 'version text truncated at ' + LIMIT + ' of ' + fullLen + ' chars';
+    note = (note ? note + '; ' : '') + 'version text truncated at ' + LIMIT + ' of ' + fullLen + ' chars';
   }
   console.log('[WF5] ' + item['Bill ID'] + ' ' + inlineLabel + ': inlined ' +
     Math.min(fullLen, LIMIT) + ' chars' + (note ? ' (' + note + ')' : ''));
@@ -69,7 +86,26 @@ if (item['version_fetch_url']) {
     bill_summary_error: note,
     version_text_unusable: false
   }}];
+};
+
+if (item['version_fetch_url']) {
+  if (String(body).replace(/<[^>]+>/g, ' ').trim().length < 400) {
+    const again = await fetchText(item['version_fetch_url']);
+    if (again) { console.log('[WF5] ' + item['Bill ID'] + ': first fetch empty, second fetch ' + again.length + ' chars'); body = again; }
+  }
+  return inline(body);
 }
+
+// The summary path (a large bill) found nothing to read: give the model the
+// bill's own text instead, cut to the text budget like any other.
+const textInstead = async (why) => {
+  const url = item['bill_text_url'];
+  if (requestedVersion || !url) return null;
+  const raw = await fetchText(url);
+  if (!raw) return null;
+  console.log('[WF5] ' + item['Bill ID'] + ': ' + why + '; inlining the bill text instead');
+  return inline(raw, why + '; used bill text');
+};
 
 if (contentSource !== 'BILLSTATUS_SUMMARY') {
   return [{ json: { ...item, bill_summary_text: '', bill_summary_action_date: '' } }];
@@ -78,7 +114,7 @@ if (contentSource !== 'BILLSTATUS_SUMMARY') {
 const xml = body;
 
 if (!xml) {
-  return [{ json: { ...item, bill_summary_text: '', bill_summary_action_date: '',
+  return (await textInstead('no XML returned from BILLSTATUS fetch')) || [{ json: { ...item, bill_summary_text: '', bill_summary_action_date: '',
     bill_summary_error: 'No XML returned from BILLSTATUS fetch' }}];
 }
 
@@ -86,7 +122,7 @@ const summaryRegex = /<summary>([\s\S]*?)<\/summary>/gi;
 const matches = [...xml.matchAll(summaryRegex)];
 
 if (!matches.length) {
-  return [{ json: { ...item, bill_summary_text: '', bill_summary_action_date: '',
+  return (await textInstead('no BILLSTATUS summary yet')) || [{ json: { ...item, bill_summary_text: '', bill_summary_action_date: '',
     bill_summary_error: 'No <summary> elements found in BILLSTATUS XML' }}];
 }
 
