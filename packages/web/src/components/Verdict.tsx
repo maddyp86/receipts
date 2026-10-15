@@ -85,19 +85,24 @@ function usesPromiseVocabulary(result: QueryResult): boolean {
  * A position is never kept; nobody promised anything. "Likely" because the
  * verdict is a reading of the record.
  */
-function headline(result: QueryResult): string {
+/**
+ * The headline as [lead, confidence]: one sentence (15 Oct), rendered with the
+ * confidence clause in body type so a phone shows the answer first, not eight
+ * lines of display type.
+ */
+function headlineParts(result: QueryResult): [string, string] {
   const { verdict, band, mode, receipt } = result.scored;
   // By reason: a failed check is headlined as a fact about the tool, not as
   // "we couldn't find enough", which reads as a fact about the record.
-  if (verdict === 'NOT_DETERMINABLE') return notDeterminableHeadline(result.scored.nd_reason);
+  if (verdict === 'NOT_DETERMINABLE') return [notDeterminableHeadline(result.scored.nd_reason), ''];
   const { statement_type, provenance } = result.interpretation;
   // One sentence, with the reason for the confidence (15 Oct): "low
   // confidence" on its own told the reader nothing.
   const base = likelyOutcomeHeadline(verdict, statement_type, provenance);
-  if (!band) return `${base}${mode === 'ranked' ? ', but it’s mixed' : ''}.`;
+  if (!band) return [`${base}${mode === 'ranked' ? ', but it’s mixed' : ''}.`, ''];
   return mode === 'ranked'
-    ? `${base}, but it’s mixed. We have ${BAND_LEVEL[band]} confidence because ${receipt.band_reason ? BAND_REASON_COPY[receipt.band_reason] : 'the record points both ways'}.`
-    : `${base}, ${confidencePhrase(band, receipt.band_reason)}.`;
+    ? [`${base}, but it’s mixed.`, ` We have ${BAND_LEVEL[band]} confidence because ${receipt.band_reason ? BAND_REASON_COPY[receipt.band_reason] : 'the record points both ways'}.`]
+    : [`${base},`, ` ${confidencePhrase(band, receipt.band_reason)}.`];
 }
 
 export function AnalystTrace({ result }: { result: QueryResult }) {
@@ -375,7 +380,14 @@ export function VerdictCard(props: VerdictProps) {
         </div>
         {/* Styled from styles.css by its class alone: the tests read the
             headline out of the markup by this exact tag. */}
-        <h2 className="verdict-label">{headline(result)}</h2>
+        <h2 className="verdict-label">
+          {headlineParts(result)[0]}
+          {headlineParts(result)[1] ? (
+            <span className="verdict-confidence mt-1 block font-sans text-[18px] font-normal leading-snug text-ink">
+              {headlineParts(result)[1]}
+            </span>
+          ) : null}
+        </h2>
         {/* The reader's OWN words, attributed to the reader. The restatement
             is the classifier's paraphrase; printing it in quotation marks
             beside the senator's name presented model output as something the
