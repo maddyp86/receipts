@@ -184,7 +184,8 @@ def members():
         [('buildMembers', 'Build Members')],
         '## v2 pipeline: members\nWeekly. Names, parties, states, districts, Senate class, LIS id and terms from '
         'congress-legislators. A member already here who has left gets left_at and term_end from legislators-historical, and a blank '
-        'LIS id filled, so their votes still join. Never touches in_scope, live, the congresses collected, roles, OpenSecrets id or website. ' + NOTE)
+        'LIS id filled, so their votes still join. A former senator who served since 3 Jan 2023 and is not here is added, not in scope '
+        'and not live, so their stored votes join. Never touches in_scope, live, the congresses collected, roles, OpenSecrets id or website. ' + NOTE)
 
 
 def rollcalls():
@@ -338,8 +339,8 @@ def statements():
                       "waitBetweenTries: 3000, onError: 'continueRegularOutput', alwaysOutputData: true, parameters: { method: 'GET', url: expr('{{ $json.url }}'), "
                       "authentication: 'genericCredentialType', genericAuthType: 'httpQueryAuth', options: { batching: { batch: { batchSize: 5 } }, timeout: 30000, "
                       f"response: {{ response: {{ responseFormat: 'json' }} }} }} }}, credentials: {CRED['congress']} }}, output: [{{}}] }});")
-    fetch_summary = ("const fetchSummary = node({ type: 'n8n-nodes-base.httpRequest', version: 4.3, config: { name: 'Fetch Bill Summary', onError: 'continueRegularOutput', "
-                     "parameters: { url: expr('{{ $json.version_fetch_url || $json[\"Bill Status URL\"] }}'), options: { response: { response: { responseFormat: 'text' } } } } }, output: [{}] });")
+    fetch_summary = ("const fetchSummary = node({ type: 'n8n-nodes-base.httpRequest', version: 4.3, config: { name: 'Fetch Bill Summary', retryOnFail: true, maxTries: 3, waitBetweenTries: 3000, onError: 'continueRegularOutput', "
+                     "parameters: { url: expr('{{ $json.version_fetch_url || $json[\"Bill Status URL\"] }}'), options: { timeout: 30000, response: { response: { responseFormat: 'text' } } } } }, output: [{}] });")
     loop = "const loop = splitInBatches({ version: 3, config: { name: 'Loop Over Items', onError: 'continueRegularOutput', parameters: { options: {} } } });"
     wait = "const waitNode = node({ type: 'n8n-nodes-base.wait', version: 1.1, config: { name: 'Wait', parameters: { amount: 1 } }, output: [{}] });"
     call_model = ("const callModel = ifElse({ version: 2.2, config: { name: 'Call the model?', parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' }, "

@@ -75,11 +75,44 @@ describe('readerReason', () => {
 });
 
 describe('actionPhrase', () => {
-  it('names what the senator did', () => {
+  it('names sponsorship', () => {
     expect(actionPhrase(cand({ is_sponsor: 'TRUE', is_cosponsor: 'FALSE' }))).toBe('Sponsored');
     expect(actionPhrase(cand({}))).toBe('Cosponsored');
+  });
+
+  it('names a passage vote', () => {
     expect(actionPhrase(cand({ is_cosponsor: 'FALSE', passage_vote: 'Nay' }))).toBe('Voted Nay on passage');
-    expect(actionPhrase(cand({ is_cosponsor: 'FALSE', cloture_vote: 'Yea' }))).toBe('Voted Yea on ending debate');
+  });
+
+  // Run 3bf66a32: s3386-119, s4381-118 and hr7024-118 had only a cloture vote,
+  // passage_vote NA, and were labelled "Voted YEA on passage" from `vote`.
+  it('names a cloture-only vote as cloture, not passage, even when `vote` is set', () => {
+    expect(actionPhrase(cand({ is_cosponsor: 'FALSE', cloture_vote: 'YEA', passage_vote: 'NA', vote: 'YEA' }))).toBe(
+      'Voted Yea on cloture (no passage vote)',
+    );
+  });
+
+  it('names cloture and passage separately when both happened', () => {
+    expect(actionPhrase(cand({ is_cosponsor: 'FALSE', cloture_vote: 'Yea', passage_vote: 'Nay', vote: 'Nay' }))).toBe(
+      'Voted Yea on cloture and Nay on passage',
+    );
+  });
+
+  it('keeps a sponsor’s votes beside the sponsorship', () => {
+    expect(actionPhrase(cand({ is_cosponsor: 'TRUE', cloture_vote: 'Yea', passage_vote: 'NA' }))).toBe(
+      'Cosponsored; voted Yea on cloture (no passage vote)',
+    );
+  });
+
+  it('falls back to the resolved vote only when neither slot is filled', () => {
+    expect(actionPhrase(cand({ is_cosponsor: 'FALSE', vote: 'YEA' }))).toBe('Voted Yea');
+    expect(actionPhrase(cand({ is_cosponsor: 'FALSE', vote: 'NOT VOTING' }))).toBe('Did not vote');
+  });
+
+  it('says "did not vote" for an absence rather than "voted Not Voting"', () => {
+    expect(actionPhrase(cand({ is_cosponsor: 'FALSE', cloture_vote: 'Not Voting', passage_vote: 'NA' }))).toBe(
+      'Did not vote on cloture (no passage vote)',
+    );
   });
 });
 
