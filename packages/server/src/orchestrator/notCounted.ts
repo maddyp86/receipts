@@ -19,15 +19,40 @@ const present = (v: unknown): string => {
   return ABSENT.has(s.toUpperCase()) ? '' : s;
 };
 
-/** "Sponsored", "Cosponsored", "Voted Nay on passage" — what the senator did on this bill. */
+/** "YEA" → "Yea", "NOT VOTING" → "Not Voting". */
+const voteWord = (v: string): string =>
+  v.toLowerCase().replace(/\b[a-z]/g, (ch) => ch.toUpperCase());
+
+/**
+ * What the senator did on this bill, from the actual vote slots.
+ *
+ * Cloture and passage are named separately and never merged. `vote` is the
+ * resolved primary vote and does not say which slot it came from, so it is
+ * used only when both slots are empty: reading it as a passage vote labelled
+ * cloture-only votes "on passage" (s3386-119, s4381-118, hr7024-118 in run
+ * 3bf66a32, where passage_vote was NA).
+ */
 export function actionPhrase(c: EvaluatedCandidate): string {
-  if (present(c.is_sponsor)) return 'Sponsored';
-  if (present(c.is_cosponsor)) return 'Cosponsored';
-  const passage = present(c.passage_vote) || present(c.vote);
-  if (passage) return `Voted ${passage} on passage`;
+  const sponsorship = present(c.is_sponsor) ? 'Sponsored' : present(c.is_cosponsor) ? 'Cosponsored' : '';
   const cloture = present(c.cloture_vote);
-  if (cloture) return `Voted ${cloture} on ending debate`;
-  return 'Took action';
+  const passage = present(c.passage_vote);
+  // "voted Yea on cloture", "did not vote on passage"
+  const on = (v: string, slot: string) =>
+    /^not\s*voting$/i.test(v) ? `did not vote on ${slot}` : `voted ${voteWord(v)} on ${slot}`;
+  const votes =
+    cloture && passage
+      ? `${on(cloture, 'cloture')} and ${on(passage, 'passage').replace(/^voted /, '')}`
+      : cloture
+        ? `${on(cloture, 'cloture')} (no passage vote)`
+        : passage
+          ? on(passage, 'passage')
+          : !sponsorship && present(c.vote)
+            ? /^not\s*voting$/i.test(present(c.vote))
+              ? 'did not vote'
+              : `voted ${voteWord(present(c.vote))}`
+            : '';
+  const phrase = [sponsorship, votes].filter(Boolean).join('; ');
+  return phrase ? phrase.charAt(0).toUpperCase() + phrase.slice(1) : 'Took action';
 }
 
 /**
