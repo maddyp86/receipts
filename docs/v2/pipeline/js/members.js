@@ -14,7 +14,16 @@
 // A member who has left is in legislators-historical instead. If they are
 // already in core.members and their last term ended inside the record, their
 // left_at and term_end come from that file and a blank LIS id is filled, so
-// the votes they cast still join to them. Former members are never added.
+// the votes they cast still join to them.
+//
+// A former SENATOR who served inside the record (last term ended after
+// 3 Jan 2023) and is not in core.members is added, with in_scope and live
+// false, no congresses and left_at set, so the Senate votes already stored
+// for them join to someone. Matt decided this on 14 Oct 2026: Senate only,
+// since member_bill_actions reads Senate votes only, and not those whose term
+// ended on 3 Jan 2023 (Portman, Leahy, ...), who cast no vote in the record.
+// Former House members are never added. An added row is never refreshed by
+// the upsert below; the updates for departed members keep it current.
 // ===================================================================
 const legis = await getJson('https://unitedstates.github.io/congress-legislators/legislators-current.json');
 if (!Array.isArray(legis) || legis.length < 500) throw new Error('[v2 members] legislators-current returned ' + (Array.isArray(legis) ? legis.length : typeof legis) + ' rows; expected about 540.');
@@ -63,6 +72,7 @@ const hist = await getJson('https://unitedstates.github.io/congress-legislators/
 if (!Array.isArray(hist) || hist.length < 12000) throw new Error('[v2 members] legislators-historical returned ' + (Array.isArray(hist) ? hist.length : typeof hist) + ' rows; expected about 12,200.');
 const serving = new Set(rows.map((r) => r.member_id));
 const departed = [];
+const formerSenators = [];
 for (const l of hist) {
   const id = S(l.id && l.id.bioguide).toUpperCase();
   // The two files list different people; a member in both counts as serving.
@@ -71,6 +81,26 @@ for (const l of hist) {
   const end = S(t.end);
   if (!end || end < RECORD_START) continue;
   departed.push({ member_id: id, term_end: end, left_at: end, lis_id: S(l.id.lis) || null });
+  // Ended on RECORD_START itself: gone before the 118th sat.
+  if (t.type !== 'sen' || end <= RECORD_START) continue;
+  if (!S(t.state)) { problem(id, 'state', '', 'former senator with no state; not added'); continue; }
+  formerSenators.push({
+    member_id: id,
+    full_name: S(l.name && l.name.official_full) || [S(l.name && l.name.first), S(l.name && l.name.last)].filter(Boolean).join(' '),
+    chamber: 'Senate',
+    state: S(t.state),
+    district: null,
+    party: S(t.party) || null,
+    senate_class: t.class ? Number(t.class) : null,
+    lis_id: S(l.id.lis) || null,
+    term_start: S(t.start) || null,
+    term_end: end,
+    left_at: end,
+    in_scope: false,
+    live: false,
+    congresses: [],
+    roles: [],
+  });
 }
 const LEFT = { member_id: 'text', term_end: 'date', left_at: 'date' };
 // A former member's LIS id only fills a blank; it never replaces one.
@@ -80,13 +110,19 @@ const statements = []
   .concat(upsert('members', SPEC, ['member_id'], rows, { guard: true, onlyCols: REFRESHED }))
   // Every member here exists by now: the statement above inserted the new ones.
   .concat(update('members', { member_id: 'text', lis_id: 'text' }, ['member_id'], withLis))
-  // Updates only: a former member not already in core.members is skipped.
+  // Insert only: a former senator already in core.members is left to the updates below.
+  .concat(upsert('members', SPEC, ['member_id'], formerSenators, { touch: false, onlyCols: [] }))
+  // Updates only: a former member not in core.members by now (House, or gone
+  // before the record) is skipped.
   .concat(update('members', LEFT, ['member_id'], departed.map((r) => ({ member_id: r.member_id, term_end: r.term_end, left_at: r.left_at }))))
   .concat(update('members', { member_id: 'text', lis_id: 'text' }, ['member_id'], departedLis.map((r) => ({ member_id: r.member_id, lis_id: r.lis_id })), { where: 't.lis_id IS NULL' }));
 const previews = [
   preview('members', SPEC, ['member_id'], rows, { onlyCols: REFRESHED }),
   preview('members', { member_id: 'text', lis_id: 'text' }, ['member_id'], withLis, { onlyCols: ['lis_id'] }),
-  // new_keys here are former members NOT in core.members: the update skips them.
+  // new_keys here are the former senators the insert adds.
+  preview('members', SPEC, ['member_id'], formerSenators, { onlyCols: [] }),
+  // new_keys here are former members NOT in core.members: the update skips
+  // them. On a dry run this still lists the former senators the insert would add.
   preview('members', LEFT, ['member_id'], departed, { onlyCols: ['term_end', 'left_at'] }),
   preview('members', { member_id: 'text', lis_id: 'text' }, ['member_id'], departedLis, { onlyCols: ['lis_id'] }),
 ];
@@ -99,5 +135,6 @@ return emit(statements, previews, {
   house: rows.filter((r) => r.chamber === 'House').length,
   historical_rows: hist.length,
   left_since_record_start: departed.length,
+  former_senators: formerSenators.length,
   errors: [],
 });
