@@ -2,6 +2,7 @@ import pg from 'pg';
 import { RECORD_SCHEMA, config } from '../config.js';
 import { FLOOR_LEADERS_FALLBACK, normaliseClotureResult, type GateRefs } from './preEvaluatorGates.js';
 import type { VersionMirrorRow } from './textVersions.js';
+import type { VoteTally } from '@receipts/shared';
 
 // ===========================================================================
 // ENRICHMENT — the reference data the gates need, from the record in Supabase
@@ -90,9 +91,12 @@ export interface ActionEnrichment extends SponsorshipEnrichment {
   cloture_vote_id?: string | null;
   cloture_vote_date?: string | null;
   passage_vote?: string | null;
+  passage_vote_id?: string | null;
   passage_vote_date?: string | null;
   action_date?: string | null;
   party_whip_vote?: string | null;
+  /** The roll calls behind the action, counted from core.member_votes. Display and explanation only. */
+  vote_context?: VoteTally[];
   /**
    * The roll call's own description of the cloture vote — "Motion to Invoke
    * Cloture on the Motion to Proceed to H.R. 5334". Read so the text selector
@@ -175,6 +179,7 @@ export const ENRICHMENT_GAP_OF: Record<EnrichmentPart, import('@receipts/shared'
   cloture_results: 'roll_call_context',
   whip_votes: 'roll_call_context',
   cloture_questions: 'roll_call_context',
+  vote_tallies: 'roll_call_context',
   bill_progress: 'bill_progress',
   text_versions: 'text_versions',
   bill_statements: 'bill_statements',
@@ -187,6 +192,7 @@ export type EnrichmentPart =
   | 'actions'
   | 'whip_votes'
   | 'cloture_questions'
+  | 'vote_tallies'
   | 'bill_progress'
   | 'text_versions'
   | 'bill_statements';
@@ -395,6 +401,7 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
           cloture_vote_id: pickRow(j, 'Cloture Vote ID'),
           cloture_vote_date: pickRow(j, 'Cloture Vote Date'),
           passage_vote: pickRow(j, 'Passage Vote'),
+          passage_vote_id: pickRow(j, 'Passage Vote ID'),
           passage_vote_date: pickRow(j, 'Passage Vote Date'),
           action_date: pickRow(j, 'Action Date'),
           ...sponsorshipOf(j),
@@ -450,6 +457,42 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
       } catch (err) {
         console.error('[enrichment] cloture vote questions unavailable — text dated by cloture:', describe(err));
         report?.('cloture_questions', describe(err));
+      }
+    }
+
+    // The roll calls themselves: totals, result and how each party voted, so
+    // the card and the explanation can say "failed 51 to 48, short of the 60
+    // it needed, with most Republicans voting Nay" from the record rather than
+    // from memory. Read from core directly: the compat views carry no tally.
+    const stagesOf = (e: ActionEnrichment) =>
+      ([['cloture', e.cloture_vote_id, e.cloture_vote], ['passage', e.passage_vote_id, e.passage_vote]] as const)
+        .filter(([, id]) => isVoteId(id))
+        .map(([stage, id, vote]) => ({ stage, vote_id: S(id), senator_vote: isVoteId(vote) ? S(vote) : null }));
+    const voteIds = [...new Set([...out.values()].flatMap((e) => stagesOf(e).map((s) => s.vote_id)))];
+    if (voteIds.length) {
+      try {
+        const [members, calls] = await Promise.all([
+          this.pool.query<{ vote_id: string; party: string | null; position: string | null; n: string }>(
+            `select vote_id, party, position, count(*)::text as n
+               from core.member_votes where vote_id = any($1::text[])
+              group by vote_id, party, position`,
+            [voteIds],
+          ),
+          this.pool.query<{ vote_id: string; result_text: string | null }>(
+            `select vote_id, coalesce(result_text, result) as result_text
+               from core.roll_calls where vote_id = any($1::text[])`,
+            [voteIds],
+          ),
+        ]);
+        for (const [uid, e] of out) {
+          const stages = stagesOf(e);
+          if (stages.length) {
+            out.set(uid, { ...e, vote_context: voteTallies(stages, partyOf.get(uid) ?? null, members.rows, calls.rows) });
+          }
+        }
+      } catch (err) {
+        console.error('[enrichment] vote tallies unavailable:', describe(err));
+        report?.('vote_tallies', describe(err));
       }
     }
 
@@ -582,6 +625,60 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
  */
 export function partyKey(party: unknown): string {
   return S(party).charAt(0).toUpperCase();
+}
+
+/** A vote id or vote value the record actually holds ("NA" and blanks are absent). */
+export function isVoteId(v: unknown): boolean {
+  const s = S(v);
+  return Boolean(s) && !/^(na|n\/a|null|none)$/i.test(s);
+}
+
+type Position = 'yea' | 'nay' | 'not_voting';
+const positionOf = (p: unknown): Position => {
+  const s = S(p).toLowerCase();
+  if (s === 'yea' || s === 'aye' || s === 'yes') return 'yea';
+  if (s === 'nay' || s === 'no') return 'nay';
+  return 'not_voting';
+};
+
+/**
+ * One tally per stage from grouped member votes and the roll call's result
+ * line. Exported for the tests, which pin it against the real S.3385 roll
+ * call (cloture rejected 51-48 under the 3/5 rule).
+ */
+export function voteTallies(
+  stages: Array<{ stage: 'cloture' | 'passage'; vote_id: string; senator_vote: string | null }>,
+  senatorParty: string | null,
+  members: Array<{ vote_id: string; party: string | null; position: string | null; n: string | number }>,
+  calls: Array<{ vote_id: string; result_text: string | null }>,
+): VoteTally[] {
+  const party = senatorParty ? partyKey(senatorParty) : null;
+  return stages.map(({ stage, vote_id, senator_vote }) => {
+    const byParty: VoteTally['by_party'] = {};
+    let yea = 0, nay = 0, notVoting = 0;
+    for (const m of members.filter((r) => S(r.vote_id) === vote_id)) {
+      const key = partyKey(m.party) || '?';
+      const n = Number(m.n) || 0;
+      const pos = positionOf(m.position);
+      byParty[key] ??= { yea: 0, nay: 0, not_voting: 0 };
+      byParty[key][pos] += n;
+      if (pos === 'yea') yea += n; else if (pos === 'nay') nay += n; else notVoting += n;
+    }
+    const resultText = S(calls.find((c) => S(c.vote_id) === vote_id)?.result_text) || null;
+    const passed = !resultText ? null
+      : /\b(rejected|failed|defeated|not (agreed|invoked|sustained))\b/i.test(resultText) ? false
+      : /\b(agreed to|passed|confirmed|invoked|adopted|sustained)\b/i.test(resultText) ? true
+      : null;
+    const threshold = resultText?.match(/\b(3\/5|2\/3)\b/)?.[1] ?? null;
+    const mine = party ? byParty[party] : undefined;
+    const partyMajority: VoteTally['party_majority'] = !mine || mine.yea === mine.nay ? null : mine.yea > mine.nay ? 'Yea' : 'Nay';
+    const own = senator_vote ? positionOf(senator_vote) : null;
+    const withParty = !partyMajority || !own || own === 'not_voting' ? null : (own === 'yea') === (partyMajority === 'Yea');
+    return {
+      vote_id, stage, yea, nay, not_voting: notVoting, result_text: resultText, passed, threshold,
+      by_party: byParty, senator_vote, senator_party: party, party_majority: partyMajority, with_party: withParty,
+    };
+  });
 }
 
 /**

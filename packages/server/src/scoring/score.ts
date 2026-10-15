@@ -75,6 +75,8 @@ export type ScorableMatch = MatchedAction & {
   record_detail?: string;
   /** The bill's history could not be read. Passed through; never read for scoring. */
   history_unavailable?: boolean;
+  /** The roll calls behind the action. Passed through; never read for scoring. */
+  vote_context?: import('@receipts/shared').VoteTally[];
   /**
    * Disclosure flags already established upstream — `FLOOR_LEADER` and
    * `ACTION_DATE_PROXY` come from the pre-evaluator gates, which know the

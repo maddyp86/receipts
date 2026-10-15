@@ -13,6 +13,7 @@ import {
   type Stance,
   type PromiseType,
   type PathStep,
+  type VoteTally,
 } from '@receipts/shared';
 import { senatorCache } from '../data/SenatorCache.js';
 import { queueStore } from '../data/QueueStore.js';
@@ -1325,7 +1326,7 @@ async function evaluateEffectsOnce(
   // outcome and committee clauses. The card says so, so that the absence is
   // not read as "never advanced".
   const historyUnavailable = enrichmentFailures.some((f) => f.part === 'bill_progress');
-  const recordFor = (m: MatchedAction): { record?: string; record_detail?: string; path?: PathStep[]; history_unavailable?: boolean } => {
+  const recordFor = (m: MatchedAction): { record?: string; record_detail?: string; path?: PathStep[]; history_unavailable?: boolean; vote_context?: VoteTally[] } => {
     const e = enrichment.get(m.action_uid) ?? null;
     const input = {
       bill_id: String(m.bill_id ?? ''),
@@ -1352,6 +1353,7 @@ async function evaluateEffectsOnce(
       ...(detail ? { record_detail: detail } : {}),
       ...(path ? { path } : {}),
       ...(historyUnavailable ? { history_unavailable: true } : {}),
+      ...(e?.vote_context?.length ? { vote_context: e.vote_context } : {}),
     };
   };
 

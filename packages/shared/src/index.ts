@@ -472,6 +472,41 @@ export interface DirectedAction extends MatchedAction {
    * Never read for scoring.
    */
   history_unavailable?: boolean;
+
+  /**
+   * The roll calls behind this action, one per stage (ending debate, then
+   * passage): totals, the result, how each party voted, and whether the
+   * senator voted with most of their own party. Counted from the stored
+   * member votes, never model-written. Display and explanation only; never
+   * read for scoring. Absent on results stored before it existed.
+   */
+  vote_context?: VoteTally[];
+}
+
+/** One roll call, counted from the stored member votes. */
+export interface VoteTally {
+  vote_id: string;
+  /** Which vote on the bill this was. */
+  stage: 'cloture' | 'passage';
+  yea: number;
+  nay: number;
+  not_voting: number;
+  /** The Senate's own result line, e.g. "Cloture Motion Rejected (51-48, 3/5 majority required)". */
+  result_text: string | null;
+  /** True when the motion or bill carried. Null when the result line says neither. */
+  passed: boolean | null;
+  /** "3/5" when the vote needed 60, from the result line. Null for a simple majority or unknown. */
+  threshold: string | null;
+  /** Per party letter (D, R, I): how its members voted. */
+  by_party: Record<string, { yea: number; nay: number; not_voting: number }>;
+  /** The senator's own vote on this roll call. */
+  senator_vote: string | null;
+  /** The senator's party letter. */
+  senator_party: string | null;
+  /** Where most of the senator's party voted, or null when it split evenly or is unknown. */
+  party_majority: 'Yea' | 'Nay' | null;
+  /** True when the senator voted with most of their party; null when either is unknown or they did not vote. */
+  with_party: boolean | null;
 }
 
 /** One step on a bill's path. */
