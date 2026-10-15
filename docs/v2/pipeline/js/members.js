@@ -1,6 +1,7 @@
 // ===================================================================
-// v2 PIPELINE: MEMBERS (weekly). legislators-current and
-// legislators-historical -> core.members.
+// v2 PIPELINE: MEMBERS (daily). legislators-current and
+// legislators-historical -> core.members, cross-checked against the
+// congress.gov list of current members (see MEMBERSHIP REPORT below).
 //
 // Refreshes names, parties, states, districts, Senate class, Senate vote id
 // and terms from unitedstates/congress-legislators. Values are written in the
@@ -102,6 +103,152 @@ for (const l of hist) {
     roles: [],
   });
 }
+// -------------------------------------------------------------------
+// MEMBERSHIP REPORT. congress-legislators stays the source of record; the
+// official congress.gov list of current members is a cross-check only and is
+// never written. The report goes into this run's ingest_runs counts:
+//   arrived: serving in legislators-current, not serving in core.members
+//            (new to the record, or back after leaving)
+//   left:    serving in core.members, gone from legislators-current
+//   disagreements: bioguide id, chamber, state, district or party that the
+//            two sources give differently, each with the date first seen,
+//            carried from the last members run that recorded a report
+// An alert email goes out (write runs only, through the alert workflow) when
+// an arrival, a departure or a new disagreement touches an in_scope member,
+// or when a disagreement has lasted cfg.disagree_days days. Each disagreement
+// alerts once; alerted_at records when.
+// -------------------------------------------------------------------
+const today = new Date().toISOString().slice(0, 10);
+const DISAGREE_DAYS = Number(cfg.disagree_days) > 0 ? Number(cfg.disagree_days) : 3;
+const core = $('Read Members').all().map((i) => i.json).filter((r) => r.member_id);
+const coreById = new Map(core.map((r) => [r.member_id, r]));
+const inScope = new Set(core.filter((r) => r.in_scope === true).map((r) => r.member_id));
+let prev = null;
+try { prev = ($('Read Last Report').first().json || {}).membership || null; } catch (e) { prev = null; }
+const prevDis = new Map(((prev && prev.disagreements) || []).map((d) => [d.member_id + '|' + d.field, d]));
+
+const STATES = {
+  'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA', 'Colorado': 'CO', 'Connecticut': 'CT',
+  'Delaware': 'DE', 'Florida': 'FL', 'Georgia': 'GA', 'Hawaii': 'HI', 'Idaho': 'ID', 'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA',
+  'Kansas': 'KS', 'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD', 'Massachusetts': 'MA', 'Michigan': 'MI',
+  'Minnesota': 'MN', 'Mississippi': 'MS', 'Missouri': 'MO', 'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV', 'New Hampshire': 'NH',
+  'New Jersey': 'NJ', 'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH', 'Oklahoma': 'OK',
+  'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC', 'South Dakota': 'SD', 'Tennessee': 'TN',
+  'Texas': 'TX', 'Utah': 'UT', 'Vermont': 'VT', 'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI',
+  'Wyoming': 'WY', 'District of Columbia': 'DC', 'Puerto Rico': 'PR', 'Guam': 'GU', 'American Samoa': 'AS', 'Virgin Islands': 'VI',
+  'Northern Mariana Islands': 'MP',
+};
+// congress.gov says Democratic where congress-legislators says Democrat.
+const PARTIES = { 'Democratic': 'Democrat' };
+// An at-large seat is district 0 in one file and blank in the other.
+const dist = (chamber, d) => (chamber !== 'House' ? null : String(d === undefined || d === null || d === '' ? 0 : Number(d)));
+
+// One item per page from Fetch congress.gov Members.
+const errors = [];
+const official = new Map();
+let pages = 0;
+for (const it of $('Fetch congress.gov Members').all()) {
+  const body = it.json || {};
+  if (body.error) { errors.push('congress.gov member list: ' + S(body.error.message || body.error).slice(0, 200)); continue; }
+  pages++;
+  for (const m of body.members || []) {
+    const id = S(m.bioguideId).toUpperCase();
+    if (!id) continue;
+    const terms = (m.terms && m.terms.item) || [];
+    const t = terms.reduce((a, x) => (!a || Number(x.startYear) >= Number(a.startYear) ? x : a), null) || {};
+    const chamber = t.chamber === 'Senate' ? 'Senate' : t.chamber === 'House of Representatives' ? 'House' : (S(t.chamber) || null);
+    official.set(id, {
+      chamber,
+      state: STATES[S(m.state)] || S(m.state) || null,
+      district: dist(chamber, m.district),
+      party: PARTIES[S(m.partyName)] || S(m.partyName) || null,
+      name: S(m.name),
+    });
+  }
+}
+// A short list means the call failed part way; comparing it would report
+// every missing member as a disagreement.
+const crossChecked = !errors.length && official.size >= 500;
+if (!errors.length && !crossChecked) errors.push('congress.gov member list returned ' + official.size + ' members in ' + pages + ' pages; expected about 540. Not compared.');
+
+const nameOf = (id) => {
+  const r = rows.find((x) => x.member_id === id) || coreById.get(id) || {};
+  return r.full_name || (official.get(id) || {}).name || id;
+};
+const disagreements = [];
+if (crossChecked) {
+  const add = (id, field, a, b) => {
+    const k = id + '|' + field;
+    const p = prevDis.get(k);
+    // The same disagreement with the same values keeps its first_seen.
+    const same = p && JSON.stringify([p.legislators, p.congress_gov]) === JSON.stringify([a, b]);
+    const first = same ? p.first_seen : today;
+    disagreements.push({
+      member_id: id, name: nameOf(id), field, legislators: a, congress_gov: b, first_seen: first,
+      days: Math.round((Date.parse(today) - Date.parse(first)) / 86400000),
+      in_scope: inScope.has(id), alerted_at: same ? (p.alerted_at || null) : null,
+    });
+  };
+  for (const r of rows) {
+    const o = official.get(r.member_id);
+    if (!o) { add(r.member_id, 'serving', true, false); continue; }
+    if (r.chamber !== o.chamber) add(r.member_id, 'chamber', r.chamber, o.chamber);
+    if (r.state !== o.state) add(r.member_id, 'state', r.state, o.state);
+    if (r.chamber === o.chamber && dist(r.chamber, r.district) !== o.district) add(r.member_id, 'district', dist(r.chamber, r.district), o.district);
+    if (r.party !== o.party) add(r.member_id, 'party', r.party, o.party);
+  }
+  for (const id of official.keys()) if (!serving.has(id)) add(id, 'serving', false, true);
+}
+
+const coreServing = new Set(core.filter((r) => !r.left_at).map((r) => r.member_id));
+const brief = (id) => {
+  const r = rows.find((x) => x.member_id === id) || coreById.get(id) || {};
+  return { member_id: id, name: nameOf(id), chamber: r.chamber || null, state: r.state || null, district: r.district || null,
+    party: r.party || null, in_scope: inScope.has(id), on_congress_gov: crossChecked ? official.has(id) : null };
+};
+const arrived = rows.filter((r) => !coreServing.has(r.member_id)).map((r) => Object.assign(brief(r.member_id), { returning: coreById.has(r.member_id) }));
+const leftNow = [...coreServing].filter((id) => !serving.has(id)).sort().map((id) => brief(id));
+
+const reasons = [];
+// A departure stays in the report until legislators-historical lists the
+// member and the update above sets left_at; it alerts once, like a disagreement.
+const alertedBefore = (list, id) => (((prev && prev[list]) || []).find((x) => x.member_id === id) || {}).alerted_at || null;
+const alertOnce = (list, m, text) => {
+  m.alerted_at = alertedBefore(list, m.member_id);
+  if (!m.in_scope || m.alerted_at) return;
+  reasons.push(text + m.name + ' (' + m.member_id + ')');
+  m.alerted_at = today;
+};
+for (const m of arrived) alertOnce('arrived', m, 'In-scope member back in legislators-current: ');
+for (const m of leftNow) alertOnce('left', m, 'In-scope member gone from legislators-current: ');
+for (const d of disagreements) {
+  if (d.alerted_at) continue;
+  const why = d.in_scope ? 'in-scope member' : d.days >= DISAGREE_DAYS ? d.days + ' days' : null;
+  if (!why) continue;
+  reasons.push('Sources disagree on ' + d.field + ' for ' + d.name + ' (' + d.member_id + ', ' + why + '): legislators ' +
+    JSON.stringify(d.legislators) + ', congress.gov ' + JSON.stringify(d.congress_gov) + ', since ' + d.first_seen);
+  // Recorded in this run's counts, so the next run does not alert again.
+  // A dry run sends nothing and writes nothing, so this only sticks on a write.
+  d.alerted_at = today;
+}
+const esc = (v) => S(v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const membership = {
+  checked_on: today,
+  cross_checked: crossChecked,
+  congress_gov_members: official.size,
+  disagree_days: DISAGREE_DAYS,
+  arrived,
+  left: leftNow,
+  disagreements,
+  alert: reasons.length ? {
+    subject: '[Receipts v2] Membership change: ' + reasons.length + (reasons.length === 1 ? ' item' : ' items'),
+    html: '<p>The members run of ' + today + ' found:</p><ul>' + reasons.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul>' +
+      '<p>Arrived: ' + arrived.length + '. Left: ' + leftNow.length + '. Disagreements between legislators-current and congress.gov: ' +
+      disagreements.length + '. The full report is in this run\'s core.ingest_runs counts (membership). in_scope and live are never changed by this workflow.</p>',
+    reasons,
+  } : null,
+};
+
 const LEFT = { member_id: 'text', term_end: 'date', left_at: 'date' };
 // A former member's LIS id only fills a blank; it never replaces one.
 const departedLis = departed.filter((r) => r.lis_id);
@@ -136,5 +283,11 @@ return emit(statements, previews, {
   historical_rows: hist.length,
   left_since_record_start: departed.length,
   former_senators: formerSenators.length,
-  errors: [],
+  arrived: arrived.length,
+  left: leftNow.length,
+  disagreements: disagreements.length,
+  membership,
+  // A failed cross-check fails the run AFTER the refresh is written, so the
+  // failure email goes out and the refresh still lands.
+  errors,
 });

@@ -153,8 +153,9 @@ def tail(build):
     ])
 
 
-def assemble(wid, title, inputs, cfg_fields, body_parts, chain, sticky_text):
-    """chain: node variable names from Config to the build node, in order."""
+def assemble(wid, title, inputs, cfg_fields, body_parts, chain, sticky_text, after=''):
+    """chain: node variable names from Config to the build node, in order.
+    after: SDK chain code run from Result (e.g. '.to(x)'), on both branches."""
     parts = ["import { workflow, node, trigger, sticky, ifElse, expr } from '@n8n/workflow-sdk';",
              triggers(inputs), config(cfg_fields)] + body_parts + [tail(chain[-1][1])]
     parts.append(f"const note = sticky({J(sticky_text)}, [config], {{ color: 4 }});")
@@ -165,7 +166,8 @@ def assemble(wid, title, inputs, cfg_fields, body_parts, chain, sticky_text):
   .to(listPreviews)
   .to(runPreviews)
   .to(report)
-  .to(writeEnabled.onTrue(openRun.to(statementsNode).to(writeCore).to(closeRun).to(result)).onFalse(result))
+  .to(writeEnabled.onTrue(openRun.to(statementsNode).to(writeCore).to(closeRun).to(result)).onFalse(result))""" + (f"""
+  .add(result){after}""" if after else '') + """
   .add(called)
   .to(config)
   .add(note);""")
@@ -177,15 +179,43 @@ NOTE = ('Manual start: **dry_run defaults to true**, which reads, builds and rep
         'and every write run leaves one core.ingest_runs row. Sheets and every old workflow are only ever read.')
 
 
-def members():
-    return assemble('v2-pipeline-members', 'v2 Pipeline: members (weekly)', ['dry_run'],
-        [('dry_run', 'boolean', True)],
-        [code('buildMembers', 'Build Members', js('members.js'))],
-        [('buildMembers', 'Build Members')],
-        '## v2 pipeline: members\nWeekly. Names, parties, states, districts, Senate class, LIS id and terms from '
+def members(ids):
+    members_sql = ("SELECT member_id, full_name, chamber, state, district, party, in_scope, left_at::text AS left_at "
+                   "FROM core.members ORDER BY member_id;")
+    # The last report a members run recorded, for each disagreement's first_seen.
+    last_sql = ("SELECT counts->'membership' AS membership FROM core.ingest_runs "
+                "WHERE workflow LIKE 'v2 Pipeline: members%' AND status = 'ok' AND counts->'membership' IS NOT NULL "
+                "ORDER BY run_id DESC LIMIT 1;")
+    fetch = (
+        "const fetchOfficial = node({ type: 'n8n-nodes-base.httpRequest', version: 4.3, config: { name: 'Fetch congress.gov Members', executeOnce: true, "
+        "retryOnFail: true, maxTries: 3, waitBetweenTries: 5000, onError: 'continueRegularOutput', alwaysOutputData: true, parameters: { method: 'GET', "
+        "url: 'https://api.congress.gov/v3/member?currentMember=true&limit=250&format=json', "
+        "authentication: 'genericCredentialType', genericAuthType: 'httpQueryAuth', options: { pagination: { pagination: { "
+        "paginationMode: 'responseContainsNextURL', nextURL: expr('{{ $response.body.pagination.next }}'), "
+        "paginationCompleteWhen: 'other', completeExpression: expr('{{ !$response.body.pagination || !$response.body.pagination.next }}'), "
+        "limitPagesFetched: true, maxRequests: 10, requestInterval: 250 } }, response: { response: { responseFormat: 'json' } } } }, "
+        f"credentials: {CRED['congress']} }}, output: [{{}}] }});")
+    need_alert = ("const needAlert = ifElse({ version: 2.2, config: { name: 'Membership alert?', parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' }, "
+                  "conditions: [{ leftValue: expr('{{ !$json.dry_run && !!($json.membership && $json.membership.alert) }}'), operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' }, options: {} } } });")
+    send_alert = call('sendAlert', 'Email Membership Alert', ids['alert'],
+                      {'subject': '={{ $json.membership.alert.subject }}', 'html': '={{ $json.membership.alert.html }}'})
+    return assemble('v2-pipeline-members', 'v2 Pipeline: members (daily)', ['dry_run', 'disagree_days'],
+        [('dry_run', 'boolean', True), ('disagree_days', 'number', 3)],
+        [pg('readMembers', 'Read Members', members_sql, extra=', executeOnce: true, alwaysOutputData: true'),
+         pg('readLast', 'Read Last Report', last_sql, extra=', executeOnce: true, alwaysOutputData: true'),
+         fetch,
+         code('buildMembers', 'Build Members', js('members.js'), extra=', executeOnce: true'),
+         need_alert, send_alert],
+        [('readMembers', 'Read Members'), ('readLast', 'Read Last Report'), ('fetchOfficial', 'Fetch congress.gov Members'),
+         ('buildMembers', 'Build Members')],
+        '## v2 pipeline: members\nDaily. Names, parties, states, districts, Senate class, LIS id and terms from '
         'congress-legislators. A member already here who has left gets left_at and term_end from legislators-historical, and a blank '
         'LIS id filled, so their votes still join. A former senator who served since 3 Jan 2023 and is not here is added, not in scope '
-        'and not live, so their stored votes join. Never touches in_scope, live, the congresses collected, roles, OpenSecrets id or website. ' + NOTE)
+        'and not live, so their stored votes join. Never touches in_scope, live, the congresses collected, roles, OpenSecrets id or website. '
+        'Cross-check: the congress.gov list of current members is compared on bioguide id, chamber, state, district and party (never written). '
+        'Arrivals, departures and disagreements go into the run\'s ingest_runs counts (membership); a write run emails Matt through the alert '
+        'workflow when one touches an in_scope member or a disagreement lasts disagree_days days (default 3). ' + NOTE,
+        after='\n  .to(needAlert.onTrue(sendAlert))')
 
 
 def rollcalls():
@@ -421,11 +451,8 @@ def orchestrator(ids):
         "assignments: { assignments: ["
         # The schedule writes; a manual start is a dry run of every step.
         "{ id: 'cfg-dry_run', name: 'dry_run', value: \"={{ !$('Daily 07:00 Pacific').isExecuted }}\", type: 'boolean' }, "
-        "{ id: 'cfg-members', name: 'compare_members', value: 'S000148,T000250', type: 'string' }, "
-        "{ id: 'cfg-weekly', name: 'members_day', value: \"={{ $now.setZone('America/Los_Angeles').weekday === 1 }}\", type: 'boolean' }"
+        "{ id: 'cfg-members', name: 'compare_members', value: 'S000148,T000250', type: 'string' }"
         "] }, options: {} } }, output: [{ dry_run: true }] });")
-    weekly = ("const weekly = ifElse({ version: 2.2, config: { name: 'Monday?', executeOnce: true, parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' }, "
-              "conditions: [{ leftValue: expr(\"{{ $('Config').first().json.members_day }}\"), operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' }, options: {} } } });")
     parts = ["import { workflow, node, trigger, sticky, ifElse, expr } from '@n8n/workflow-sdk';",
              "const schedule = trigger({ type: 'n8n-nodes-base.scheduleTrigger', version: 1.2, config: { name: 'Daily 07:00 Pacific', parameters: { rule: { interval: [{ field: 'days', daysInterval: 1, triggerAtHour: 7, triggerAtMinute: 0 }] } } }, output: [{}] });",
              "const start = trigger({ type: 'n8n-nodes-base.manualTrigger', version: 1, config: { name: 'Start (dry run)' }, output: [{}] });",
@@ -436,15 +463,15 @@ def orchestrator(ids):
              call('copyStatements', 'Statement copy', ids['copy'], {'dry_run': dry}, disabled=True),
              call('statements', 'Impact statements (live)', ids['statements'], {'dry_run': dry, 'statements_mode': 'live'}),
              call('embeddings', 'Embeddings', ids['embeddings'], {'dry_run': dry}),
-             weekly,
-             call('members', 'Members (Mondays)', ids['members'], {'dry_run': dry}),
+             # Daily since 15 Oct 2026 (was Mondays): the run also cross-checks congress.gov.
+             call('members', 'Members', ids['members'], {'dry_run': dry}),
              pg('readCore', 'Read core', sql('compare_core.sql'), "{{ [$('Config').first().json.compare_members] }}", extra=', executeOnce: true, alwaysOutputData: true'),
              sheet('readActions', 'Read Bill Actions', MASTER, ' Politician Bill Actions'),
              sheet('readBills', 'Read Bills Master', MASTER, 'Bills Master'),
              sheet('readVotes', 'Read Roll Call Votes', MASTER, 'Roll Call Votes'),
              code('compareNode', 'Compare with Sheets', js('compare.js'), extra=', executeOnce: true'),
              tail('Compare with Sheets'),
-             f"const note = sticky({J('## v2 pipeline: orchestrator' + chr(10) + 'Daily at 07:00 Pacific, an hour after the old orchestrator. Runs roll calls, sponsorships and bills, the statement copy (parallel run only), impact statements in PLAN mode (no model calls), embeddings, members on Mondays, then compares core with the Sheets for Schumer and Thune (gate G4) and records the result in core.ingest_runs. A manual start is a dry run of every step. A failure stops the run and emails Matt.')}, [config], {{ color: 4 }});",
+             f"const note = sticky({J('## v2 pipeline: orchestrator' + chr(10) + 'Daily at 07:00 Pacific, an hour after the old orchestrator. Runs roll calls, sponsorships and bills, the statement copy (parallel run only), impact statements in PLAN mode (no model calls), embeddings, members (with the congress.gov cross-check), then compares core with the Sheets for Schumer and Thune (gate G4) and records the result in core.ingest_runs. A manual start is a dry run of every step. A failure stops the run and emails Matt.')}, [config], {{ color: 4 }});",
              """export default workflow("v2-pipeline-orchestrator", "v2 Pipeline: orchestrator (daily 07:00 Pacific)")
   .add(schedule)
   .to(config)
@@ -453,8 +480,8 @@ def orchestrator(ids):
   .to(copyStatements)
   .to(statements)
   .to(embeddings)
-  .to(weekly.onTrue(members.to(readCore)).onFalse(readCore))
-  .add(readCore)
+  .to(members)
+  .to(readCore)
   .to(readActions)
   .to(readBills)
   .to(readVotes)
@@ -484,20 +511,28 @@ def alert():
         (f"const email = node({{ type: 'n8n-nodes-base.gmail', version: 2.2, config: {{ name: 'Email Matt', retryOnFail: true, maxTries: 3, waitBetweenTries: 5000, onError: 'continueRegularOutput', "
          f"parameters: {{ resource: 'message', operation: 'send', sendTo: 'matthewtyler1986@gmail.com', subject: {J(subject)}, emailType: 'html', message: {J(body)}, "
          f"options: {{ appendAttribution: false }} }}, credentials: {CRED['gmail']} }}, output: [{{}}] }});"),
+        # A notice from another v2 workflow (e.g. a membership change): not a failure.
+        "const notice = trigger({ type: 'n8n-nodes-base.executeWorkflowTrigger', version: 1.1, config: { name: 'When Called with a Notice', parameters: { inputSource: 'workflowInputs', workflowInputs: { values: [{ name: 'subject', type: 'any' }, { name: 'html', type: 'any' }] } } }, output: [{}] });",
+        (f"const emailNotice = node({{ type: 'n8n-nodes-base.gmail', version: 2.2, config: {{ name: 'Email Notice', retryOnFail: true, maxTries: 3, waitBetweenTries: 5000, "
+         f"parameters: {{ resource: 'message', operation: 'send', sendTo: 'matthewtyler1986@gmail.com', subject: '={{{{ $json.subject }}}}', emailType: 'html', message: '={{{{ $json.html }}}}', "
+         f"options: {{ appendAttribution: false }} }}, credentials: {CRED['gmail']} }}, output: [{{}}] }});"),
         pg('logFailure', 'Log Failure', log_sql,
            "{{ [ ($('When a v2 Workflow Fails').first().json.workflow || {}).name || 'unknown', String(($('When a v2 Workflow Fails').first().json.execution || {}).id || ''), "
            "JSON.stringify([{ message: (($('When a v2 Workflow Fails').first().json.execution || {}).error || {}).message || null, node: ($('When a v2 Workflow Fails').first().json.execution || {}).lastNodeExecuted || null, url: ($('When a v2 Workflow Fails').first().json.execution || {}).url || null }]) ] }}"),
-        f"const note = sticky({J('## v2 pipeline: failure alert' + chr(10) + 'Set as the error workflow of every v2 pipeline workflow. Emails Matt with the workflow, the error, the node and a link to the execution, and records the failure in core.ingest_runs. Uses the Gmail account credential, which must be shared with this project.')}, [onError], {{ color: 4 }});",
+        f"const note = sticky({J('## v2 pipeline: failure alert' + chr(10) + 'Set as the error workflow of every v2 pipeline workflow. Emails Matt with the workflow, the error, the node and a link to the execution, and records the failure in core.ingest_runs. Also called by other v2 workflows with a subject and html notice (the membership alert from the members run), which it emails as is. Uses the Gmail account credential, which must be shared with this project.')}, [onError], {{ color: 4 }});",
         """export default workflow("v2-pipeline-alert", "v2 Pipeline: failure alert")
   .add(onError)
   .to(email)
   .to(logFailure)
+  .add(notice)
+  .to(emailNotice)
   .add(note);""",
     ])
 
 
-WORKFLOWS = {'members': members, 'rollcalls': rollcalls, 'sponsorships': sponsorships, 'copy': copy_statements, 'embeddings': embeddings, 'statements': statements, 'alert': alert,
-             'orchestrator': lambda: orchestrator(json.loads((HERE / 'ids.json').read_text()))}
+IDS = lambda: json.loads((HERE / 'ids.json').read_text())
+WORKFLOWS = {'members': lambda: members(IDS()), 'rollcalls': rollcalls, 'sponsorships': sponsorships, 'copy': copy_statements, 'embeddings': embeddings, 'statements': statements, 'alert': alert,
+             'orchestrator': lambda: orchestrator(IDS())}
 
 if __name__ == '__main__':
     name = sys.argv[1]
