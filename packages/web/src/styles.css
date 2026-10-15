@@ -86,8 +86,8 @@ body {
 .verdict-label {
   margin: 1rem 0 0;
   font-family: var(--serif);
-  font-size: 1.75rem;
-  line-height: 1.12;
+  font-size: 1.5rem;
+  line-height: 1.15;
   font-weight: 400;
   letter-spacing: -0.005em;
   color: var(--unclear);
@@ -95,7 +95,7 @@ body {
 
 @media (min-width: 40rem) {
   .verdict-label {
-    font-size: 2rem;
+    font-size: 1.75rem;
   }
 }
 

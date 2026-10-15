@@ -127,8 +127,8 @@ export function effortSignals(input: EffortInput): EffortSignal[] {
 export const EFFORT_LABEL: Record<EffortSignal, string> = {
   PRESERVED_FOR_RECONSIDERATION: 'Preserved for reconsideration',
   AUTHORED: 'Authored',
-  AUTHORED_ADVANCED: 'Authored — the bill moved past referral',
-  AUTHORED_STALLED: 'Authored — no committee action after referral',
+  AUTHORED_ADVANCED: 'Authored: the bill moved past referral',
+  AUTHORED_STALLED: 'Authored: no committee action after referral',
   CO_SIGNED: 'Co-signed',
   CO_SIGNED_ORIGINAL: 'Co-signed at introduction',
   CO_SIGNED_LATE: 'Co-signed after introduction',
@@ -145,7 +145,7 @@ export const EFFORT_EXPLAINER: Record<EffortSignal, string> = {
   // "Moved past referral", not "advanced it": the record shows the bill got a
   // hearing, markup or report, and does not show who brought that about.
   AUTHORED_ADVANCED:
-    'Sponsored the bill, and the record shows it moved past referral to committee — a hearing, a markup, a committee report, or further. It does not show who moved it.',
+    'Sponsored the bill, and the record shows it moved past referral to committee (a hearing, a markup, a committee report, or further). It does not show who moved it.',
   AUTHORED_STALLED:
     'Sponsored the bill. The record shows no committee action after it was referred.',
   // The previous wording said a co-sponsorship is "weighted lower than a

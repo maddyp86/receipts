@@ -34,7 +34,7 @@ export function GatedActions({ gated }: { gated?: GatedAction[] }) {
           <span className="gated-lead mt-1 block text-[15px] leading-snug text-ink-soft">
             We retrieved {gated.length === 1 ? 'this' : 'these'} {gated.length === 1 ? '' : `${gated.length} `}
             {gated.length === 1 ? 'bill' : 'bills'} and then stopped short of reading{' '}
-            {gated.length === 1 ? 'it' : 'them'} against the statement. That is a decision, not a gap —
+            {gated.length === 1 ? 'it' : 'them'} against the statement. That is a decision, not a gap:
             each one says why below.
           </span>
         </span>

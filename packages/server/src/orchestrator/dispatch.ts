@@ -7,12 +7,14 @@ import {
   type Envelope,
   type Explanation,
   type Interpretation,
+  type DirectedAction,
   type MatchedAction,
   type ScoredResult,
   type Senator,
   type Stance,
   type PromiseType,
   type PathStep,
+  type VoteTally,
 } from '@receipts/shared';
 import { senatorCache } from '../data/SenatorCache.js';
 import { queueStore } from '../data/QueueStore.js';
@@ -1325,7 +1327,7 @@ async function evaluateEffectsOnce(
   // outcome and committee clauses. The card says so, so that the absence is
   // not read as "never advanced".
   const historyUnavailable = enrichmentFailures.some((f) => f.part === 'bill_progress');
-  const recordFor = (m: MatchedAction): { record?: string; record_detail?: string; path?: PathStep[]; history_unavailable?: boolean } => {
+  const recordFor = (m: MatchedAction): { record?: string; record_detail?: string; path?: PathStep[]; history_unavailable?: boolean; vote_context?: VoteTally[] } => {
     const e = enrichment.get(m.action_uid) ?? null;
     const input = {
       bill_id: String(m.bill_id ?? ''),
@@ -1352,6 +1354,7 @@ async function evaluateEffectsOnce(
       ...(detail ? { record_detail: detail } : {}),
       ...(path ? { path } : {}),
       ...(historyUnavailable ? { history_unavailable: true } : {}),
+      ...(e?.vote_context?.length ? { vote_context: e.vote_context } : {}),
     };
   };
 
@@ -1391,6 +1394,11 @@ async function evaluateEffectsOnce(
       // the action date is a stand-in — so FLOOR_LEADER can only originate
       // here. Handoff v2 §4 lists it in `vote_flags` beside SPLIT_VOTE.
       vote_flags: gates[m.action_uid]?.context.vote_flags ?? [],
+      // For the confidence band: a broad package or a partial match answers
+      // less clearly than a bill squarely about the statement.
+      bill_class: gates[m.action_uid]?.context.bill_class ?? null,
+      relevance_verdict:
+        (session.evaluated ?? []).find((c) => String(c.action_uid ?? '') === m.action_uid)?.relevance.verdict ?? null,
       // Which text this was judged against. Set only for bills with version
       // rows, so every other evidence row is unchanged.
       ...(textVersions[m.action_uid] ? { text_version: textVersions[m.action_uid]!.disclosure } : {}),
@@ -1755,6 +1763,19 @@ async function evaluateEffectsOnce(
       vote_governing: e.vote_governing,
       vote_flags: e.vote_flags,
       alignment_confidence: e.alignment_confidence,
+      // TARGETED, REVERSAL or BROAD_VEHICLE: a broad package covered much
+      // more than this, and the reader should hear that.
+      bill_class: e.bill_class ?? undefined,
+      // The roll calls, counted from the record: quote these figures exactly
+      // or not at all. They are the only vote counts the explanation may use.
+      vote_context: e.vote_context?.map((t) => ({
+        stage: t.stage === 'cloture' ? 'vote to end debate' : 'final vote',
+        yea: t.yea, nay: t.nay, not_voting: t.not_voting,
+        result: t.result_text, passed: t.passed,
+        votes_needed: t.threshold === '3/5' ? 60 : t.threshold === '2/3' ? 67 : null,
+        by_party: t.by_party, senator_vote: t.senator_vote,
+        senator_party_majority: t.party_majority, senator_with_party_majority: t.with_party,
+      })),
     })),
     // Surfaced, not silently resolved. The evaluator's call is authoritative;
     // the model is told so explicitly so it does not narrate its own effect.
@@ -1925,6 +1946,42 @@ export function explanationProblems(
   return problems;
 }
 
+/**
+ * Figures in a card summary that the result never gave the model.
+ *
+ * Allowed: each roll call's totals and per-party counts, 60 or 67 when the
+ * vote needed them, bill numbers, Congress numbers, years from the action
+ * dates, and small counts (how many bills, how many set aside). Anything else
+ * is a number the model supplied itself, and the reader cannot tell it apart
+ * from one we checked. Exported for tests.
+ */
+export function figuresNotGiven(text: string, evidence: DirectedAction[], gated = 0): string[] {
+  const allowed = new Set<number>();
+  for (let n = 0; n <= Math.max(10, evidence.length + gated); n++) allowed.add(n);
+  for (const e of evidence) {
+    for (const t of e.vote_context ?? []) {
+      [t.yea, t.nay, t.not_voting].forEach((n) => allowed.add(n));
+      for (const p of Object.values(t.by_party)) [p.yea, p.nay, p.not_voting].forEach((n) => allowed.add(n));
+      if (t.threshold === '3/5') allowed.add(60);
+      if (t.threshold === '2/3') allowed.add(67);
+    }
+    const bill = /^[a-z]+(\d+)-(\d+)$/i.exec(String(e.bill_id ?? ''));
+    if (bill) { allowed.add(Number(bill[1])); allowed.add(Number(bill[2])); }
+    const num = Number(String(e.bill_number ?? '').replace(/\D/g, ''));
+    if (num) allowed.add(num);
+    for (const d of [e.action_date, e.cloture_vote_date, e.passage_vote_date]) {
+      const y = /(\d{4})/.exec(String(d ?? ''))?.[1];
+      if (y) allowed.add(Number(y));
+    }
+  }
+  const out: string[] = [];
+  for (const m of text.replace(/(\d),(\d{3})/g, '$1$2').matchAll(/\d+/g)) {
+    const n = Number(m[0]);
+    if (!allowed.has(n) && !out.includes(m[0])) out.push(m[0]);
+  }
+  return out;
+}
+
 async function explainResult(
   session: QuerySession,
   input: Record<string, unknown>,
@@ -1964,6 +2021,32 @@ async function explainResult(
     });
   }
 
+  // The card's executive summary: the same wording checks as `why`, and every
+  // figure in it must be one the result handed over. A summary that invents a
+  // vote count is sent back like any other bad draft.
+  const cardSummary = String(input.card_summary ?? '').trim();
+  if (cardSummary) {
+    const cardProblems = [
+      ...explanationProblems(cardSummary, session.scored.verdict, session.interpretation?.statement_type ?? 'Campaign Promise'),
+      ...figuresNotGiven(cardSummary, session.scored.evidence, session.gated?.length ?? 0).map(
+        (n) => `the figure ${n} is not in the result; use only the vote counts and figures it gives you`,
+      ),
+    ];
+    if (cardProblems.length) {
+      traceStep({
+        stage: 'EXPLAIN_CHECK', kind: 'deterministic', status: 'rejected',
+        label: `card summary rejected: ${cardProblems.join('; ')}`,
+        input: { verdict: session.scored.verdict, card_summary: cardSummary },
+        output: { problems: cardProblems },
+      });
+      return fail({
+        code: 'BAD_INPUT',
+        message: `The card_summary needs a revision: ${cardProblems.join('; ')}. Rewrite and call explain_result again.`,
+        recoverable: true,
+      });
+    }
+  }
+
   const connectors: Record<string, string> = {};
   if (Array.isArray(input.connectors)) {
     for (const c of input.connectors) {
@@ -1978,6 +2061,7 @@ async function explainResult(
     why,
     connectors,
     confidence: Number.isFinite(Number(input.confidence)) ? Number(input.confidence) : 0.5,
+    ...(cardSummary ? { card_summary: cardSummary } : {}),
   };
   session.explanation = explanation;
   traceStep({

@@ -131,13 +131,14 @@ describe('the explanation constraints ask for a reply, not a report', () => {
 
   it('keeps every hard constraint from the port', () => {
     for (const rule of [
-      'NEVER compute, adjust, second-guess, or comment on any number',
+      'Never calculate a new figure, a percentage or a margin',
       'NEVER contradict the verdict you are given',
       'NEVER speculate about motive',
       'Do not use the words score, modifier, points, similarity, threshold, or confidence band',
       'never write kept, broke or broken',
       'a NAY DEFEATS the resolution and PRESERVES the underlying policy',
-      'Name cloture and passage separately',
+      'Name the vote to end debate and the final vote separately',
+      'NEVER use em dashes or en dashes',
     ]) {
       expect(EXPLANATION_CONSTRAINTS, rule).toContain(rule);
     }

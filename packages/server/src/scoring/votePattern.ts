@@ -44,9 +44,9 @@ export const PATTERN_MULTIPLIER: Record<VotePattern, number> = {
  */
 export const PATTERN_NARRATIVE: Record<VotePattern, string> = {
   DECISIVE_BLOCK:
-    'voted against ending debate, and the bill never reached a final vote — that block is what stopped it',
-  CONSISTENT_OPPOSE: 'voted against it at both stages — ending debate and final passage',
-  CONSISTENT_SUPPORT: 'voted for it at both stages — ending debate and final passage',
+    'voted against ending debate, and the bill never reached a final vote, so that block is what stopped it',
+  CONSISTENT_OPPOSE: 'voted against it at both stages (ending debate and final passage)',
+  CONSISTENT_SUPPORT: 'voted for it at both stages (ending debate and final passage)',
   PASSAGE_ONLY: 'cast a single recorded vote on final passage',
   NO_FLOOR_ACTION: 'put their name to the bill without a recorded floor vote',
   BLOCKED_THEN_JOINED:
@@ -54,7 +54,7 @@ export const PATTERN_NARRATIVE: Record<VotePattern, string> = {
   ENABLED_THEN_OPPOSED:
     'voted to let the bill reach the floor, then voted against enacting it',
   CLOTURE_ONLY_YEA:
-    'voted only to let debate end — a procedural step, not a vote on the bill itself',
+    'voted only to let debate end (a procedural step, not a vote on the bill itself)',
 };
 
 /**

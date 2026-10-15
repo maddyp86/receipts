@@ -425,13 +425,14 @@ describe('G1 — determinability', () => {
 describe('G2 — direction gate and ranked mode', () => {
   it('a clean unanimous record produces a single verdict', () => {
     const r = run([
-      match({ bill_effect: 'ADVANCE', passage_vote: 'YEA', score: 0.8 }),
-      match({ bill_effect: 'ADVANCE', passage_vote: 'YEA', score: 0.75 }),
+      match({ bill_effect: 'ADVANCE', passage_vote: 'YEA', score: 0.8, alignment_confidence: 0.9 }),
+      match({ bill_effect: 'ADVANCE', passage_vote: 'YEA', score: 0.75, alignment_confidence: 0.9 }),
     ]);
     expect(r.verdict).toBe('KEPT');
     expect(r.mode).toBe('single');
     expect(r.ranked).toHaveLength(0);
     expect(r.band).toBe('High');
+    expect(r.receipt.band_reason).toBe('DIRECT_VOTE');
   });
 
   it('conflicting evidence routes to ranked mode with the dominant side on top', () => {
@@ -503,9 +504,52 @@ describe('dials — confidence band', () => {
     expect(r.band).toBe('Medium');
   });
 
-  it('a single weak-ish match is Low', () => {
-    const r = run([match({ bill_effect: 'ADVANCE', passage_vote: 'YEA', score: 0.6 })]);
+  // Confidence is how clearly the evidence answers, not how much of it there
+  // is (15 Oct): one final vote on a bill squarely about this, read with
+  // certainty, is a clear answer even when it is the only one.
+  it('a single final vote on a targeted bill, read with certainty, is High', () => {
+    const r = run([match({ bill_effect: 'ADVANCE', passage_vote: 'YEA', score: 0.6, alignment_confidence: 0.9 })]);
+    expect(r.band).toBe('High');
+    expect(r.receipt.band_reason).toBe('DIRECT_VOTE');
+  });
+
+  it('a vote to end debate with no final vote is Medium (S.3385)', () => {
+    const r = run([match({ bill_effect: 'ADVANCE', cloture_vote: 'YEA', score: 0.64, alignment_confidence: 0.9 })]);
+    expect(r.band).toBe('Medium');
+    expect(r.receipt.band_reason).toBe('PROCEDURAL_ONLY');
+  });
+
+  it('a sponsorship alone is Medium', () => {
+    const r = run([match({ bill_effect: 'ADVANCE', is_sponsor: true, score: 0.7, alignment_confidence: 0.9 })]);
+    expect(r.band).toBe('Medium');
+    expect(r.receipt.band_reason).toBe('SPONSORSHIP_ONLY');
+  });
+
+  it('a vote on a broad package is Medium', () => {
+    const r = run([match({ bill_effect: 'ADVANCE', passage_vote: 'YEA', bill_class: 'BROAD_VEHICLE', alignment_confidence: 0.9 })]);
+    expect(r.band).toBe('Medium');
+    expect(r.receipt.band_reason).toBe('BROAD_PACKAGE');
+  });
+
+  it('certainty decides between High, Medium and Low', () => {
+    expect(run([match({ bill_effect: 'ADVANCE', passage_vote: 'YEA', alignment_confidence: 0.7 })]).band).toBe('Medium');
+    const low = run([match({ bill_effect: 'ADVANCE', passage_vote: 'YEA', alignment_confidence: 0.5 })]);
+    expect(low.band).toBe('Low');
+    expect(low.receipt.band_reason).toBe('UNCERTAIN_READ');
+  });
+
+  it('a partial match is Low', () => {
+    const r = run([match({ bill_effect: 'ADVANCE', passage_vote: 'YEA', relevance_verdict: 'PARTIAL', alignment_confidence: 0.9 })]);
     expect(r.band).toBe('Low');
+    expect(r.receipt.band_reason).toBe('PARTIAL_MATCH');
+  });
+
+  it('the clearest action sets the band', () => {
+    const r = run([
+      match({ bill_effect: 'ADVANCE', is_sponsor: true, alignment_confidence: 0.9 }),
+      match({ bill_effect: 'ADVANCE', passage_vote: 'YEA', alignment_confidence: 0.95 }),
+    ]);
+    expect(r.band).toBe('High');
   });
 });
 

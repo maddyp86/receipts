@@ -401,8 +401,8 @@ export function preEvaluatorGates(
           (resultKnown
             ? ', and the motion failed'
             : refs.rollCallHasResult === false
-              ? ' — our record doesn\'t say whether the motion failed'
-              : ' — we couldn\'t find whether the motion failed') +
+              ? ', and our record doesn\'t say whether the motion failed'
+              : ', and we couldn\'t find whether the motion failed') +
           `. Senate rules (Rule XIII) let only a senator who voted on the winning side move to ` +
           `reconsider a vote, so a party leader may vote no on a failing motion to keep that ` +
           `option open. A no vote in that position isn't clear evidence either way, so we didn't ` +

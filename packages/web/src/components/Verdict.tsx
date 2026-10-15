@@ -8,7 +8,9 @@ import {
   XIcon,
 } from 'lucide-react';
 import {
-  BAND_PHRASE,
+  BAND_LEVEL,
+  BAND_REASON_COPY,
+  confidencePhrase,
   ND_NO_REASON_COPY,
   ND_REASON_COPY,
   RESULT_SCOPE_LINE,
@@ -83,14 +85,27 @@ function usesPromiseVocabulary(result: QueryResult): boolean {
  * A position is never kept; nobody promised anything. "Likely" because the
  * verdict is a reading of the record.
  */
-function headline(result: QueryResult): string {
-  const { verdict, band, mode } = result.scored;
+/**
+ * The headline and its subheadline (15 Oct): a short verdict in display type,
+ * then the confidence and its reason in body type. "Their record" is dropped
+ * from the verdict because the label above it already says "Their record vs.
+ * this position".
+ */
+function headlineParts(result: QueryResult): [string, string] {
+  const { verdict, band, mode, receipt } = result.scored;
   // By reason: a failed check is headlined as a fact about the tool, not as
   // "we couldn't find enough", which reads as a fact about the record.
-  if (verdict === 'NOT_DETERMINABLE') return notDeterminableHeadline(result.scored.nd_reason);
+  if (verdict === 'NOT_DETERMINABLE') return [notDeterminableHeadline(result.scored.nd_reason), ''];
   const { statement_type, provenance } = result.interpretation;
-  const suffix = band ? ` — ${BAND_PHRASE[band]}` : '';
-  return `${likelyOutcomeHeadline(verdict, statement_type, provenance)}${suffix}${mode === 'ranked' ? ', but it’s mixed' : ''}`;
+  const full = likelyOutcomeHeadline(verdict, statement_type, provenance);
+  const short = full.replace(/^Their record (is )?/, '');
+  const lead = `${short.charAt(0).toUpperCase()}${short.slice(1)}${mode === 'ranked' ? ', but it’s mixed' : ''}`;
+  if (!band) return [lead, ''];
+  const level = BAND_LEVEL[band];
+  const why = receipt.band_reason
+    ? BAND_REASON_COPY[receipt.band_reason]
+    : mode === 'ranked' ? 'the record points both ways' : '';
+  return [lead, `${level.charAt(0).toUpperCase()}${level.slice(1)} confidence${why ? `: ${why}` : ''}.`];
 }
 
 export function AnalystTrace({ result }: { result: QueryResult }) {
@@ -112,7 +127,7 @@ export function AnalystTrace({ result }: { result: QueryResult }) {
           {sponsorships === 1 ? '' : 's'}
         </dd>
         <dt>Average match strength</dt>
-        <dd>{receipt.avg_strength || '—'}</dd>
+        <dd>{receipt.avg_strength || 'none'}</dd>
         <dt>Direction split</dt>
         <dd>
           {receipt.direction_split.keeps} keeping / {receipt.direction_split.breaks} breaking /{' '}
@@ -187,8 +202,8 @@ export function AnalystTrace({ result }: { result: QueryResult }) {
             </li>
             {result.judge.failed_test || result.judge.failure_class ? (
               <li>
-                failed test <code>{result.judge.failed_test || '—'}</code> · class{' '}
-                <code>{result.judge.failure_class || '—'}</code>
+                failed test <code>{result.judge.failed_test || 'none'}</code> · class{' '}
+                <code>{result.judge.failure_class || 'none'}</code>
               </li>
             ) : null}
           </ul>
@@ -249,23 +264,59 @@ function feedbackContext({ result, traceId, feedbackAvailable, feedbackPrompts }
     : undefined;
 }
 
-/** A plain count of the actions found, as a bar. Not a score. */
-function TallyBar({ result }: { result: QueryResult }) {
-  const evidence = result.scored.evidence;
+/**
+ * How the bills about the question count, as a bar with its legend. Not a
+ * score: one block per bill, so a reader sees the weight of the evidence at a
+ * glance. Bills set aside (read as neither way, or closed by a rule before
+ * weighing) are drawn hatched, so the bar adds up to the "about your
+ * question" count beside it.
+ */
+function TallyBar({ result, promise }: { result: QueryResult; promise: boolean }) {
+  const { keeps, breaks, setAside } = counts(result);
+  const words = promise
+    ? { keeps: 'toward keeping it', breaks: 'toward breaking it' }
+    : { keeps: 'consistent', breaks: 'counter' };
   const segments = [
-    { key: 'keeps', n: evidence.filter((e) => e.direction === 'keeps').length, cls: 'bg-kept' },
-    { key: 'breaks', n: evidence.filter((e) => e.direction === 'breaks').length, cls: 'bg-broken' },
-    { key: 'neutral', n: evidence.filter((e) => e.direction === 'neutral').length, cls: 'bg-rule' },
-  ].filter((s) => s.n > 0);
+    { key: 'keeps', n: keeps, cls: 'bg-kept' },
+    { key: 'breaks', n: breaks, cls: 'bg-broken' },
+    { key: 'aside', n: setAside, cls: 'tally-aside bg-rule' },
+  ].filter((x) => x.n > 0);
+  const legend = [
+    `${keeps} ${words.keeps}`,
+    `${breaks} ${words.breaks}`,
+    ...(setAside ? [`${setAside} set aside`] : []),
+  ];
   return (
-    <div className="mt-3 flex h-2.5 gap-1" aria-hidden="true">
-      {segments.map((s) =>
-        Array.from({ length: s.n }).map((_, i) => (
-          <span key={`${s.key}-${i}`} className={`h-full flex-1 rounded-full ${s.cls}`} />
-        )),
-      )}
+    <div className="tally">
+      <div className="mt-3 flex h-2.5 gap-1" role="img" aria-label={legend.join(', ')}>
+        {segments.map((x) =>
+          Array.from({ length: x.n }).map((_, i) => (
+            <span
+              key={`${x.key}-${i}`}
+              className={`h-full flex-1 rounded-full ${x.cls}`}
+              style={x.key === 'aside' ? { backgroundImage: 'repeating-linear-gradient(135deg, transparent 0 3px, rgba(255,255,255,.65) 3px 6px)' } : undefined}
+            />
+          )),
+        )}
+      </div>
+      <p className="tally-legend mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-soft" aria-hidden="true">
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-kept" />{legend[0]}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-broken" />{legend[1]}</span>
+        {setAside ? (
+          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-rule" />{legend[2]}</span>
+        ) : null}
+      </p>
     </div>
   );
+}
+
+/** Counted (a direction), and set aside (read as neither way, or gated before weighing). */
+function counts(result: QueryResult) {
+  const ev = result.scored.evidence;
+  const keeps = ev.filter((e) => e.direction === 'keeps').length;
+  const breaks = ev.filter((e) => e.direction === 'breaks').length;
+  const setAside = ev.filter((e) => e.direction === 'neutral').length + (result.gated?.length ?? 0);
+  return { keeps, breaks, counted: keeps + breaks, setAside };
 }
 
 /** The verdict card: headline, the count, the reason, and what the answer rests on. */
@@ -332,7 +383,10 @@ export function VerdictCard(props: VerdictProps) {
         </div>
         {/* Styled from styles.css by its class alone: the tests read the
             headline out of the markup by this exact tag. */}
-        <h2 className="verdict-label">{headline(result)}</h2>
+        <h2 className="verdict-label">{headlineParts(result)[0]}</h2>
+        {headlineParts(result)[1] ? (
+          <p className="verdict-confidence mt-1.5 text-[17px] leading-snug text-ink">{headlineParts(result)[1]}</p>
+        ) : null}
         {/* The reader's OWN words, attributed to the reader. The restatement
             is the classifier's paraphrase; printing it in quotation marks
             beside the senator's name presented model output as something the
@@ -346,8 +400,10 @@ export function VerdictCard(props: VerdictProps) {
         {funnel ? (
           <dl className="search-funnel mt-4 flex flex-wrap gap-2">
             {[
-              { n: funnel.searched, label: 'actions searched' },
-              { n: funnel.close, label: 'came close' },
+              { n: funnel.searched, label: 'actions in record' },
+              { n: funnel.close, label: 'read closely' },
+              // The bar's legend splits this into consistent, counter and set
+              // aside, so the card adds up without repeating those counts.
               { n: funnel.about, label: 'about your question' },
             ].map((x) =>
               x.n === null ? null : (
@@ -367,8 +423,12 @@ export function VerdictCard(props: VerdictProps) {
             reason under "Why" says what is true. */}
         {tally ? (
           <div className="mt-4">
-            <TallyBar result={result} />
-            <p className="verdict-tally mt-1 text-[15px] leading-snug text-ink">{tally}</p>
+            <TallyBar result={result} promise={promise} />
+            {/* The explainer's executive summary when one passed its checks;
+                otherwise the plain fact sentence. */}
+            <p className="verdict-tally mt-3 text-[16px] leading-relaxed text-ink">
+              {result.explanation.card_summary?.trim() || tally}
+            </p>
           </div>
         ) : null}
 
@@ -411,7 +471,7 @@ export function WhyPanel(props: VerdictProps) {
 
       {scored.mode === 'ranked' ? (
         <p className="mixed-note rounded-lg bg-cantsay-wash px-3.5 py-3 text-[15px] leading-relaxed text-ink">
-          Their record here is mixed — there is real evidence pointing the other way, and it’s
+          Their record here is mixed. There is real evidence pointing the other way, and it’s
           shown under Receipts rather than averaged out.
         </p>
       ) : null}
@@ -599,7 +659,7 @@ export function EvidenceList(props: VerdictProps) {
             {evidenceFor(dominant.evidence_uids).map(card)}
           </EvidenceSection>
           <EvidenceSection
-            title={<>What points the other way — “{verdictWord(dissent.verdict, result.interpretation.statement_type)}”</>}
+            title={<>What points the other way: “{verdictWord(dissent.verdict, result.interpretation.statement_type)}”</>}
             count={evidenceFor(dissent.evidence_uids).length}
           >
             {evidenceFor(dissent.evidence_uids).map(card)}

@@ -246,7 +246,7 @@ function whenLine(e: DirectedAction, congress: number | null): string | null {
   // March 14, 2025"); saying it again on the next line is noise.
   if (real && e.record?.includes(real)) return null;
   if (real) return `When: ${real}.`;
-  if (congress) return `When: during the ${congressLabel(congress)} — the exact date is not in our record.`;
+  if (congress) return `When: during the ${congressLabel(congress)}. The exact date is not in our record.`;
   return null;
 }
 
@@ -478,7 +478,7 @@ export function EvidenceCard({
                   {effect.label}
                 </p>
               ) : (
-                <p className="mt-1 text-[15px] text-ink-soft">{unreadSaidBelow ? 'Not read — see below.' : 'Not recorded.'}</p>
+                <p className="mt-1 text-[15px] text-ink-soft">{unreadSaidBelow ? 'Not read. See below.' : 'Not recorded.'}</p>
               )}
             </div>
           </div>

@@ -70,7 +70,7 @@ const DISPLAY: Record<BillOutcome, string> = {
   REPORTED_OUT: 'Reported out of committee, but never got a floor vote',
   IN_COMMITTEE: 'Referred to committee and never left it',
   INTRODUCED: 'Introduced only',
-  DIED_AT_CLOTURE: 'Died at cloture — never reached a final vote',
+  DIED_AT_CLOTURE: 'Died at cloture: never reached a final vote',
   NEVER_SCHEDULED: 'Never scheduled for a vote',
   UNKNOWN: 'Status not available',
 };
@@ -155,12 +155,12 @@ export function statusWithAsOf(display: string, statusCheckedAt?: string | null)
   // A sentinel rendered as if it were a date produces "verified Unknown", which
   // reads as a verification that did not happen. Say so plainly instead.
   if (NOT_A_TIMESTAMP.has(stamp.toUpperCase())) {
-    return `${display} (not verified — no check-date on record)`;
+    return `${display} (not verified, no check-date on record)`;
   }
 
   const date = new Date(stamp);
   if (Number.isNaN(date.getTime())) {
-    return `${display} (not verified — check-date unreadable)`;
+    return `${display} (not verified, check-date unreadable)`;
   }
   const rendered = date.toLocaleDateString('en-US', {
     year: 'numeric',

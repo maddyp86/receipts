@@ -33,7 +33,7 @@ const STAGES: Stage[] = [
 
 const EXPLAINERS = [
   'A senator can vote yes to end debate and no on the final bill. We look at both.',
-  'A NO vote can line up with a goal — if the bill would have set the goal back.',
+  'A NO vote can line up with a goal, if the bill would have set the goal back.',
   'The sponsor writes a bill. Co-sponsors sign on to support it.',
   'Senators serve 6-year terms. Representatives in the House serve 2-year terms.',
   'Each Congress lasts two years. The 118th was 2023–24. The 119th is 2025–26.',
@@ -270,12 +270,12 @@ export function Waiting({ member, promise, steps, interpretation, rewritten = nu
                 ) : null}
                 <span className="sr-only">
                   {status === 'done'
-                    ? '— done'
+                    ? '(done)'
                     : status === 'working'
-                      ? '— working now'
+                      ? '(working now)'
                       : status === 'error'
-                        ? '— failed'
-                        : '— up next'}
+                        ? '(failed)'
+                        : '(up next)'}
                 </span>
               </span>
             </li>

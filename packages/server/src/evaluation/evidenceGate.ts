@@ -187,7 +187,7 @@ export function applyEvidenceGate(
   if (out.length > candidates.length) {
     throw new Error(
       `[EVIDENCE] dedupe emitted ${out.length} decisions from ${candidates.length} ` +
-        `candidates — the gate cannot create rows.`
+        `candidates, the gate cannot create rows.`
     );
   }
 
@@ -245,7 +245,7 @@ export function describeExclusions(dropped: Record<string, number>): string[] {
   if (n('ERROR')) {
     const k = n('ERROR');
     lines.push(
-      `Our check of ${bills(k)} failed to complete — a failure of the tool, not a finding about ` +
+      `Our check of ${bills(k)} failed to complete. That is a failure of the tool, not a finding about ` +
         `the senator.`,
     );
   }

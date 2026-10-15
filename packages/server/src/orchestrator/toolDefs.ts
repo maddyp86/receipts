@@ -159,10 +159,15 @@ export const TOOL_DEFINITIONS = [
     input_schema: {
       type: 'object' as const,
       properties: {
+        card_summary: {
+          type: 'string',
+          description:
+            'The executive summary shown at the top of the answer card: 2 to 4 plain sentences across all the evidence. What we found or did not find, the clearest specific actions (what the senator did and what the bill does), the vote counts and how each party voted where given, and anything set aside. Use only figures from the result. No em dashes, no semicolons.',
+        },
         why: {
           type: 'string',
           description:
-            'One paragraph of 4–6 short sentences, written as a reply to the person who asked: name their question, say what was found and what the senator did, say what it means in the vocabulary the result gives you, account for anything seen and set aside, and state the limit of the evidence.',
+            'One paragraph of 4 to 6 short sentences, written as a reply to the person who asked: name their question, say what was found and what the senator did, say what it means in the vocabulary the result gives you, account for anything seen and set aside, and state the limit of the evidence.',
         },
         connectors: {
           type: 'array',
@@ -174,7 +179,7 @@ export const TOOL_DEFINITIONS = [
               line: {
                 type: 'string',
                 description:
-                  'One line on what this bill does and what the senator did on it, in the voter\'s vocabulary — how it relates to what they asked. Do not say whether it counts toward or against the statement: the card says that, with its reason.',
+                  'One line on what this bill does and what the senator did on it, in the voter\'s vocabulary, and how it relates to what they asked. Do not say whether it counts toward or against the statement: the card says that, with its reason.',
               },
             },
             required: ['action_uid', 'line'],
@@ -187,7 +192,7 @@ export const TOOL_DEFINITIONS = [
             'Your confidence that this explanation accurately describes the record. NOT confidence in the verdict.',
         },
       },
-      required: ['why', 'connectors', 'confidence'],
+      required: ['card_summary', 'why', 'connectors', 'confidence'],
       additionalProperties: false,
     },
   },

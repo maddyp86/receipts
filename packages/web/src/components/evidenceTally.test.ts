@@ -101,9 +101,9 @@ describe('the sentence', () => {
     expect(r.mode).toBe('ranked');
     expect(evidenceTallySentence(result(r, { gated: 1 }))).toBe(
       'We found 4 actions by Example related to this statement. 2 are consistent with it, 1 runs counter to it, ' +
-        "and 1 doesn't count either way. 1 more was found but set aside — see “Found, but not evaluated”.",
+        "and 1 doesn't count either way. We set aside 1 more without weighing it. See Receipts for the reason.",
     );
-    expect(evidenceTallySentence(result(r, { gated: 3 }))).toMatch(/3 more were found but set aside/);
+    expect(evidenceTallySentence(result(r, { gated: 3 }))).toMatch(/We set aside 3 more without weighing them/);
   });
 
   it('zero parts are left out', () => {
@@ -236,7 +236,7 @@ describe('the counts agree with "How we got here" and the analyst trace', () => 
       keeps: num(tally, /(\d+) (?:is|are) consistent/),
       breaks: num(tally, /(\d+) runs? counter/),
       neutral: num(tally, /(\d+) (?:doesn't|don't) count/),
-      gated: num(tally, /(\d+) more (?:was|were) found but set aside/),
+      gated: num(tally, /We set aside (\d+) more without weighing/),
     };
     expect(t).toEqual({ total: 7, keeps: 3, breaks: 2, neutral: 2, gated: 2 });
 
@@ -249,7 +249,7 @@ describe('the counts agree with "How we got here" and the analyst trace', () => 
     // How we got here: the set-aside step, the both-ways step, and the
     // per-bill step, whose parts cover every action counted.
     expect(num(walk, /(\d+) bills? (?:was|were) set aside before being weighed/)).toBe(t.gated);
-    const both = /The evidence points both ways — (\d+) one way, (\d+) the other/.exec(walk)!;
+    const both = /The evidence points both ways \((\d+) one way, (\d+) the other\)/.exec(walk)!;
     expect([Number(both[1]), Number(both[2])]).toEqual([t.keeps, t.breaks]);
     const step5 = /As we read them: ([^.]*)\./.exec(walk)![1]!;
     const perBill = [...step5.matchAll(/(\d+) (?:would|does|do|could)/g)].reduce((a, m) => a + Number(m[1]), 0);
@@ -272,17 +272,31 @@ describe('the headline', () => {
     renderToStaticMarkup(React.createElement(Verdict, { result: r })),
   )![1]!.replace(/<[^>]+>/g, '').replace(/&#x27;/g, "'").replace(/^[✓✕—]/, '');
 
-  it('keeps the band suffix', () => {
+  const sub = (r: QueryResult) => /<p class="verdict-confidence[^"]*">([\s\S]*?)<\/p>/.exec(
+    renderToStaticMarkup(React.createElement(Verdict, { result: r })),
+  )?.[1]?.replace(/<[^>]+>/g, '').replace(/&#x27;/g, "'") ?? null;
+
+  // A short headline, then the confidence and its reason as a subheadline
+  // (15 Oct): "low confidence" alone told the reader nothing, and the whole
+  // thing as one display-type sentence was too long.
+  it('is short, with the confidence and its reason underneath', () => {
     const r = score([row(KEEP)], 'Campaign Promise');
-    expect(headline(result(r, { statement_type: 'Campaign Promise', provenance: 'corpus' }))).toBe(
-      `Likely kept — ${r.band === 'High' ? 'strong evidence' : r.band === 'Medium' ? 'moderate evidence' : 'low confidence'}`,
-    );
+    const level = r.band === 'High' ? 'High' : r.band === 'Medium' ? 'Moderate' : 'Low';
+    const res = result(r, { statement_type: 'Campaign Promise', provenance: 'corpus' });
+    expect(headline(res)).toBe('Likely kept');
+    expect(sub(res)).toMatch(new RegExp(`^${level} confidence: .+\\.$`));
+  });
+
+  it('drops "Their record" for a position, which the label above already says', () => {
+    const res = result(score([row(KEEP)]));
+    expect(headline(res)).toBe('Likely consistent with this position');
   });
 
   it('keeps the mixed suffix in ranked mode', () => {
     const r = score([row(KEEP), row(KEEP), row(BREAK)]);
     expect(r.mode).toBe('ranked');
-    expect(headline(result(r))).toMatch(/^Their record is likely consistent with this position — .+, but it’s mixed$/);
+    expect(headline(result(r))).toBe('Likely consistent with this position, but it’s mixed');
+    expect(sub(result(r))).toMatch(/^\w+ confidence: .+\.$/);
   });
 
   it('NOT_DETERMINABLE headlines are unchanged', () => {
@@ -295,8 +309,8 @@ describe('the order on the card', () => {
   it('headline → you asked about → the count → Here’s why', () => {
     const card = render(React.createElement(Verdict, { result: result(score([row(KEEP), row(BREAK), row(KEEP)])) }));
     const at = (s: string) => card.indexOf(s);
-    expect(at('likely consistent')).toBeGreaterThanOrEqual(0);
-    expect(at('likely consistent')).toBeLessThan(at('you asked about'));
+    expect(at('Likely consistent')).toBeGreaterThanOrEqual(0);
+    expect(at('Likely consistent')).toBeLessThan(at('you asked about'));
     expect(at('you asked about')).toBeLessThan(at('We found 3 actions'));
     expect(at('We found 3 actions')).toBeLessThan(at('Here’s why. Because.'));
   });

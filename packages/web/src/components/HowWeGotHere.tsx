@@ -1,5 +1,5 @@
 import {
-  BAND_PHRASE,
+  confidencePhrase,
   ND_NO_REASON_COPY,
   ND_REASON_COPY,
   coverageSpanPhrase,
@@ -62,7 +62,7 @@ export function HowWeGotHere({ result }: { result: QueryResult }) {
       title: `What we searched`,
       body:
         `We searched ${surname}’s analyzed record` +
-        (span ? ` — ${span} —` : '') +
+        (span ? ` (${span})` : '') +
         ` and ${found}.`,
     });
 
@@ -94,7 +94,7 @@ export function HowWeGotHere({ result }: { result: QueryResult }) {
     steps.push({
       title: 'Set aside before weighing',
       body:
-        `${plural(gatedCount, 'bill')} ${gatedCount === 1 ? 'was' : 'were'} set aside before being weighed — ` +
+        `${plural(gatedCount, 'bill')} ${gatedCount === 1 ? 'was' : 'were'} set aside before being weighed. ` +
         `a rule decided ${gatedCount === 1 ? 'it' : 'they'} could not bear on this statement either way. ` +
         `${gatedCount === 1 ? 'It is' : 'They are'} listed under “Found, but not evaluated” with the reason.`,
     });
@@ -144,7 +144,7 @@ export function HowWeGotHere({ result }: { result: QueryResult }) {
       title: `What ${surname} did`,
       body:
         votes === 0 && sponsorships > 0
-          ? `Every action that counts is a sponsorship — ${surname} put ${sponsorships === 1 ? 'their name on the bill' : `their name on ${sponsorships} bills`} — and none came to a recorded vote. Sponsorship is weaker evidence than a vote.`
+          ? `Every action that counts is a sponsorship: ${surname} put ${sponsorships === 1 ? 'their name on the bill' : `their name on ${sponsorships} bills`}, and none came to a recorded vote. Sponsorship is weaker evidence than a vote.`
           : `We then looked at what ${surname} actually did: ${plural(votes, 'recorded vote')} and ${plural(sponsorships, 'sponsorship')}. The cards below say what each one was.`,
     });
   }
@@ -159,13 +159,13 @@ export function HowWeGotHere({ result }: { result: QueryResult }) {
     const { keeps, breaks } = receipt.direction_split;
     const agreement =
       scored.mode === 'ranked'
-        ? `The evidence points both ways — ${keeps} one way, ${breaks} the other — so we show both sides below rather than averaging them.`
+        ? `The evidence points both ways (${keeps} one way, ${breaks} the other), so we show both sides below rather than averaging them.`
         : `Everything that counts points the same way.`;
     steps.push({
       title: 'Adding it up',
       body:
         `${agreement} That gives: ${outcomeHeadline(scored.verdict, interpretation.statement_type, interpretation.provenance).toLowerCase()}` +
-        (scored.band ? ` — ${BAND_PHRASE[scored.band]}.` : '.'),
+        (scored.band ? `, ${confidencePhrase(scored.band, receipt.band_reason)}.` : '.'),
     });
   }
 

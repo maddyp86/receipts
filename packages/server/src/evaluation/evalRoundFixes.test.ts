@@ -35,9 +35,17 @@ describe('1. the evidence floor', () => {
     expect(r.evidence).toHaveLength(1);
   });
 
-  it('the band bar is unchanged: 0.51 matches never make High', () => {
-    const r = scoreMatches({ promise_type: 'policy', statement_type: 'Policy Position', matches: [row(0.51), row(0.52), row(0.53)] });
-    expect(r.band).not.toBe('High');
+  // Superseded 2026-10-15: the band no longer reads search similarity at all.
+  // Confidence is how clearly the evidence answers, so 0.51 final votes read
+  // with certainty are High, and the same votes read uncertainly are not.
+  it('the band does not read similarity: certainty and the kind of vote decide it', () => {
+    const sure = scoreMatches({ promise_type: 'policy', statement_type: 'Policy Position', matches: [row(0.51), row(0.52), row(0.53)] });
+    expect(sure.band).toBe('High');
+    const unsure = scoreMatches({
+      promise_type: 'policy', statement_type: 'Policy Position',
+      matches: [row(0.51), row(0.52), row(0.53)].map((m) => ({ ...m, alignment_confidence: 0.55 })),
+    });
+    expect(unsure.band).toBe('Low');
   });
 
   // The label shares nothing with the floor any more. At the floor, everything
