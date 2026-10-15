@@ -1,26 +1,20 @@
-import { fail, ok, type Envelope, type MatchedAction, type MatchStrength } from '@receipts/shared';
-import type { ActionStore, SearchParams, SearchResult } from './ActionStore.js';
-import { config, namespaceFor } from '../config.js';
+import type { MatchedAction, MatchStrength } from '@receipts/shared';
+import type { SearchResult } from './ActionStore.js';
 import { SIMILARITY, NEAR_MISS_REVIEW_LIMIT } from '../scoring/config.js';
 
 // ===========================================================================
-// Live retrieval against the senator's already-embedded bill vectors.
+// One searched action, from the record a live store returns, and the search
+// result built from all of them.
 //
-// PORT of WF7a `Query Pinecone`. Receipts NEVER re-embeds or re-analyses a bill
-// at query time — it searches vectors the batch pipeline already produced, which
-// is what keeps a query result from contradicting the senator profile
-// (ADR-005, docs/adr/README.md).
+// Split out of the Pinecone store when it was removed (2026-10-14): the
+// Supabase store builds a record keyed as the bill-embedding workflow (WF6)
+// keyed Pinecone metadata and hands it here, so the floor, the counts and the
+// missing-field rules stayed one piece of code across the cut-over.
 //
-// Metadata is read defensively: a field that should be there and isn't gets
+// Fields are read defensively: a field that should be there and isn't gets
 // recorded in `missing_fields` and surfaced, never quietly defaulted into a
 // value that looks like evidence.
 // ===========================================================================
-
-interface PineconeMatch {
-  id: string;
-  score: number;
-  metadata?: Record<string, unknown>;
-}
 
 const str = (v: unknown): string => (v === null || v === undefined ? '' : String(v).trim());
 
@@ -75,98 +69,6 @@ export function sourceUrl(md: Record<string, unknown>): string {
   return path ? `https://www.congress.gov/bill/${congress}th-congress/${path}/${number}` : '';
 }
 
-export class PineconeActionStore implements ActionStore {
-  readonly kind = 'pinecone' as const;
-
-  async search(params: SearchParams): Promise<Envelope<SearchResult>> {
-    const { host, apiKey, embeddingVersion } = config.pinecone;
-    if (!host || !apiKey) {
-      return fail({
-        code: 'UPSTREAM_UNAVAILABLE',
-        message: 'Pinecone is not configured (PINECONE_HOST / PINECONE_API_KEY).',
-        recoverable: false,
-      });
-    }
-
-    const body: Record<string, unknown> = {
-      vector: params.vector,
-      topK: params.topK,
-      includeMetadata: true,
-      includeValues: false,
-      namespace: namespaceFor(params.politicianId),
-    };
-    // Batch runs scope to one embedding_version. A live query has no run to
-    // scope to, so this is opt-in: unset searches every version, which may
-    // include vectors from superseded runs.
-    if (embeddingVersion) {
-      body.filter = { embedding_version: { $eq: embeddingVersion } };
-    }
-
-    let payload: { matches?: PineconeMatch[] };
-    try {
-      const res = await fetch(`${host}/query`, {
-        method: 'POST',
-        headers: {
-          'Api-Key': apiKey,
-          'Content-Type': 'application/json',
-          'X-Pinecone-API-Version': '2025-01',
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const detail = await res.text().catch(() => '');
-        return fail({
-          code: 'UPSTREAM_UNAVAILABLE',
-          message: `Pinecone query failed (${res.status}).`,
-          recoverable: res.status >= 500 || res.status === 429,
-          details: { status: res.status, body: detail.slice(0, 400) },
-        });
-      }
-      payload = (await res.json()) as { matches?: PineconeMatch[] };
-    } catch (err) {
-      return fail({
-        code: 'UPSTREAM_UNAVAILABLE',
-        message: 'Could not reach Pinecone.',
-        recoverable: true,
-        details: { cause: err instanceof Error ? err.message : String(err) },
-      });
-    }
-
-    const raw = payload.matches ?? [];
-
-    // ASSERTION — embedding_version must not turn a stale constant into an
-    // honest-looking "no relevant bills".
-    //
-    // embedding_version doubles as the run_id join key. A value that no longer
-    // matches any stored vector returns ZERO matches from a namespace that is
-    // in fact full, and every downstream layer renders that as "nothing in his
-    // record bears on this" — a finding, not a fault. The filter is opt-in, so
-    // this only fires when a version was explicitly pinned: an empty result
-    // under a pin is far more likely to be a stale pin than a real absence, and
-    // it must be surfaced as such rather than answered.
-    if (embeddingVersion && raw.length === 0) {
-      return fail({
-        code: 'UPSTREAM_UNAVAILABLE',
-        message:
-          `Pinecone returned zero vectors for embedding_version "${embeddingVersion}". ` +
-          `That is far more likely a stale version pin than an empty record — refusing ` +
-          `to report it as "no relevant bills". Clear PINECONE_EMBEDDING_VERSION to ` +
-          `search every version, or set it to the current run.`,
-        recoverable: true,
-        details: {
-          embedding_version: embeddingVersion,
-          namespace: namespaceFor(params.politicianId),
-          topK: params.topK,
-        },
-      });
-    }
-
-    const all = raw.map((m) => toMatchedAction(m.id, m.score, m.metadata ?? {}));
-    return ok(searchResultOf(all, namespaceFor(params.politicianId), params.topK));
-  }
-}
-
 /**
  * The search result from every action the backend returned: floor applied,
  * pre-floor counts kept, near misses named.
@@ -208,11 +110,8 @@ export function searchResultOf(returned: MatchedAction[], label: string, topK: n
 
 /**
  * One returned action, from fields named as the bill-embedding workflow (WF6)
- * names them in Pinecone metadata.
- *
- * Shared by every live store: SupabaseActionStore builds the same record from
- * `core` and passes it here, so both stores hand the evaluator identical fields
- * read by identical rules.
+ * named them in Pinecone metadata. SupabaseActionStore builds that record from
+ * `core` and passes it here.
  */
 export function toMatchedAction(id: string, score: number, md: Record<string, unknown>): MatchedAction {
   const missing: string[] = [];

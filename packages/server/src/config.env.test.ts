@@ -65,16 +65,16 @@ describe('.env.example stays in sync with config.ts', () => {
 
 describe('.env.example carries no real infrastructure identifier', () => {
   it('has no populated secret values', () => {
-    for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'PINECONE_API_KEY']) {
+    for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'DATABASE_URL']) {
       const value = new RegExp(`^${key}=(.*)$`, 'm').exec(envExample)?.[1] ?? '';
       expect(value.trim(), `${key} must be empty in the committed example`).toBe('');
     }
   });
 
   it('has no real Pinecone host or index', () => {
-    // The host embeds a project slug and region; both identify the deployment.
+    // Pinecone is gone (2026-10-14), but its host embedded a project slug and
+    // region, and neither may come back into the example.
     expect(envExample).not.toMatch(/\.svc\.aped-/);
-    expect(envExample).toMatch(/PINECONE_HOST=https:\/\/your-index\.svc\.your-region/);
     expect(envExample).not.toMatch(/bills-promises/);
   });
 

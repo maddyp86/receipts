@@ -12,7 +12,7 @@ import type { TextVersionSelection } from './textVersions.js';
 // "Found, but not evaluated" with this reason.
 //
 // DRIVEN BY DATA, not bill ids: the `Flagged For Review` column on the
-// bill-level Impact Statements sheet (mirror.mirror_impact_statements). Clear
+// bill-level Impact Statements sheet (compat.mirror_impact_statements). Clear
 // the flag and the bill is weighed again on the next sync, with no deploy.
 // Blank is not flagged — rows the pipeline adds later may leave it empty.
 //

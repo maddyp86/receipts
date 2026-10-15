@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { metadataOf, scoreOf } from './SupabaseActionStore.js';
-import { toMatchedAction } from './PineconeActionStore.js';
+import { toMatchedAction } from './actionRecord.js';
 
 // ===========================================================================
 // THE SUPABASE STORE HANDS THE EVALUATOR WHAT PINECONE DID.

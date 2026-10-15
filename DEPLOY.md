@@ -116,15 +116,12 @@ otherwise leave the server unable to boot. The server binds
 |---|---|
 | `ANTHROPIC_API_KEY` | absent → DEMO mode (stubbed interpret/explain) |
 | `OPENAI_API_KEY` | absent → relevance + fulfillment legs skip and say so |
-| `PINECONE_API_KEY` | absent → FIXTURE mode (canned matches) |
+| `DATABASE_URL` | absent → FIXTURE mode (canned matches); the record and the bill search are read from Supabase |
 
 **Config:**
 
 | Var | Value |
 |---|---|
-| `PINECONE_HOST` | real index host, no trailing slash |
-| `PINECONE_NAMESPACE_TEMPLATE` | `{politician_id}_bills` |
-| `PINECONE_EMBEDDING_VERSION` | **leave blank** unless pinning a run |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` | `text-embedding-3-small` / `1024` — must match the pipeline |
 | `CLASSIFY_MODEL` / `FULFILL_MODEL` / `EXPLAIN_MODEL` | `claude-haiku-4-5` / `gpt-5.4-mini` / `claude-sonnet-5` |
 | `ANTHROPIC_MAX_TOKENS` | `64000` |
@@ -139,17 +136,12 @@ otherwise leave the server unable to boot. The server binds
 vendors, so an open policy is an open invoice as much as a data question. The
 startup banner warns when it is unset.
 
-⚠️ **`PINECONE_EMBEDDING_VERSION` is the one config typo that used to lie.** A
-stale pin returns zero vectors from a full namespace, which would render as "no
-relevant bills". The store now fails loudly instead — but leave it blank unless
-you mean it.
-
 ### Verify the deploy from the banner
 
 ```
-mode: llm=live (claude-sonnet-5)  data=live (Pinecone)
+mode: llm=live (claude-sonnet-5)  data=live (Supabase core)  record=compat
 models: classify=claude-haiku-4-5  fulfill=gpt-5.4-mini  explain=claude-sonnet-5
-credentials: anthropic=present  openai=present  pinecone=present  pinecone_host=present
+credentials: anthropic=present  openai=present  supabase=present
 cors: allowlist [https://receipts.vercel.app]
 ```
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MatchedAction } from '@receipts/shared';
-import { searchResultOf } from '../data/PineconeActionStore.js';
+import { searchResultOf } from '../data/actionRecord.js';
 import { NEAR_MISS_REVIEW_LIMIT, SIMILARITY } from './config.js';
 import { scoreMatches, type ScorableMatch } from './score.js';
 

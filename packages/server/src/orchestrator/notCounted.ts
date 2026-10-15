@@ -1,6 +1,6 @@
 import type { NotCountedAction } from '@receipts/shared';
 import type { EvaluatedCandidate } from '../evaluation/relevance.js';
-import { sourceUrl } from '../data/PineconeActionStore.js';
+import { sourceUrl } from '../data/actionRecord.js';
 
 // ===========================================================================
 // The bills the relevance check read and did not count.

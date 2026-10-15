@@ -1,31 +1,28 @@
 import pg from 'pg';
 import { fail, ok, type Envelope } from '@receipts/shared';
 import type { ActionStore, SearchParams, SearchResult } from './ActionStore.js';
-import { searchResultOf, toMatchedAction } from './PineconeActionStore.js';
+import { searchResultOf, toMatchedAction } from './actionRecord.js';
 import { config } from '../config.js';
 
 const { Pool } = pg;
 
 // ===========================================================================
-// Bill search against schema `core` (docs/v2/plan.md, Phase 2). Chosen by
-// ACTION_STORE=supabase; the default stays Pinecone.
+// Bill search against schema `core` (docs/v2/plan.md, Phase 2). The only live
+// store since the Pinecone store was removed on 2026-10-14.
 //
 // One vector per BILL, ranked for one member by core.match_member_bills: exact
-// cosine over that member's bills, no approximate index. Like the Pinecone
-// store it searches vectors the pipeline already produced and never embeds or
-// re-analyses a bill (ADR-005).
+// cosine over that member's bills, no approximate index. It searches vectors
+// the pipeline already produced and never embeds or re-analyses a bill
+// (ADR-005).
 //
-// SAME FIELDS, SAME RULES. Each row is turned into a record keyed exactly as
-// the bill-embedding workflow (WF6) keys Pinecone metadata, then handed to the
-// Pinecone store's own converter and result builder. So the floor, the counts,
-// the near misses, the vote casing and the missing-field rules are one piece of
-// code for both stores, and a difference between them is a difference in the
-// DATA — which is what gate G2 measures.
+// Each row is turned into a record keyed exactly as the bill-embedding workflow
+// (WF6) keyed Pinecone metadata, then handed to the shared converter and result
+// builder (actionRecord.ts), so the floor, the counts, the near misses, the
+// vote casing and the missing-field rules are the ones gate G2 compared.
 //
-// What does differ, on purpose: votes come from core.member_bill_actions, which
-// derives them from the roll calls. Pinecone metadata holds the votes as they
-// stood when each vector was embedded, including the five sheet errors listed
-// in docs/v2/reference/vote-slot-rules.md.
+// Votes come from core.member_bill_actions, which derives them from the roll
+// calls, so the five sheet errors in docs/v2/reference/vote-slot-rules.md that
+// Pinecone metadata carried are not here.
 //
 // Today's Action UIDs are kept (core.action_uids), so stored queries, traces
 // and reused answers still line up.

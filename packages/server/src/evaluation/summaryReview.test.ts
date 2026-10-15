@@ -10,7 +10,7 @@ import { fixtureEnvelope } from './responsesFetcher.js';
 //
 // The bill-level statements for sjres103-119, sjres112-119 and sjres80-119
 // are wrong or misleading on direction (2026-10-07). Flagged in the sheet's
-// `Flagged For Review` column; confirmed in mirror.mirror_impact_statements
+// `Flagged For Review` column; confirmed in compat.mirror_impact_statements
 // 2026-10-08 as JSON true on those three, false on the other 970.
 // ===========================================================================
 

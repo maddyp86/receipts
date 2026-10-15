@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ND_HEADLINE, ND_REASON_COPY, STRENGTH_PHRASE } from '@receipts/shared';
 import { dispatchTool, newSession } from '../orchestrator/dispatch.js';
-import { strengthOf } from '../data/PineconeActionStore.js';
+import { strengthOf } from '../data/actionRecord.js';
 import { SIMILARITY } from '../scoring/config.js';
 import { scoreMatches, type ScorableMatch } from '../scoring/score.js';
 import { CLASSIFY_SYSTEM_PROMPT } from './classify.js';

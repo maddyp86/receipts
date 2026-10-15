@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { surnameOf } from '@receipts/shared';
-import { SEED, SenatorCache, parseCongresses, sqlFor, toSenator, type PoliticianRow } from './SenatorCache.js';
+import { PICKER_SQL, SEED, SenatorCache, parseCongresses, toSenator, type PoliticianRow } from './SenatorCache.js';
 
 // ===========================================================================
 // THE PICKER IS THE PIPELINE'S LIST.
@@ -101,17 +101,16 @@ describe('the congresses collected for one member', () => {
 });
 
 describe('the read names one schema, and only the record schema', () => {
-  // RECORD_SCHEMA switches the picker between the mirror and the compat views
-  // over `core`. The table names and the `Live` rule are the same SQL either way.
-  it('reads the mirror by default and compat when switched', () => {
-    expect(sqlFor('mirror')).toContain('from mirror.mirror_politicians');
-    expect(sqlFor('mirror')).toContain('from mirror.mirror_politician_bill_actions');
-    expect(sqlFor('compat')).toContain('from compat.mirror_politicians');
-    expect(sqlFor('compat')).not.toContain('mirror.mirror_');
+  // The `mirror` schema was dropped on 2026-10-14; the compat views over `core`
+  // are the only record, and a read of the old schema would fail outright.
+  it('reads the compat views, never the dropped mirror schema', () => {
+    expect(PICKER_SQL).toContain('from compat.mirror_politicians');
+    expect(PICKER_SQL).toContain('from compat.mirror_politician_bill_actions');
+    expect(PICKER_SQL).not.toContain('mirror.mirror_');
   });
 
   it('a record without a Live key keeps the old rule; one with it must say true', () => {
-    expect(sqlFor('mirror')).toContain(`(not (p.row ? 'Live') or coalesce(lower(p.row->>'Live') = 'true', false))`);
+    expect(PICKER_SQL).toContain(`(not (p.row ? 'Live') or coalesce(lower(p.row->>'Live') = 'true', false))`);
   });
 });
 

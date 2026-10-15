@@ -165,6 +165,8 @@ A failure in any of them emails Matt.
 
 **After two clean weeks:** delete the old workflows, drop the `mirror` schema, remove the Pinecone code path, and delete the Pinecone bill namespaces.
 
+**Done early, 14 Oct, at the owner's request:** the `mirror` schema was dropped on 2026-10-14 (backup at `.backups/mirror-2026-10-14/`, local only, not in git), so rollback to the mirror is no longer two settings. The server code now reads only `compat` and searches only Supabase `core`: `RECORD_SCHEMA`, `ACTION_STORE`, the `PINECONE_*` settings and the Pinecone store are gone.
+
 **Done when** the cutover has held for two weeks.
 
 ### Phase 4: senators
