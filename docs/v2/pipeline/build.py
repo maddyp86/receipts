@@ -183,7 +183,8 @@ def members():
         [code('buildMembers', 'Build Members', js('members.js'))],
         [('buildMembers', 'Build Members')],
         '## v2 pipeline: members\nWeekly. Names, parties, states, districts, Senate class, LIS id and terms from '
-        'congress-legislators. Never touches in_scope, live, the congresses collected, roles, OpenSecrets id or website. ' + NOTE)
+        'congress-legislators. A member already here who has left gets left_at and term_end from legislators-historical, and a blank '
+        'LIS id filled, so their votes still join. Never touches in_scope, live, the congresses collected, roles, OpenSecrets id or website. ' + NOTE)
 
 
 def rollcalls():
