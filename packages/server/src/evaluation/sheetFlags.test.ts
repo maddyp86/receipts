@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { truthy } from '../scoring/deriveAlignment.js';
 import { judgeGates } from '../judge/judgeGates.js';
-import { bool as pineconeBool } from '../data/PineconeActionStore.js';
+import { bool as pineconeBool } from '../data/actionRecord.js';
 import { sponsorshipOf } from './enrichment.js';
 import { parseVersionRow, selectTextVersion, taxonomyDivergence, type VersionMirrorRow } from './textVersions.js';
 

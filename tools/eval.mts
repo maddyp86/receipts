@@ -8,8 +8,8 @@
 //                                re-read a finished run's local traces and say
 //                                where each missing bill went; free, no query
 //
-// LIVE AND PAID: real models and production data (mirror reads through
-// DATABASE_URL, Pinecone retrieval), about $0.10–0.35 a case. It calls
+// LIVE AND PAID: real models and production data (record reads and bill
+// search through DATABASE_URL), about $0.10–0.35 a case. It calls
 // runQuery in this process, NOT the public API, so it counts toward neither
 // the daily caps nor the IP limiter. Like any query it writes its trace and
 // its app_queries row. Answer reuse is off, and there is no session key, so

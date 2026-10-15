@@ -45,8 +45,7 @@ Modes are inferred from which keys are present, one layer at a time. Put an untr
 |---|---|
 | `ANTHROPIC_API_KEY` | Scope classification, interpretation, explanation, and the adversarial judge. Matches still come from fixtures. **The judge still cannot run** — see the note below. |
 | `+ OPENAI_API_KEY` | Relevance and the fulfillment evaluator, which is what produces a per-action confidence. This is what lets the judge run. |
-| `+ PINECONE_API_KEY` + `PINECONE_HOST` | Real retrieval against the senator's embedded record. |
-| `+ DATABASE_URL` | The enrichment mirror (whip votes, roll-call results, senator roles — the gates run at full strength) and query persistence. ⚠️ **Points at production.** Local queries write real rows. Blank it for verification runs. |
+| `+ DATABASE_URL` | Real retrieval against the senator's embedded record (Supabase `core`), the enrichment record (the `compat` views: whip votes, roll-call results, senator roles — the gates run at full strength) and query persistence. ⚠️ **Points at production.** Local queries write real rows. Blank it for verification runs. |
 | `COVERAGE_CONGRESSES` | Not a key — a disclosure. Which congresses were collected (`118,119`). Unset, the tool tells users it cannot establish what it searched. |
 
 `FIXTURE_MODE` / `DEMO_MODE` override the inference. `GET /api/health` reports which mode is

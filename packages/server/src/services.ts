@@ -3,7 +3,6 @@ import { MemoryUsageCounter, SupabaseUsageCounter, type UsageCounter } from './d
 import { config } from './config.js';
 import type { ActionStore } from './data/ActionStore.js';
 import { FixtureActionStore } from './data/FixtureActionStore.js';
-import { PineconeActionStore } from './data/PineconeActionStore.js';
 import { SupabaseActionStore } from './data/SupabaseActionStore.js';
 import { FixtureEmbedder, OpenAIEmbedder, type Embedder } from './embeddings/Embedder.js';
 import { NullQueryStore, type QueryStore } from './data/QueryStore.js';
@@ -17,12 +16,10 @@ import {
 } from './trace/TraceStore.js';
 
 // One place where mode selection happens, so nothing downstream branches on it.
-// ACTION_STORE picks the live store (default Pinecone); fixture mode wins over it.
+// The live store is Supabase `core`; fixture mode stands in without credentials.
 export const actionStore: ActionStore = config.fixtureMode
   ? new FixtureActionStore()
-  : config.retrieval.store === 'supabase'
-    ? new SupabaseActionStore()
-    : new PineconeActionStore();
+  : new SupabaseActionStore();
 
 export const embedder: Embedder = config.fixtureMode ? new FixtureEmbedder() : new OpenAIEmbedder();
 

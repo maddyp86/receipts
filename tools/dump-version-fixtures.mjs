@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ===========================================================================
 // dump-version-fixtures — replace the synthetic text-version fixtures with
-// live rows from the mirror.
+// live rows from the compat views (the mirror schema was dropped 2026-10-14).
 //
 //   node tools/dump-version-fixtures.mjs            # write the fixture file
 //   node tools/dump-version-fixtures.mjs --check    # print what would change
@@ -39,7 +39,7 @@ const client = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: 
 await client.connect();
 const { rows } = await client.query(
   `select impact_version_uid, bill_id, text_version_code, text_version_date, row
-     from mirror.mirror_impact_statement_versions
+     from compat.mirror_impact_statement_versions
     where bill_id = any($1::text[])
     order by bill_id, coalesce(nullif(text_version_date, ''), '9999-12-31'), text_version_code`,
   [BILLS],
@@ -65,7 +65,7 @@ if (bad.length) {
 
 const body = {
   _provenance:
-    `LIVE. Dumped ${new Date().toISOString()} from mirror.mirror_impact_statement_versions by ` +
+    `LIVE. Dumped ${new Date().toISOString()} from compat.mirror_impact_statement_versions by ` +
     'tools/dump-version-fixtures.mjs. Rows are verbatim.',
   rows,
 };

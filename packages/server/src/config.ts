@@ -30,7 +30,7 @@ loadEnv({ path: resolve(MONOREPO_ROOT, '.env') });
 //
 //   no keys at all      -> DEMO_MODE + FIXTURE_MODE, fully clickable
 //   + ANTHROPIC_API_KEY -> real interpretation and explanation, fixture matches
-//   + OpenAI + Pinecone -> live retrieval against the senator's real record
+//   + OpenAI + DATABASE_URL -> live retrieval against the senator's real record
 //
 // Every threshold below defaults to the value read from the live pipeline. They
 // live here rather than inline so a calibration pass touches one file.
@@ -53,8 +53,6 @@ const num = (v: string | undefined, fallback: number): number => {
 
 const anthropicKey = str(process.env.ANTHROPIC_API_KEY);
 const openaiKey = str(process.env.OPENAI_API_KEY);
-const pineconeKey = str(process.env.PINECONE_API_KEY);
-const pineconeHost = str(process.env.PINECONE_HOST).replace(/\/+$/, '');
 const databaseUrl = str(process.env.DATABASE_URL);
 
 const demoOverride = boolOverride(process.env.DEMO_MODE);
@@ -63,46 +61,16 @@ const fixtureOverride = boolOverride(process.env.FIXTURE_MODE);
 /** No Anthropic key -> deterministic stubs for interpret/explain. */
 const demoMode = demoOverride ?? anthropicKey === '';
 
-/** No OpenAI key, no Pinecone key, or no host -> canned matches. */
-const fixtureMode =
-  fixtureOverride ?? (openaiKey === '' || pineconeKey === '' || pineconeHost === '');
+/** No OpenAI key or no database -> canned matches. The bill search runs in Supabase `core`. */
+const fixtureMode = fixtureOverride ?? (openaiKey === '' || databaseUrl === '');
 
 /**
- * A setting that must be one of a few exact values.
- *
- * Unlike the credentials, a wrong value here is REFUSED at startup rather than
- * degraded around: a typo in RECORD_SCHEMA would otherwise make every
- * enrichment read fail open, and the tool would keep answering with its gates
- * quietly off. A deploy that will not start is the louder, safer failure.
+ * The schema the legislative record is read from: views over schema `core` in
+ * the shape of the old Sheets mirror, so table names keep their `mirror_`
+ * prefix (docs/supabase-migration-015-compat-views.sql). The `mirror` schema
+ * itself was dropped on 2026-10-14 (docs/v2/plan.md); there is no other source.
  */
-function oneOf<T extends string>(name: string, raw: string | undefined, allowed: readonly T[], fallback: T): T {
-  const v = str(raw).toLowerCase();
-  if (!v) return fallback;
-  if ((allowed as readonly string[]).includes(v)) return v as T;
-  throw new Error(`${name}="${raw}" is not one of: ${allowed.join(', ')}. Refusing to start.`);
-}
-
-/**
- * Where the legislative record is read from (docs/v2/plan.md, Phase 2).
- *
- *   mirror  the Supabase mirror of the Sheets pipeline. Today's source.
- *   compat  views over schema `core` in exactly the mirror's shape
- *           (docs/supabase-migration-015-compat-views.sql).
- *
- * Only the schema changes: table names, columns and row keys are identical,
- * so every reader is the same code either way.
- */
-const recordSchema = oneOf('RECORD_SCHEMA', process.env.RECORD_SCHEMA, ['mirror', 'compat'] as const, 'mirror');
-
-/**
- * Which store the bill search runs against.
- *
- *   pinecone  one vector per member and bill, a namespace per member. Today's.
- *   supabase  one vector per bill in `core`, ranked by core.match_member_bills.
- *
- * Fixture mode still wins over both.
- */
-const actionStoreKind = oneOf('ACTION_STORE', process.env.ACTION_STORE, ['pinecone', 'supabase'] as const, 'pinecone');
+export const RECORD_SCHEMA = 'compat';
 
 export const config = {
   // API_PORT first, then the conventional PORT, then a default.
@@ -239,25 +207,8 @@ export const config = {
     dimensions: num(process.env.EMBEDDING_DIMENSIONS, 1024),
   },
 
-  pinecone: {
-    apiKey: pineconeKey,
-    host: pineconeHost,
-    namespaceTemplate:
-      str(process.env.PINECONE_NAMESPACE_TEMPLATE) || '{politician_id}_bills',
-    // Batch runs scope bill vectors by embedding_version == run_id. A live
-    // query has no run to scope to; blank searches every version.
-    embeddingVersion: str(process.env.PINECONE_EMBEDDING_VERSION),
-  },
-
   retrieval: {
     topK: num(process.env.RETRIEVAL_TOP_K, 10),
-    /** ACTION_STORE. See `actionStoreKind`. */
-    store: actionStoreKind,
-  },
-
-  /** RECORD_SCHEMA. See `recordSchema`. */
-  record: {
-    schema: recordSchema,
   },
 
   /**
@@ -472,21 +423,13 @@ export const config = {
   },
 } as const;
 
-export function namespaceFor(politicianId: string): string {
-  return config.pinecone.namespaceTemplate.replace('{politician_id}', politicianId);
-}
-
 /** One-line startup banner so the active mode is never a surprise. */
 export function describeMode(): string {
   const llm = config.demoMode
     ? 'DEMO (stubbed interpret/explain)'
     : `live (${config.models.explain})`;
-  const data = config.fixtureMode
-    ? 'FIXTURE (canned matches)'
-    : config.retrieval.store === 'supabase'
-      ? 'live (Supabase core)'
-      : 'live (Pinecone)';
-  return `llm=${llm}  data=${data}  record=${config.record.schema}`;
+  const data = config.fixtureMode ? 'FIXTURE (canned matches)' : 'live (Supabase core)';
+  return `llm=${llm}  data=${data}  record=${RECORD_SCHEMA}`;
 }
 
 /**
@@ -522,13 +465,5 @@ export function describeModels(): string {
  */
 export function describeCredentials(): string {
   const mark = (v: string) => (v ? 'present' : 'ABSENT');
-  return [
-    `credentials: anthropic=${mark(anthropicKey)}  openai=${mark(openaiKey)}  ` +
-      `pinecone=${mark(pineconeKey)}  pinecone_host=${mark(pineconeHost)}  ` +
-      `supabase=${mark(databaseUrl)}`,
-    config.pinecone.embeddingVersion
-      ? `  embedding_version PINNED to "${config.pinecone.embeddingVersion}" — a stale pin ` +
-        'returns zero vectors; the store asserts on this.'
-      : '  embedding_version unset (searches every version)',
-  ].join('\n');
+  return `credentials: anthropic=${mark(anthropicKey)}  openai=${mark(openaiKey)}  supabase=${mark(databaseUrl)}`;
 }

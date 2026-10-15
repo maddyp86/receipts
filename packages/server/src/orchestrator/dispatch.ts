@@ -60,7 +60,7 @@ import type { CorrectionDelta, Corrections } from '@receipts/shared';
 import { scoreMatches, type ScorableMatch } from '../scoring/score.js';
 import { NEAR_MISS_REVIEW_LIMIT, SIMILARITY } from '../scoring/config.js';
 import { withholdForUnreadRecord } from '../scoring/withholding.js';
-import { config, namespaceFor } from '../config.js';
+import { config } from '../config.js';
 import { traceStep, type TraceUsage } from '../trace/Trace.js';
 import type { ResponsesEnvelope } from '../evaluation/relevance.js';
 import {
@@ -752,9 +752,7 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
   const retrieveInput = {
     store: actionStore.kind,
     politician_id: session.senator.politician_id,
-    namespace: actionStore.kind === 'pinecone' ? namespaceFor(session.senator.politician_id) : null,
     top_k: config.retrieval.topK,
-    embedding_version: config.pinecone.embeddingVersion || null,
     vector_dimensions: session.vector.length,
     query_text: session.embeddingText ?? session.promiseText,
   };

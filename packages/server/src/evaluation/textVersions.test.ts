@@ -18,7 +18,7 @@ import { buildFulfillmentUserMessage, type FulfillmentCandidate } from './fulfil
 // EVALUATE EACH ACTION AGAINST THE TEXT THAT EXISTED WHEN IT HAPPENED.
 //
 // Fixture: the six confirmed gut-and-amend bills, in the exact row shape of
-// mirror.mirror_impact_statement_versions. They are SYNTHETIC today, written
+// compat.mirror_impact_statement_versions. They are SYNTHETIC today, written
 // while the live corpus was being regenerated; `tools/dump-version-fixtures.mjs`
 // swaps in live rows. Every assertion here is about BEHAVIOUR — which version
 // is in effect on which date — and never about prose, so the swap needs no

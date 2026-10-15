@@ -1,10 +1,11 @@
 import pg from 'pg';
-import { config } from '../config.js';
+import { RECORD_SCHEMA, config } from '../config.js';
 import { FLOOR_LEADERS_FALLBACK, normaliseClotureResult, type GateRefs } from './preEvaluatorGates.js';
 import type { VersionMirrorRow } from './textVersions.js';
 
 // ===========================================================================
-// ENRICHMENT — the reference data the gates need, from the Supabase mirror.
+// ENRICHMENT — the reference data the gates need, from the record in Supabase
+// (the `compat` views over `core`, in the shape of the old Sheets mirror).
 //
 // SOURCE: docs/fix/08_query_tool_pipeline.md step 4 ("Enrichment from the
 // evidence layer, mirrors WF10A's joins"). There is no code to port for this —
@@ -19,7 +20,7 @@ import type { VersionMirrorRow } from './textVersions.js';
 // gates were faithfully ported long before this file existed; they simply could
 // not fire.
 //
-// ── READS ONLY THE MIRROR, AND ONLY THE ENRICHMENT TABLES ─────────────────
+// ── READS ONLY THE RECORD, AND ONLY THE ENRICHMENT TABLES ─────────────────
 // There is deliberately NO reader here for mirror_promise_alignment_matches or
 // mirror_decision_scores. fix/08: the query tool runs a FRESH evaluation and
 // must not inherit a corpus verdict. Those tables are also not synced and
@@ -136,7 +137,7 @@ export interface BillEnrichment {
 
 /**
  * What a bill's BILL-LEVEL impact statement records about the policy it
- * reverses (mirror.mirror_impact_statements). The evaluator's v7 prompt reads
+ * reverses (compat.mirror_impact_statements). The evaluator's v7 prompt reads
  * these to decide direction on a reversal — a disapproval resolution,
  * typically — and treats an absent value as "false" / "N/A".
  *
@@ -271,7 +272,9 @@ export const MIRROR_TABLES_READ = [
 ] as const;
 
 /**
- * Reads the `mirror` schema.
+ * Reads the `compat` views (RECORD_SCHEMA). The `mirror` schema they replaced
+ * was dropped on 2026-10-14; the class and its `kind` keep the old name because
+ * stored traces and answer events carry it.
  *
  * DEFENSIVE ABOUT COLUMNS. The mirror's typed columns and the Sheets tabs do
  * not always agree — `mirror_roll_call_votes` is modelled per (vote, politician)
@@ -284,16 +287,9 @@ export class MirrorEnrichmentSource implements EnrichmentSource {
   readonly kind = 'mirror' as const;
 
   private readonly pool: pg.Pool;
+  private readonly schema = RECORD_SCHEMA;
 
-  /**
-   * @param schema RECORD_SCHEMA: `mirror`, or `compat` (views over `core` in
-   *   the mirror's exact shape). Only the schema differs; table names, columns
-   *   and row keys are the same, so every read below is unchanged.
-   */
-  constructor(
-    connectionString: string = config.database.url,
-    private readonly schema: 'mirror' | 'compat' = config.record.schema,
-  ) {
+  constructor(connectionString: string = config.database.url) {
     this.pool = new Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },

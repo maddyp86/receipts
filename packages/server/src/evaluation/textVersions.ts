@@ -54,7 +54,7 @@ import type { FulfillmentCandidate } from './fulfillment.js';
 
 const S = (v: unknown): string => (v === null || v === undefined ? '' : String(v).trim());
 
-/** One row of `mirror.mirror_impact_statement_versions`, as stored. */
+/** One row of `compat.mirror_impact_statement_versions`, as stored. */
 export interface VersionMirrorRow {
   impact_version_uid: string;
   bill_id: string | null;

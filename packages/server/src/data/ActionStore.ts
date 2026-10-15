@@ -4,8 +4,8 @@ import type { Envelope, MatchedAction } from '@receipts/shared';
 // The data seam.
 //
 // Every read of a senator's legislative record goes through this interface, so
-// today's Pinecone (and the fixture stand-in) can become Supabase later without
-// touching a single call site. ADR-009 (docs/adr/README.md).
+// Pinecone (and the fixture stand-in) became Supabase without touching a single
+// call site. ADR-009 (docs/adr/README.md).
 // ===========================================================================
 
 export interface SearchParams {
@@ -59,7 +59,7 @@ export interface SearchResult {
 
 export interface ActionStore {
   /** Identifies the backing implementation for logging and the UI mode banner. */
-  readonly kind: 'fixture' | 'pinecone' | 'supabase';
+  readonly kind: 'fixture' | 'supabase';
   /**
    * Returns matches ordered by descending similarity, already filtered to the
    * WEAK floor, plus the pre-filter counts. Never throws — an unreachable
