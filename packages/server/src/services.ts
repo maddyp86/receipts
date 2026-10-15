@@ -1,6 +1,9 @@
 import { SupabaseFeedbackStore, nullFeedbackStore, type FeedbackStore } from './data/FeedbackStore.js';
 import { MemoryUsageCounter, SupabaseUsageCounter, type UsageCounter } from './data/UsageCounter.js';
 import { config } from './config.js';
+import Stripe from 'stripe';
+import { SupabaseFundingStore } from './funding/FundingStore.js';
+import type { FundingDeps } from './funding/funding.js';
 import type { ActionStore } from './data/ActionStore.js';
 import { FixtureActionStore } from './data/FixtureActionStore.js';
 import { SupabaseActionStore } from './data/SupabaseActionStore.js';
@@ -82,3 +85,22 @@ export function describeTraceSinks(): string {
   const parts = traceSinks.map((s) => (s.kind === 'file' ? `file ${config.trace.dir}` : 'supabase app.app_query_trace_*'));
   return `trace: ${parts.join(' + ')} · read back at /api/trace/:run_id`;
 }
+
+/**
+ * Funding a member's record (funding/funding.ts). Null unless
+ * ENABLE_FUNDING is on AND both Stripe values and DATABASE_URL are set;
+ * the routes then answer "not available" and the button is not shown.
+ */
+export const fundingDeps: FundingDeps | null = config.funding.enabled
+  ? {
+      store: new SupabaseFundingStore(config.database.url),
+      stripe: new Stripe(config.funding.stripeSecretKey),
+      settings: {
+        priceCents: config.funding.priceCents,
+        currency: config.funding.currency,
+        slaDays: config.funding.slaDays,
+        returnUrl: config.funding.returnUrl,
+        webhookSecret: config.funding.stripeWebhookSecret,
+      },
+    }
+  : null;

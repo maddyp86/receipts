@@ -19,6 +19,7 @@ import {
 import { FollowUp } from './components/FollowUp.js';
 import { GlossaryProvider } from './components/glossary/GlossaryContext.js';
 import { SelectedMember } from './components/members/SelectedMember.js';
+import { FundedThanks, FundingProvider } from './components/members/FundRecord.js';
 
 // ===========================================================================
 // Three screens, chosen by where the query is:
@@ -59,6 +60,20 @@ export default function App() {
   const [kind, setKind] = useState<StatementKind>('position');
 
   const stream = useReceiptStream();
+
+  /** Back from Stripe Checkout: ?funded=<member id>. Read once, then cleared from the address bar. */
+  const [fundedId, setFundedId] = useState<string | null>(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('funded');
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    if (!fundedId) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    window.scrollTo({ top: 0 });
+  }, [fundedId]);
 
   useEffect(() => {
     fetch(apiUrl('/api/senators'))
@@ -167,8 +182,17 @@ export default function App() {
 
   return (
     <GlossaryProvider>
+      <FundingProvider>
       <div className="min-h-screen w-full bg-paper">
         <DemoBanner demo={modes.demo} fixture={modes.fixture} />
+        {fundedId ? (
+          <div className="px-4">
+            <FundedThanks
+              memberName={roster.find((m) => m.politician_id === fundedId)?.name ?? null}
+              onClose={() => setFundedId(null)}
+            />
+          </div>
+        ) : null}
 
         {screen === 'entry' ? (
           <Page width="narrow">
@@ -379,6 +403,7 @@ export default function App() {
           </Page>
         ) : null}
       </div>
+      </FundingProvider>
     </GlossaryProvider>
   );
 }

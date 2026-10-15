@@ -11,6 +11,7 @@ import {
   type Senator,
   type ToolError,
 } from '@receipts/shared';
+import { FundRecord } from './members/FundRecord.js';
 
 // ===========================================================================
 // Honest states.
@@ -162,6 +163,7 @@ export function UncachedState({
           next, so this genuinely moves them up the list.
         </p>
       ) : null}
+      <FundRecord memberId={senator.politician_id} name={senator.name} />
       <div className="flex flex-wrap gap-3 pt-2">
         <button type="button" className={BTN_PRIMARY} onClick={onReset}>
           Try an analyzed senator

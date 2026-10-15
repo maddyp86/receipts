@@ -1,5 +1,7 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import pg from 'pg';
+import { config } from '../config.js';
 
 // ===========================================================================
 // Demand capture for uncached senators (ADR-004, docs/adr/README.md).
@@ -40,4 +42,38 @@ export class FileQueueStore implements QueueStore {
   }
 }
 
-export const queueStore: QueueStore = new FileQueueStore();
+/**
+ * app.member_requests (migration 018): the same signal, kept past a deploy.
+ * Insert-only for the app. Best effort, like the file: a failure is logged and
+ * the reader still gets the honest uncached state.
+ */
+export class SupabaseQueueStore implements QueueStore {
+  private readonly pool: pg.Pool;
+
+  constructor(connectionString: string, private readonly file: QueueStore = new FileQueueStore()) {
+    this.pool = new pg.Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false },
+      max: 1,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 10_000,
+    });
+    this.pool.on('error', (err) => console.error('[queue] idle client error:', err.message));
+  }
+
+  async record(request: QueueRequest): Promise<void> {
+    await this.file.record(request);
+    try {
+      await this.pool.query(
+        `insert into app.member_requests (member_id, member_name, promise_text, requested_at)
+         values ($1, $2, $3, $4)`,
+        [request.politician_id, request.senator_name, request.promise_text.slice(0, 2000), request.requested_at],
+      );
+    } catch (err) {
+      console.warn('[queue] not stored in app.member_requests (has migration 018 run?):', err instanceof Error ? err.message : err);
+    }
+  }
+}
+
+export const queueStore: QueueStore =
+  config.database.url && config.database.persistQueries ? new SupabaseQueueStore(config.database.url) : new FileQueueStore();

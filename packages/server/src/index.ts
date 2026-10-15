@@ -15,6 +15,8 @@ import { TAXONOMY_IS_COMPLETE } from './embeddings/taxonomy.js';
 import { feedbackLimiter, globalDailyCap, queryBurstLimiter, queryDailyLimiter, readOnlyLimiter, refundDailyCheck } from './rateLimit.js';
 import { feedbackStore, usageCounter } from './services.js';
 import { validateFeedback } from './data/FeedbackStore.js';
+import { fundingDeps } from './services.js';
+import { createCheckout, handleWebhook, fundingStatus } from './funding/funding.js';
 
 /** After the per-IP limiters: a request they refuse never spends the shared budget. */
 const globalCap = globalDailyCap(usageCounter, config.rateLimit.globalQueryPerDay);
@@ -47,6 +49,18 @@ app.use(
       : {},
   ),
 );
+// Stripe's webhook, BEFORE the JSON parser: the signature is over the raw
+// bytes, and a re-serialised body never verifies. Before the read limiter too:
+// a retry storm from Stripe must not be answered with a 429 and lost.
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
+  if (!fundingDeps) {
+    res.status(404).json({ error: 'Funding is not enabled.' });
+    return;
+  }
+  const out = await handleWebhook(req.body as Buffer, req.header('stripe-signature'), fundingDeps);
+  res.status(out.status).json(out.body);
+});
+
 app.use(express.json());
 
 // Generous cap on the cheap routes. `/api/health` is exempt inside the
@@ -228,6 +242,44 @@ app.post('/api/feedback', feedbackLimiter, async (req, res) => {
   }
 });
 
+/**
+ * Funding a not-yet-checked senator's record (funding/funding.ts).
+ * Status is cheap and always answers; checkout answers only when enabled.
+ */
+app.get('/api/fund/status', async (_req, res) => {
+  if (!fundingDeps) {
+    res.json({ enabled: false });
+    return;
+  }
+  try {
+    res.json(await fundingStatus(fundingDeps));
+  } catch (err) {
+    // No label is better than a wrong one: say it is off rather than fail the picker.
+    console.error('[funding] status:', err instanceof Error ? err.message : err);
+    res.json({ enabled: false });
+  }
+});
+
+app.post('/api/fund/checkout', feedbackLimiter, async (req, res) => {
+  if (!fundingDeps) {
+    res.status(404).json({ error: { code: 'BAD_INPUT', message: 'Funding a record is not available.', recoverable: false } });
+    return;
+  }
+  try {
+    const out = await createCheckout(String((req.body ?? {}).memberId ?? ''), fundingDeps);
+    if (out.ok) {
+      res.json({ url: out.url });
+      return;
+    }
+    res.status(out.status).json({ error: { code: out.code, message: out.message, recoverable: false } });
+  } catch (err) {
+    console.error('[funding] checkout:', err instanceof Error ? err.message : err);
+    res.status(503).json({
+      error: { code: 'UPSTREAM_UNAVAILABLE', message: 'The payment page could not be opened. Please try again.', recoverable: true },
+    });
+  }
+});
+
 app.get('/api/taxonomy', (_req, res) => {
   res.json({ primary_issues: primaryIssues().map((p) => ({ primary_issue: p, sub_issues: subIssuesFor(p) })) });
 });
@@ -337,6 +389,11 @@ app.listen(config.port, () => {
       (usageCounter.kind === 'supabase'
         ? 'in app.app_usage_daily (falls back to memory if migration 011 is missing)'
         : 'IN MEMORY — resets on every restart; set DATABASE_URL to persist it'),
+  );
+  console.info(
+    fundingDeps
+      ? `  funding: ON · $${(config.funding.priceCents / 100).toFixed(2)} ${config.funding.currency} · live in ${config.funding.slaDays} days or refunded · returns to ${config.funding.returnUrl || '(no FUNDING_RETURN_URL or CORS_ORIGIN!)'}`
+      : '  funding: off (needs ENABLE_FUNDING, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET and DATABASE_URL)',
   );
   if (config.demoMode) {
     console.info('  DEMO MODE — interpretation and explanation are canned, and the UI says so.');

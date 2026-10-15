@@ -2,6 +2,7 @@ import { CheckIcon } from 'lucide-react';
 import type { Member } from '../../data/roster.js';
 import { memberArea, memberTitle, partyName } from '../../lib/members.js';
 import { MemberPortrait } from './MemberPortrait.js';
+import { FundRecord } from './FundRecord.js';
 
 interface Props {
   member: Member;
@@ -38,6 +39,8 @@ export function MemberCard({ member, selected, onSelect, coveredAlternative }: P
           Not checked yet. We’re still going through {member.name}’s record.
           {coveredAlternative ? ` You can check ${coveredAlternative.name} now.` : ''}
         </p>
+        {/* Senators only: the query tool does not cover the House yet. */}
+        {member.chamber === 'senate' ? <FundRecord memberId={member.politician_id} name={member.name} /> : null}
       </div>
     );
   }
