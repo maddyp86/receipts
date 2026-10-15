@@ -106,7 +106,9 @@ describe('on', () => {
       const first = await run(QUESTION, 'session-a');
       const runsAfterFirst = sink.runs.size;
       const second = await run(QUESTION, 'session-a');
-      expect(second).toEqual(first);
+      // Narration describes work being done, and a replay does none: it is
+      // the one thing a replay leaves out.
+      expect(second).toEqual(first.filter((e) => e.type !== 'note'));
       // The replay's own one-step run, and nothing else.
       expect(sink.runs.size).toBe(runsAfterFirst + 1);
     });

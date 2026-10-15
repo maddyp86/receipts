@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import type {
   ClarifyOption,
   Interpretation,
+  NoteEvent,
   QueryClarify,
   QueryHalt,
   QueryResult,
@@ -28,6 +29,11 @@ export type Phase = 'idle' | 'streaming' | 'done';
 export interface StreamState {
   phase: Phase;
   steps: StepEvent[];
+  /**
+   * What the server says it is doing, line by line, in arrival order. One
+   * line per key; a later note with the same key updates it in place.
+   */
+  notes: NoteEvent[];
   interpretation: Interpretation | null;
   result: QueryResult | null;
   uncached: { senator: Senator; queued: boolean } | null;
@@ -70,6 +76,7 @@ export interface StreamState {
 const EMPTY: StreamState = {
   phase: 'idle',
   steps: [],
+  notes: [],
   interpretation: null,
   result: null,
   uncached: null,
@@ -151,6 +158,12 @@ export function useReceiptStream() {
                   ? [...prev.steps, event]
                   : prev.steps.map((s, i) => (i === seen ? event : s));
               return { ...prev, steps };
+            }
+            case 'note': {
+              const seen = prev.notes.findIndex((n) => n.key === event.key);
+              const notes =
+                seen === -1 ? [...prev.notes, event] : prev.notes.map((n, i) => (i === seen ? event : n));
+              return { ...prev, notes };
             }
             case 'interpretation':
               return { ...prev, interpretation: event.interpretation };

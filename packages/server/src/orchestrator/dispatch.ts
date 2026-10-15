@@ -21,7 +21,7 @@ import { queueStore } from '../data/QueueStore.js';
 import { actionStore, embedder } from '../services.js';
 import { NA_VALUE, buildPromiseEmbeddingText } from '../embeddings/promiseEmbeddingText.js';
 import { isValidCombination, lookupTaxonomyKeywords } from '../embeddings/taxonomy.js';
-import { evaluateRelevance, type RelevanceCandidate } from '../evaluation/relevance.js';
+import { evaluateRelevance, type EvaluatedCandidate, type RelevanceCandidate } from '../evaluation/relevance.js';
 import { applyEvidenceGate, describeExclusions } from '../evaluation/evidenceGate.js';
 import {
   evaluateFulfillment,
@@ -49,6 +49,8 @@ import {
   type TextVersionSelection,
 } from '../evaluation/textVersions.js';
 import { judgeGates } from '../judge/judgeGates.js';
+import * as narration from './narrate.js';
+import type { Narrate } from './narrate.js';
 import { judgeErrorVerdict, judgeVerdict, type JudgeFetcher, type JudgeVerdict } from '../judge/judge.js';
 import {
   applyDispositionToResult,
@@ -196,6 +198,12 @@ export interface QuerySession {
   judge?: { verdict: JudgeVerdict; disposition: DispositionResult };
   /** Injected in tests; the live path builds its own. */
   judgeFetcher?: JudgeFetcher;
+  /**
+   * Tells the reader what is happening as it happens (narrate.ts). Set by the
+   * loop to emit `note` events; absent in tests and replays, where nothing
+   * is watching.
+   */
+  narrate?: Narrate;
 }
 
 export function newSession(
@@ -712,6 +720,7 @@ function congressOf(billId: string): string {
  */
 function checkRelevance(session: QuerySession, rows: MatchedAction[]) {
   const relevanceFetcher = session.relevanceFetcher ?? liveResponsesFetcher('relevance');
+  for (const m of rows) session.narrate?.(narration.relevanceStartNote(m.action_uid, String(m.bill_id ?? ''), String(m.title ?? '')));
   return evaluateRelevance(
     rows.map((m) => toRelevanceCandidate(session, m)),
     relevanceFetcher,
@@ -719,7 +728,8 @@ function checkRelevance(session: QuerySession, rows: MatchedAction[]) {
       // GATE: one model call per candidate. The full user message, the raw
       // text back, and the parse — the three things that decide whether a
       // bill is "about" the promise, side by side.
-      observe: (o) =>
+      observe: (o) => {
+        session.narrate?.(narration.relevanceDoneNote(String(o.candidate.action_uid ?? ''), o.candidate.bill_id, o.result.verdict));
         traceStep({
           stage: 'RELEVANCE', kind: 'model',
           status: o.error ? 'error' : o.result.verdict === 'ERROR' ? 'rejected' : 'ok',
@@ -730,9 +740,19 @@ function checkRelevance(session: QuerySession, rows: MatchedAction[]) {
           input: { user_message: o.request.input.find((m) => m.role === 'user')?.content ?? '', reasoning_effort: o.request.reasoning.effort, top_p: o.request.top_p },
           output: { raw_text: o.rawText, parsed: o.result },
           error: o.error ?? o.result.error ?? null,
-        }),
+        });
+      },
     },
   );
+}
+
+/** Each checked row again, now with whether the evidence gate kept it. */
+function narrateGate(session: QuerySession, evaluated: EvaluatedCandidate[], admitted: Set<string>) {
+  if (!session.narrate) return;
+  for (const c of evaluated) {
+    const uid = String(c.action_uid ?? '');
+    session.narrate(narration.relevanceDoneNote(uid, c.bill_id, c.relevance.verdict, admitted.has(uid)));
+  }
 }
 
 async function searchActions(session: QuerySession): Promise<Envelope<unknown>> {
@@ -799,6 +819,7 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
     topK: config.retrieval.topK,
   };
   session.nearMisses = result.data.nearMisses;
+  session.narrate?.(narration.retrievedNote(candidatesIn.length));
 
   // ---- RELEVANCE LEG ----------------------------------------------------
   // Skipped when there is no evaluator to call. This is NOT a silent bypass:
@@ -868,6 +889,7 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
       input: { review_floor: SIMILARITY.REVIEW, limit: NEAR_MISS_REVIEW_LIMIT, above_floor_checked: candidatesIn.length },
       output: { reviewed: reviewed.map((m) => ({ action_uid: m.action_uid, bill_id: m.bill_id, score: m.score })) },
     });
+    session.narrate?.(narration.nearMissNote(reviewed.length));
     evaluated = [...evaluated, ...(await checkRelevance(session, reviewed))];
     candidatesIn = [...candidatesIn, ...reviewed];
     gate = applyEvidenceGate(evaluated);
@@ -920,6 +942,7 @@ async function searchActions(session: QuerySession): Promise<Envelope<unknown>> 
   const admittedUids = new Set(gate.admitted.map((c) => String(c.action_uid ?? '')));
   session.matches = candidatesIn.filter((m) => admittedUids.has(m.action_uid));
   session.relevance = gate;
+  narrateGate(session, evaluated, admittedUids);
 
   // The model needs enough to judge effect, and nothing that would let it
   // shortcut to a verdict — so no scores and no vote fields are sent back here.
@@ -984,10 +1007,12 @@ async function evaluateEffectsTool(
     input: { review_floor: SIMILARITY.REVIEW, limit: NEAR_MISS_REVIEW_LIMIT, nd_reason: s.nd_reason },
     output: { reviewed: pending.map((m) => ({ action_uid: m.action_uid, bill_id: m.bill_id, score: m.score })) },
   });
+  session.narrate?.(narration.nearMissNote(pending.length, 'score'));
   const checked = await checkRelevance(session, pending);
   const all = [...(session.evaluated ?? []), ...checked];
   const gate = applyEvidenceGate(all);
   const added = new Set(gate.admitted.map((c) => String(c.action_uid ?? '')));
+  narrateGate(session, checked, added);
   const admitted = pending.filter((m) => added.has(m.action_uid));
   session.evaluated = all;
   session.relevance = gate;
@@ -1059,6 +1084,7 @@ async function evaluateEffectsOnce(
   const enrichmentFailures: Array<{ part: EnrichmentPart; message: string }> = [];
   const report: EnrichmentReport = (part, message) => enrichmentFailures.push({ part, message });
   const billIds = matches.map((m) => String(m.bill_id ?? ''));
+  if (matches.length) session.narrate?.(narration.enrichmentNote('running', new Set(billIds).size));
   const [refs, enrichment, bills, versionRows, billStatements] = await Promise.all([
     enrichmentSource.refs(report),
     enrichmentSource.forActions(matches.map((m) => m.action_uid), report),
@@ -1066,6 +1092,7 @@ async function evaluateEffectsOnce(
     enrichmentSource.forVersions(billIds, report),
     enrichmentSource.forBillStatements(billIds, report),
   ]);
+  if (matches.length) session.narrate?.(narration.enrichmentNote('done', new Set(billIds).size));
   session.enrichmentKind = enrichmentSource.kind;
   session.enrichmentFailures = enrichmentFailures;
   const failedParts = [...new Set(enrichmentFailures.map((f) => f.part))];
@@ -1119,6 +1146,9 @@ async function evaluateEffectsOnce(
     const selection = selectTextVersion(rows, act);
     if (!selection) continue;
     textVersions[m.action_uid] = selection;
+    if (selection.disclosure.status === 'SELECTED') {
+      session.narrate?.(narration.textVersionNote(m.action_uid, String(m.bill_id ?? ''), selection.disclosure.type, selection.disclosure.date));
+    }
     // GATE: which text the evaluator will read. A SELECTED row changes the
     // evaluator's input; every other status leaves it on the latest summary
     // and says why.
@@ -1226,6 +1256,7 @@ async function evaluateEffectsOnce(
     if (result.scorable) {
       scorableMatches.push(m);
     } else {
+      session.narrate?.(narration.gatedNote(m.action_uid, String(m.bill_id ?? ''), result.hit!.reason));
       gatedRows.push({
         action_uid: m.action_uid,
         bill_id: String(m.bill_id ?? ''),
@@ -1265,6 +1296,9 @@ async function evaluateEffectsOnce(
   // reuses the first pass's readings and pays only for the bills it added.
   const memo = (session.fulfillmentMemo ??= new Map());
   const unread = scorableMatches.filter((m) => !memo.has(m.action_uid));
+  if (canEvaluateFulfillment) {
+    for (const m of unread) session.narrate?.(narration.readStartNote(m.action_uid, String(m.bill_id ?? ''), String(m.title ?? '')));
+  }
   const fresh =
     unread.length && canEvaluateFulfillment
       ? await evaluateFulfillment(
@@ -1282,7 +1316,8 @@ async function evaluateEffectsOnce(
           {
             // GATE: bill_effect, the axis the verdict follows from. Raw text
             // and parse per candidate, with the v7 prompt version and hash.
-            observe: (o) =>
+            observe: (o) => {
+              session.narrate?.(narration.readDoneNote(String(o.candidate.action_uid ?? ''), o.candidate.bill_id, o.result.bill_effect));
               traceStep({
                 stage: 'FULFILLMENT', kind: 'model',
                 status: o.error ? 'error' : o.result.bill_effect === 'ERROR' ? 'rejected' : 'ok',
@@ -1296,7 +1331,8 @@ async function evaluateEffectsOnce(
                 input: { user_message: o.request.input.find((m) => m.role === 'user')?.content ?? '', reasoning_effort: o.request.reasoning.effort, top_p: o.request.top_p },
                 output: { raw_text: o.rawText, parsed: o.result },
                 error: o.error ?? o.result.error ?? null,
-              }),
+              });
+            },
           },
         )
       : [];
@@ -1598,6 +1634,7 @@ async function evaluateEffectsOnce(
         output: jg,
       });
 
+      session.narrate?.(narration.judgeNote('running'));
       const verdict = await judgeVerdict(
         {
           statement_text: session.promiseText,
@@ -1638,6 +1675,7 @@ async function evaluateEffectsOnce(
         },
         session.judgeFetcher ?? undefined,
       );
+      session.narrate?.(narration.judgeNote('done'));
 
       const disposition = applyJudgeVerdict(
         {

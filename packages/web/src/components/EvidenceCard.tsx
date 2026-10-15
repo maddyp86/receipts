@@ -23,6 +23,7 @@ import {
   textVersionLines,
   congressLabel,
   congressOfBillId,
+  billCitation,
   governingVoteSentence,
   HISTORY_UNAVAILABLE_COPY,
   surnameOf,
@@ -161,28 +162,6 @@ function formatDate(value: string | null | undefined): string | null {
   const d = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
-}
-
-const BILL_PREFIX: Record<string, string> = {
-  s: 'S.',
-  hr: 'H.R.',
-  sjres: 'S.J.Res.',
-  hjres: 'H.J.Res.',
-  sres: 'S.Res.',
-  hres: 'H.Res.',
-  sconres: 'S.Con.Res.',
-  hconres: 'H.Con.Res.',
-};
-
-/**
- * The bill as it is cited — "S. 25", "H.J.Res. 45" — from the id, which always
- * carries type and number (`s25-118`). Null when the id is not in that shape;
- * the id itself is shown either way.
- */
-function billCitation(billId: string): string | null {
-  const m = /^([a-z]+)(\d+)-\d+$/.exec(String(billId ?? '').toLowerCase());
-  const prefix = m ? BILL_PREFIX[m[1]!] : undefined;
-  return m && prefix ? `${prefix} ${m[2]}` : null;
 }
 
 /** "a; b; c" as separate items. One item when there is nothing to split. */

@@ -617,6 +617,27 @@ export function congressOfBillId(billId: string | null | undefined): number | nu
   return m ? Number.parseInt(m[1]!, 10) : null;
 }
 
+const BILL_PREFIX: Record<string, string> = {
+  s: 'S.',
+  hr: 'H.R.',
+  sjres: 'S.J.Res.',
+  hjres: 'H.J.Res.',
+  sres: 'S.Res.',
+  hres: 'H.Res.',
+  sconres: 'S.Con.Res.',
+  hconres: 'H.Con.Res.',
+};
+
+/**
+ * The bill as it is cited — "S. 25", "H.J.Res. 45" — from the id, which always
+ * carries type and number (`s25-118`). Null when the id is not in that shape.
+ */
+export function billCitation(billId: string | null | undefined): string | null {
+  const m = /^([a-z]+)(\d+)-\d+$/.exec(String(billId ?? '').trim().toLowerCase());
+  const prefix = m ? BILL_PREFIX[m[1]!] : undefined;
+  return m && prefix ? `${prefix} ${m[2]}` : null;
+}
+
 /** 118 → "2023–2024". The nth Congress convenes in January of 1789 + 2(n−1). */
 export function congressYears(n: number): string {
   const start = 1789 + 2 * (n - 1);
@@ -1335,6 +1356,34 @@ export interface StepEvent {
 }
 
 /**
+ * One line of narration under a step, said as the work happens: "Reading
+ * S. 1071 — …", then "S. 1071 — pushes toward this". The reader sees what is
+ * being checked and what each check found while the answer is still coming.
+ *
+ * Reader-facing copy built in code from what the pipeline decided, never a
+ * model's raw reasoning. A note is NOT a verdict and never carries one: the
+ * verdict is decided after every bill is read, and can still be held back.
+ *
+ * A note with the same `key` replaces the earlier one in place, so a bill that
+ * starts "running" and finishes "done" is one line, not two.
+ */
+export interface NoteEvent {
+  type: 'note';
+  step: StepId;
+  key: string;
+  text: string;
+  status: 'running' | 'done' | 'skipped';
+  /**
+   * Notes that belong together, e.g. every bill read in this step. The screen
+   * shows one summary line per group ("Reading 3 of 8 bills") and the notes
+   * themselves only when the reader opens it.
+   */
+  group?: 'relevance' | 'read' | 'version' | 'gated';
+  /** Set once a rule has decided whether a checked row is used. */
+  outcome?: 'kept' | 'set_aside';
+}
+
+/**
  * A user's correction to the classification.
  *
  * EVERY correctable field here lives inside the embedded query text, so a
@@ -1536,6 +1585,7 @@ export interface SuggestEvent {
 export type StreamEvent =
   | TraceEvent
   | StepEvent
+  | NoteEvent
   | InterpretationEvent
   | UncachedEvent
   | ResultEvent

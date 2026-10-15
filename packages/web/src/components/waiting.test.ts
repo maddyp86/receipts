@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { StepEvent, StepId } from '@receipts/shared';
-import { stageStatuses } from './Waiting.js';
+import type { NoteEvent, StepEvent, StepId } from '@receipts/shared';
+import { Waiting, stageStatuses, subtasksFor } from './Waiting.js';
 import { Entry } from './Entry.js';
 
 // The test runner compiles JSX with the classic transform.
@@ -107,5 +107,65 @@ describe('the entry screen and coverage', () => {
     // The only selectable card is the covered member's.
     expect(page.match(/data-covered="true"/g)).toHaveLength(1);
     expect(page).not.toMatch(/data-covered="true"[^>]*>[\s\S]{0,400}Pat Sample/);
+  });
+});
+
+// ===========================================================================
+// THE NARRATION under each stage: what the server says it is doing, as it
+// does it. Open under the stage that is working, folded under one that is done.
+// ===========================================================================
+
+describe('the narration', () => {
+  const note = (key: string, step: StepId, status: NoteEvent['status'], text: string, extra: Partial<NoteEvent> = {}): NoteEvent =>
+    ({ type: 'note', key, step, status, text, ...extra });
+
+  const notes: NoteEvent[] = [
+    note('retrieved', 'search', 'done', 'Found 3 votes and bills that come up for this topic'),
+    note('rel:A', 'search', 'done', 'S. 1: about this — kept', { group: 'relevance', outcome: 'kept' }),
+    note('rel:B', 'search', 'skipped', 'S. 2: about something else — set aside', { group: 'relevance', outcome: 'set_aside' }),
+    note('enrichment', 'score', 'done', 'Looked up vote dates, roles, and how far 2 bills got'),
+    note('ver:A', 'score', 'done', 'S. 1 changed as it moved — reading the text in front of them', { group: 'version' }),
+    note('read:A', 'score', 'done', 'S. 1: the bill pushes toward this', { group: 'read' }),
+    note('read:C', 'score', 'running', 'Reading H.R. 3 — A bill', { group: 'read' }),
+  ];
+
+  it('one summary line per group, each note kept behind it', () => {
+    const search = subtasksFor(notes.filter((n) => n.step === 'search'));
+    expect(search.map((t) => t.text)).toEqual(['Found 3 votes and bills that come up for this topic', '1 about this · 1 set aside']);
+    expect(search[1]!.items).toHaveLength(2);
+
+    const score = subtasksFor(notes.filter((n) => n.step === 'score'));
+    expect(score.map((t) => [t.status, t.text])).toEqual([
+      ['done', 'Looked up vote dates, roles, and how far 2 bills got'],
+      ['running', 'Reading 1 of 2 bills'],
+    ]);
+    // A rewritten-text note is about a bill being read, so it sits with them — and is not counted as one.
+    expect(score[1]!.items.map((n) => n.key)).toEqual(['ver:A', 'read:A', 'read:C']);
+  });
+
+  it('the relevance line waits for the rule before saying what was kept', () => {
+    const checking = subtasksFor([
+      note('rel:A', 'search', 'done', 'S. 1: about this', { group: 'relevance' }),
+      note('rel:B', 'search', 'running', 'Is it about this? S. 2', { group: 'relevance' }),
+    ]);
+    expect(checking[0]).toMatchObject({ status: 'running', text: 'Checking which are about this · 1 of 2' });
+  });
+
+  it('shows the stages and their summary lines, with each bill folded away', () => {
+    const steps = (['classify_scope', 'interpret', 'resolve_senator', 'embed', 'search'] as StepId[])
+      .map((id) => step(id, 'done'))
+      .concat(step('score', 'running'));
+    const page = renderToStaticMarkup(
+      React.createElement(Waiting, {
+        member: { politician_id: 'X1', name: 'Jane Example', chamber: 'senate', cached: true },
+        promise: 'supports something', steps, notes, interpretation: null,
+        onCancel: () => {}, onChange: () => {},
+      }),
+    );
+    expect(page).toContain('Reading 1 of 2 bills');
+    expect(page).toContain('1 about this · 1 set aside');
+    expect(page).toContain('See each bill (3)');
+    // Behind a closed dropdown, not on the page's surface.
+    expect(page).not.toMatch(/<details[^>]*open/);
   });
 });
