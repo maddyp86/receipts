@@ -786,6 +786,14 @@ export interface Explanation {
   /** action_uid -> one-line "why this bill" connector. */
   connectors: Record<string, string>;
   confidence: number;
+  /**
+   * The executive summary at the top of the answer card: 2 to 4 plain
+   * sentences on what the record shows, written by the explanation model from
+   * the facts it was given and held to the same checks as `why`. Absent when
+   * none passed, or on results stored before it existed; the card then shows
+   * the plain fact sentence instead.
+   */
+  card_summary?: string;
 }
 
 // ---------------------------------------------------------------------------
