@@ -285,6 +285,23 @@ export interface Senator {
 }
 
 /**
+ * One serving member of Congress, for finding them by state or name
+ * (`/api/members`). Every current member is listed, checked or not, so a
+ * reader can find anyone and, for a senator, fund their record.
+ */
+export interface DirectoryMember {
+  politician_id: string;
+  name: string;
+  chamber: 'senate' | 'house';
+  party?: 'D' | 'R' | 'I';
+  state?: string;
+  /** House only. Omitted for an at-large seat. */
+  district?: number;
+  /** True only when the record is checked and live (same rule as /api/senators). */
+  cached: boolean;
+}
+
+/**
  * "Angus S. King, Jr." → "King". Senator names now come from the mirror,
  * which keeps generational suffixes; the last word alone would be "Jr.".
  */

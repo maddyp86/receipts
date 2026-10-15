@@ -1,4 +1,4 @@
-import type { Senator } from '@receipts/shared';
+import type { DirectoryMember, Senator } from '@receipts/shared';
 
 // ===========================================================================
 // Who the picker shows.
@@ -64,32 +64,59 @@ export const MIDTERM_ROSTER: readonly Planned[] = [
 ];
 
 /**
- * The picker's list: every member the server covers, plus the planned members
- * it does not cover yet.
+ * The picker's list.
  *
- * The server's row wins on name, party and state — the mirror is the record.
- * A covered member this file has never heard of is shown as a senator, because
- * that is all the pipeline analyses today; add them above when that changes.
+ * With the server's directory (`/api/members`): every serving member of
+ * Congress, so a reader can find anyone by state or name. Without it (demo,
+ * fixtures, a failed read): the covered members plus the planned list above.
+ *
+ * Coverage is always the server's: a member is checkable only when
+ * `/api/senators` says so. This file adds only what the server does not carry,
+ * such as a district's plain-language area. A covered member this file has
+ * never heard of is shown as a senator, because that is all the pipeline
+ * analyses today.
  */
-export function buildRoster(covered: readonly Senator[]): Member[] {
+export function buildRoster(covered: readonly Senator[], directory: readonly DirectoryMember[] = []): Member[] {
   const planned = new Map(MIDTERM_ROSTER.map((m) => [m.politician_id, m]));
+  const coveredById = new Map(covered.map((s) => [s.politician_id, s]));
   const seen = new Set<string>();
   const out: Member[] = [];
 
   for (const s of covered) {
     const meta = planned.get(s.politician_id);
+    const listed = directory.find((d) => d.politician_id === s.politician_id);
     seen.add(s.politician_id);
     out.push({
-      ...(meta ?? { chamber: 'senate' as const }),
+      ...(meta ?? { chamber: listed?.chamber ?? ('senate' as const) }),
+      ...(listed?.district ? { district: listed.district } : {}),
       politician_id: s.politician_id,
       name: s.name,
-      party: s.party ?? meta?.party,
-      state: s.state ?? meta?.state,
+      party: s.party ?? listed?.party ?? meta?.party,
+      state: s.state ?? listed?.state ?? meta?.state,
       cached: Boolean(s.cached),
     });
   }
-  for (const m of MIDTERM_ROSTER) {
-    if (!seen.has(m.politician_id)) out.push({ ...m, cached: false });
+  for (const d of directory) {
+    if (seen.has(d.politician_id)) continue;
+    seen.add(d.politician_id);
+    const meta = planned.get(d.politician_id);
+    out.push({
+      politician_id: d.politician_id,
+      name: d.name,
+      chamber: d.chamber,
+      party: d.party,
+      state: d.state,
+      ...(d.district ? { district: d.district } : {}),
+      ...(meta?.area ? { area: meta.area } : {}),
+      ...(meta?.on_ballot_2026 ? { on_ballot_2026: true } : {}),
+      // Never checkable from the directory alone.
+      cached: Boolean(coveredById.get(d.politician_id)?.cached),
+    });
+  }
+  if (!directory.length) {
+    for (const m of MIDTERM_ROSTER) {
+      if (!seen.has(m.politician_id)) out.push({ ...m, cached: false });
+    }
   }
   return out;
 }

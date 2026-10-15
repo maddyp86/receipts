@@ -3,6 +3,7 @@ import cors from 'cors';
 import type { StreamEvent } from '@receipts/shared';
 import { config, describeCredentials, describeMode, describeModels } from './config.js';
 import { senatorCache } from './data/SenatorCache.js';
+import { memberDirectory } from './data/MemberDirectory.js';
 import { runQuery } from './orchestrator/loop.js';
 import { queryStore } from './services.js';
 import { describeTraceSinks, traceReader, traceSinks } from './services.js';
@@ -163,6 +164,16 @@ app.get('/api/senators', async (_req, res) => {
     feedback_prompts_available:
       feedbackStore.kind === 'supabase' && config.features.feedbackPrompts && (await feedbackStore.promptsAccepted()),
   });
+});
+
+/**
+ * Every serving member, for finding them by state or name. `cached` follows
+ * the picker's own rule, so listing someone never makes them checkable.
+ * Empty without a database (demo, fixtures); the web then uses its roster.
+ */
+app.get('/api/members', async (_req, res) => {
+  const covered = new Set((await senatorCache.list()).map((s) => s.politician_id));
+  res.json({ members: await memberDirectory.list(covered) });
 });
 
 /**
