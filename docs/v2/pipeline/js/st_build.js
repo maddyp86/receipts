@@ -73,6 +73,11 @@ const drafts = [];
 const impacts = [];
 for (const f of flat) {
   const idx = idxByKey.get(keyOf(f.bill_id, f.requested_version));
+  // A bill-level statement keeps the ID its bill already has. A new one gets
+  // BL-<bill id>: WF5's 6-character hash gives bills that differ only in their
+  // congress the same ID (s342-118 and s342-119 are both 183U8V), so the second
+  // write silently replaced the first.
+  const billLevelId = ver => ver ? null : ((idx === undefined ? null : S(limitRows[idx].existing_impact_id)) || ('BL-' + f.bill_id));
   const pb = idx === undefined ? {} : perBill[idx];
   const p = parsed.find((x) => keyOf(x.bill_id, x.requested_version) === keyOf(f.bill_id, f.requested_version)) || {};
   const ver = S(f.requested_version) || null;
@@ -87,10 +92,10 @@ for (const f of flat) {
     // Flatten Stakeholders: S1, S2... under the statement's UID; blank sides read "None identified".
     const stake = ver
       ? (f.affected_stakeholders || []).map((s) => ({ stakeholder_uid: null, group: s.stakeholder_group || null, positive: s.positive_impact || null, negative: s.negative_impact || null }))
-      : (f.affected_stakeholders || []).map((s, i) => ({ stakeholder_uid: f.impact_uid + '-S' + (i + 1), group: s.stakeholder_group || null,
+      : (f.affected_stakeholders || []).map((s, i) => ({ stakeholder_uid: billLevelId(ver) + '-S' + (i + 1), group: s.stakeholder_group || null,
         positive: s.positive_impact || 'None identified', negative: s.negative_impact || 'None identified' }));
     impacts.push({
-      impact_id: ver ? versionUid(f.bill_id, ver) : f.impact_uid, bill_id: f.bill_id, version_code: ver,
+      impact_id: ver ? versionUid(f.bill_id, ver) : billLevelId(ver), bill_id: f.bill_id, version_code: ver,
       version_type: ver ? (f.requested_version_type || null) : null, version_date: ver ? (f.requested_version_date || null) : null,
       text_url: ver ? (f.requested_text_url || null) : null, summary_action_date: ver ? (f.summary_action_date || null) : null,
       run_id: ver ? S(cfg.run_label) || null : null, generated_at: ver ? new Date().toISOString() : null,
