@@ -346,7 +346,7 @@ def statements():
     model_mode = ("const modelMode = ifElse({ version: 2.2, config: { name: 'Model was called?', parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' }, "
                   "conditions: [{ leftValue: expr(\"{{ $('Limit').first().json._mode !== 'plan' }}\"), operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' }, options: {} } } });")
     fields = [('dry_run', 'boolean', True), ('statements_mode', 'string', 'plan'), ('sample_size', 'number', 10), ('sample_bills', 'string', ''), ('cap', 'number', 60),
-              ('max_pairs', 'number', 100), ('monthly_budget_usd', 'number', 25), ('usd_per_m_input', 'number', 0.75),
+              ('max_pairs', 'number', 100), ('monthly_budget_usd', 'number', 100), ('usd_per_m_input', 'number', 0.75),
               ('usd_per_m_output', 'number', 4.5), ('usd_per_web_search', 'number', 0.01), ('run_label', 'string', '')]
     parts = ["import { workflow, node, trigger, sticky, ifElse, splitInBatches, nextBatch, expr } from '@n8n/workflow-sdk';",
              triggers([f[0] for f in fields]), config(fields),
