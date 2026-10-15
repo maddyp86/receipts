@@ -28,6 +28,7 @@ import {
 import { EvidenceCard } from './EvidenceCard.js';
 import { FeedbackControl, FeedbackPrompt, type FeedbackContext } from './FeedbackControl.js';
 import { GatedActions } from './GatedActions.js';
+import { NotCounted } from './NotCounted.js';
 import { HowWeGotHere } from './HowWeGotHere.js';
 import { CoverageNote, EnrichmentGapNote } from './States.js';
 import { GlossaryTerm } from './glossary/GlossaryTerm.js';
@@ -633,6 +634,10 @@ export function EvidenceList(props: VerdictProps) {
           {undirected.map(card)}
         </EvidenceSection>
       ) : null}
+
+      {/* The rest of what the search read: same issue first, then other
+          subjects. Never weighed, so after everything that was. */}
+      <NotCounted rows={result.not_counted} />
 
       {/* Last, because it is what we set aside rather than what we weighed —
           but never omitted. A gated row is a considered refusal to read a bill,
