@@ -8,8 +8,8 @@ import { SelectedMember } from './members/SelectedMember.js';
 // The waiting screen.
 //
 // Driven by the REAL progress stream, not a timer: a stage is ticked when the
-// server says its steps finished, and the server's own detail ("found 4
-// related actions") is printed under it. The visible progress is the
+// server says its steps finished, and the server's own detail ("looked at
+// 10 bills · 2 directly about this") is printed under it. The visible progress is the
 // traceability, so nothing here is simulated.
 //
 // Above it, one card says what the reader asked and what we are checking to
@@ -189,8 +189,8 @@ export function Waiting({ member, promise, steps, interpretation, rewritten = nu
     return () => window.clearInterval(t);
   }, []);
 
-  // Only the search reports something a reader can use ("found 4 related
-  // actions"). The other steps' details are for whoever is debugging the
+  // Only the search reports something a reader can use ("looked at 10
+  // bills · 2 directly about this"). The other steps' details are for whoever is debugging the
   // pipeline — embedding sizes, classifier labels — and stay in the trace.
   const detailFor = (stage: Stage): string | null => {
     if (!stage.steps.includes('search')) return null;

@@ -21,6 +21,7 @@ import { cleanUpInput, needsCleanUp, suggestRewording } from '../cleanup/cleanUp
 import { askWhichPolicy } from '../cleanup/askWhich.js';
 import { asReaderQuestion } from '../scope/readerQuestion.js';
 import { describeCoverage } from '../scoring/coverage.js';
+import { buildNotCounted } from './notCounted.js';
 import { cacheKey, isCacheable, resultCache } from '../data/ResultCache.js';
 import { answerCache, answerKey, stampReused } from '../data/AnswerCache.js';
 import { enrichmentSource } from '../evaluation/enrichment.js';
@@ -85,8 +86,12 @@ function detailFor(tool: string, env: { ok: boolean; data?: unknown }): string |
   const d = env.data as Record<string, unknown> | undefined;
   switch (tool) {
     case 'search_actions': {
+      // How many the check read, then how many it kept: "found 2" alone hid
+      // the eight bills read and set aside beside them.
       const n = Number(d?.count ?? 0);
-      return n === 0 ? 'no related actions found' : `found ${n} related ${n === 1 ? 'action' : 'actions'}`;
+      const read = Number(d?.retrieved ?? 0);
+      const kept = `${n} directly about this`;
+      return read > 0 ? `looked at ${read} ${read === 1 ? 'bill' : 'bills'} · ${kept}` : n === 0 ? 'no related actions found' : kept;
     }
     case 'embed_text':
       return `${d?.dimensions ?? '?'} dimensions`;
@@ -219,6 +224,25 @@ export function finish(session: QuerySession, emit: Emit): boolean {
           exclusions: session.relevance ? describeExclusions(session.relevance.dropped) : [],
         }
       : undefined,
+    // The bills behind those exclusion counts, each with the check's reason.
+    // Built here, after the near-miss second pass has had its say, so a bill
+    // that pass admitted is evidence and not also "not counted". Attached only
+    // when the relevance check ran: without it there is nothing to report.
+    ...(session.relevance
+      ? {
+          not_counted: buildNotCounted(
+            session.evaluated ?? [],
+            new Set(session.relevance.admitted.map((a) => String(a.action_uid ?? ''))),
+            {
+              bill_ids: new Set([
+                ...(session.matches ?? []).map((m) => String(m.bill_id ?? '')),
+                ...(session.gated ?? []).map((g) => String(g.bill_id ?? '')),
+              ]),
+              action_uids: new Set((session.gated ?? []).map((g) => String(g.action_uid ?? ''))),
+            },
+          ),
+        }
+      : {}),
   };
   // Stashed so persistence stores exactly what the user saw, rather than
   // rebuilding it later from parts that may have moved on.

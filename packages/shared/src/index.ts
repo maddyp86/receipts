@@ -1037,6 +1037,32 @@ export interface SearchSummary {
 }
 
 /**
+ * A bill the search found and the relevance check read, but did not count.
+ *
+ * The evidence gate admits only bills directly about the statement; the rest
+ * used to reach the reader as one sentence ("8 bills we found were read as
+ * being about a different subject"). The reader is owed the bills themselves
+ * and the reason for each, so they can see the record around the answer and
+ * judge for themselves where the check was too strict. None of these moves the
+ * verdict.
+ */
+export interface NotCountedAction {
+  action_uid: string;
+  bill_id: string;
+  title: string;
+  /** What the senator did, e.g. "Sponsored", "Cosponsored", "Voted Nay on passage". */
+  action: string;
+  /**
+   * `related`: on the same issue, but not directly about the statement
+   * (the gate's PARTIAL verdicts). `unrelated`: about something else.
+   */
+  tier: 'related' | 'unrelated';
+  /** The relevance check's reason, lightly trimmed for a reader. */
+  reason: string;
+  source_url?: string;
+}
+
+/**
  * What a piece of reader feedback is about. Two belong to the whole result,
  * two to one evidence card. Stored for an operator's review (app.app_feedback);
  * never read back by the app, never changes a verdict.
@@ -1180,6 +1206,13 @@ export interface QueryResult {
   /** The retrieval and relevance counts, for the reader-facing walkthrough. */
   search?: SearchSummary;
   /**
+   * Bills the relevance check read and did not count, each with its reason.
+   *
+   * Optional because results stored before this field existed do not carry
+   * it — absent means "not recorded", never "there were none".
+   */
+  not_counted?: NotCountedAction[];
+  /**
    * Set when this answer is a stored one, returned because the same senator
    * and question were asked again (answer reuse). The reader is told when it
    * was produced. Absent on a fresh answer.
@@ -1209,7 +1242,7 @@ export interface StepEvent {
   id: StepId;
   label: string;
   status: 'running' | 'done' | 'error';
-  /** Short human-readable detail, e.g. "found 4 related actions". */
+  /** Short human-readable detail, e.g. "looked at 10 bills · 2 directly about this". */
   detail?: string;
 }
 

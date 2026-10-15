@@ -31,7 +31,7 @@ const STANCE_PHRASE: Record<string, string> = {
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 export function HowWeGotHere({ result }: { result: QueryResult }) {
-  const { senator, interpretation, scored, coverage, search, gated, judge } = result;
+  const { senator, interpretation, scored, coverage, search, gated, judge, not_counted: notCounted } = result;
   const { receipt } = scored;
   const surname = surnameOf(senator.name);
   const span = coverage ? coverageSpanPhrase(coverage) : null;
@@ -66,14 +66,26 @@ export function HowWeGotHere({ result }: { result: QueryResult }) {
         ` and ${found}.`,
     });
 
-    // 3. Which of them bear on it.
+    // 3. Which of them bear on it. A result that carries the set-aside bills
+    // names the three groups; an older stored one falls back to the gate's
+    // own exclusion sentences.
+    const related = notCounted?.filter((n) => n.tier === 'related').length ?? 0;
+    const unrelated = notCounted?.filter((n) => n.tier === 'unrelated').length ?? 0;
     steps.push({
       title: 'Which ones actually bear on what you said',
-      body: search.relevance_applied
-        ? `We checked each one for whether it is really about your statement, not just the same general subject. ` +
-          `${search.admitted === search.evaluated ? 'All' : search.admitted} of ${search.evaluated} ${search.admitted === 1 ? 'was' : 'were'} close enough to count.` +
-          (search.exclusions.length ? ` ${search.exclusions.join(' ')}` : '')
-        : `We could not run the check that separates bills about your statement from bills on the same general subject, so all ${search.evaluated} passed through unchecked.`,
+      body: !search.relevance_applied
+        ? `We could not run the check that separates bills about your statement from bills on the same general subject, so all ${search.evaluated} passed through unchecked.`
+        : notCounted
+          ? `We checked each one for whether it is really about your statement, not just the same general subject. ` +
+            `We looked at ${plural(search.evaluated, 'bill or vote', 'bills and votes')}: ` +
+            `${search.admitted} ${search.admitted === 1 ? 'is' : 'are'} directly about this statement` +
+            (related ? `, ${related} ${related === 1 ? 'is' : 'are'} related` : '') +
+            (unrelated ? `, and ${unrelated} ${unrelated === 1 ? 'is' : 'are'} about something else` : '') +
+            `.` +
+            (related || unrelated ? ' The ones we did not count are listed under Receipts, each with the reason.' : '')
+          : `We checked each one for whether it is really about your statement, not just the same general subject. ` +
+            `${search.admitted === search.evaluated ? 'All' : search.admitted} of ${search.evaluated} ${search.admitted === 1 ? 'was' : 'were'} close enough to count.` +
+            (search.exclusions.length ? ` ${search.exclusions.join(' ')}` : ''),
     });
   }
 
