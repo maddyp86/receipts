@@ -10,6 +10,9 @@
     {
       "source": "/api/:path*",
       "destination": "https://receipts-65yk.onrender.com/api/:path*"
-    }
+    },
+    { "source": "/terms", "destination": "/index.html" },
+    { "source": "/privacy", "destination": "/index.html" },
+    { "source": "/refunds", "destination": "/index.html" }
   ]
 }

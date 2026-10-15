@@ -20,6 +20,7 @@ import { FollowUp } from './components/FollowUp.js';
 import { GlossaryProvider } from './components/glossary/GlossaryContext.js';
 import { SelectedMember } from './components/members/SelectedMember.js';
 import { FundedThanks, FundingProvider } from './components/members/FundRecord.js';
+import { SiteFooter } from './components/policy/PolicyPages.js';
 
 // ===========================================================================
 // Three screens, chosen by where the query is:
@@ -412,6 +413,7 @@ export default function App() {
             </div>
           </Page>
         ) : null}
+        <SiteFooter />
       </div>
       </FundingProvider>
     </GlossaryProvider>
