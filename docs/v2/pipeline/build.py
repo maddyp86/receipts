@@ -338,8 +338,8 @@ def statements():
                       "waitBetweenTries: 3000, onError: 'continueRegularOutput', alwaysOutputData: true, parameters: { method: 'GET', url: expr('{{ $json.url }}'), "
                       "authentication: 'genericCredentialType', genericAuthType: 'httpQueryAuth', options: { batching: { batch: { batchSize: 5 } }, timeout: 30000, "
                       f"response: {{ response: {{ responseFormat: 'json' }} }} }} }}, credentials: {CRED['congress']} }}, output: [{{}}] }});")
-    fetch_summary = ("const fetchSummary = node({ type: 'n8n-nodes-base.httpRequest', version: 4.3, config: { name: 'Fetch Bill Summary', onError: 'continueRegularOutput', "
-                     "parameters: { url: expr('{{ $json.version_fetch_url || $json[\"Bill Status URL\"] }}'), options: { response: { response: { responseFormat: 'text' } } } } }, output: [{}] });")
+    fetch_summary = ("const fetchSummary = node({ type: 'n8n-nodes-base.httpRequest', version: 4.3, config: { name: 'Fetch Bill Summary', retryOnFail: true, maxTries: 3, waitBetweenTries: 3000, onError: 'continueRegularOutput', "
+                     "parameters: { url: expr('{{ $json.version_fetch_url || $json[\"Bill Status URL\"] }}'), options: { timeout: 30000, response: { response: { responseFormat: 'text' } } } } }, output: [{}] });")
     loop = "const loop = splitInBatches({ version: 3, config: { name: 'Loop Over Items', onError: 'continueRegularOutput', parameters: { options: {} } } });"
     wait = "const waitNode = node({ type: 'n8n-nodes-base.wait', version: 1.1, config: { name: 'Wait', parameters: { amount: 1 } }, output: [{}] });"
     call_model = ("const callModel = ifElse({ version: 2.2, config: { name: 'Call the model?', parameters: { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose' }, "
