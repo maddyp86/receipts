@@ -1,5 +1,6 @@
 import type {
   AlignmentOutcome,
+  BandReason,
   BillEffect,
   ConfidenceBand,
   Direction,
@@ -18,7 +19,6 @@ import type {
 import { DECISIVE_ENRICHMENT_GAPS, EFFECT_UNREAD, TEXT_AT_ACTION_UNAVAILABLE, toVerdict } from '@receipts/shared';
 import {
   EVIDENCE_TYPE_FACTOR,
-  HIGH_AVG_STRENGTH,
   MEANINGFUL_MINORITY_SHARE,
   SIMILARITY,
 } from './config.js';
@@ -77,6 +77,10 @@ export type ScorableMatch = MatchedAction & {
   history_unavailable?: boolean;
   /** The roll calls behind the action. Passed through; never read for scoring. */
   vote_context?: import('@receipts/shared').VoteTally[];
+  /** TARGETED, REVERSAL or BROAD_VEHICLE, from the pre-evaluator gates. Read by the band only. */
+  bill_class?: string | null;
+  /** The relevance check's verdict (TRUE_POSITIVE or PARTIAL). Read by the band only. */
+  relevance_verdict?: string | null;
   /**
    * Disclosure flags already established upstream — `FLOOR_LEADER` and
    * `ACTION_DATE_PROXY` come from the pre-evaluator gates, which know the
@@ -171,38 +175,62 @@ function directionOf(outcome: AlignmentOutcome): Direction {
 /**
  * The dials. Only ever called on a directionally-clean subset.
  *
- * High    ≥2 matches, all hard evidence, average strength at or above the High
- *         bar, unanimous direction (guaranteed by the caller).
- * Medium  one strong hard match, or ≥2 clean matches with mixed strength.
- * Low     a single weak match, or soft evidence only.
+ * Confidence measures how CLEARLY the evidence answers the statement, not how
+ * MUCH of it there is (Matt, 15 Oct). The old dial counted matches and leaned
+ * on search similarity, so one bill squarely on point, and the only vote ever
+ * held on the issue, came out Low. Similarity ranks the search; it says
+ * nothing about what a bill means. Each action is classed on its own and the
+ * band is set by the clearest one:
+ *
+ * High    a final-passage vote (or cloture and passage agreeing, or an untyped
+ *         recorded vote) on a bill squarely about this (not a broad package),
+ *         judged directly relevant, its effect read with certainty >= 0.8.
+ * Medium  the clearest evidence is a vote to end debate with no final vote (or
+ *         a split), a sponsorship, a broad package, or an effect read with
+ *         certainty 0.6 to 0.8.
+ * Low     only indirect evidence, a partial match, certainty below 0.6, or a
+ *         bill found only by the near-miss review (kept from #75).
  */
-function bandFor(subset: DirectedAction[]): { band: ConfidenceBand; why: string } {
-  const isHard = (m: DirectedAction) =>
-    m.evidence_type === 'vote' || m.evidence_type === 'sponsorship';
+const DIRECT_GOVERNING = new Set(['CLOTURE+PASSAGE (agree)', 'PASSAGE (no cloture vote)', 'VOTE (untyped)']);
 
-  const hardCount = subset.filter(isHard).length;
-  const allHard = hardCount === subset.length;
-  const avg = mean(subset.map((m) => m.score));
+function classOf(m: DirectedAction): { band: ConfidenceBand; reason: BandReason } {
+  const certainty = m.alignment_confidence ?? null;
+  if (m.evidence_type !== 'vote' && m.evidence_type !== 'sponsorship') return { band: 'Low', reason: 'INDIRECT_ONLY' };
+  // Kept from #75: a bill found only by the wider second search stays Low.
+  if (m.score < SIMILARITY.WEAK) return { band: 'Low', reason: 'NEAR_MISS' };
+  if (String(m.relevance_verdict ?? '').toUpperCase() === 'PARTIAL') return { band: 'Low', reason: 'PARTIAL_MATCH' };
+  if (certainty !== null && certainty < 0.6) return { band: 'Low', reason: 'UNCERTAIN_READ' };
+  if (m.evidence_type === 'sponsorship') return { band: 'Medium', reason: 'SPONSORSHIP_ONLY' };
+  if (String(m.bill_class ?? '').toUpperCase() === 'BROAD_VEHICLE') return { band: 'Medium', reason: 'BROAD_PACKAGE' };
+  if (!DIRECT_GOVERNING.has(m.vote_governing)) return { band: 'Medium', reason: 'PROCEDURAL_ONLY' };
+  if (certainty === null || certainty < 0.8) return { band: 'Medium', reason: 'UNCERTAIN_READ' };
+  return { band: 'High', reason: 'DIRECT_VOTE' };
+}
 
-  if (hardCount === 0) {
-    return { band: 'Low', why: 'soft evidence only — no recorded vote or sponsorship' };
+const BAND_RANK: Record<ConfidenceBand, number> = { Low: 0, Medium: 1, High: 2 };
+
+const BAND_WHY: Record<BandReason, string> = {
+  DIRECT_VOTE: 'a final vote on a bill squarely about this, read with high certainty',
+  PROCEDURAL_ONLY: 'the clearest evidence is a vote to end debate with no final vote',
+  SPONSORSHIP_ONLY: 'the clearest evidence is a sponsorship',
+  BROAD_PACKAGE: 'the clearest evidence is a vote on a broad package',
+  UNCERTAIN_READ: 'the bill\'s effect was read with only moderate or low certainty',
+  INDIRECT_ONLY: 'only indirect evidence',
+  PARTIAL_MATCH: 'the bills were judged only partly about the statement',
+  NEAR_MISS: 'found only by the wider second search, below the usual similarity floor',
+  TEXT_UNAVAILABLE: 'a bill was judged without the text in effect when the senator acted',
+  UNREAD_BILL: 'a bill behind a vote or sponsorship could not be read',
+  RECORD_GAPS: 'part of the record the checks depend on could not be read',
+};
+
+function bandFor(subset: DirectedAction[]): { band: ConfidenceBand; why: string; reason: BandReason } {
+  let best: { band: ConfidenceBand; reason: BandReason } | null = null;
+  for (const m of subset) {
+    const c = classOf(m);
+    if (!best || BAND_RANK[c.band] > BAND_RANK[best.band]) best = c;
   }
-  if (subset.length >= 2 && allHard && avg >= HIGH_AVG_STRENGTH) {
-    return {
-      band: 'High',
-      why: `${subset.length} hard-evidence matches, all aligned, average strength ${round(avg, 3)} at or above the High bar`,
-    };
-  }
-  if (subset.length === 1) {
-    const only = subset[0]!;
-    return only.score >= HIGH_AVG_STRENGTH
-      ? { band: 'Medium', why: 'a single strong hard-evidence match' }
-      : { band: 'Low', why: 'a single match, below the strength bar for a confident read' };
-  }
-  return {
-    band: 'Medium',
-    why: `${subset.length} aligned matches with mixed strength or evidence type (average ${round(avg, 3)})`,
-  };
+  best ??= { band: 'Low', reason: 'INDIRECT_ONLY' };
+  return { ...best, why: `${BAND_WHY[best.reason]} (${subset.length} action(s) weighed)` };
 }
 
 /** The action was judged without the text in effect when it happened. */
@@ -243,10 +271,12 @@ function bandWithText(
   subset: DirectedAction[],
   unread = 0,
   gaps: readonly EnrichmentGap[] = [],
-): { band: ConfidenceBand; why: string } {
+): { band: ConfidenceBand; why: string; reason: BandReason } {
   const dial = bandFor(subset);
   const n = subset.filter(textUnavailable).length;
   const reasons: string[] = [];
+  // The first cause to lower the band names it for the reader.
+  const lowered: BandReason | null = n ? 'TEXT_UNAVAILABLE' : unread ? 'UNREAD_BILL' : gaps.length ? 'RECORD_GAPS' : null;
   if (n) {
     reasons.push(`${n} of ${subset.length} action(s) were judged without the bill text in effect when the senator acted`);
   }
@@ -261,8 +291,8 @@ function bandWithText(
   if (gaps.length) {
     reasons.push(`part of the record the checks depend on could not be read (${[...new Set(gaps)].join(', ')})`);
   }
-  if (!reasons.length) return dial;
-  return { band: 'Low', why: `${dial.why}; lowered to Low because ${reasons.join(' and ')}` };
+  if (!reasons.length || !lowered) return dial;
+  return { band: 'Low', reason: lowered, why: `${dial.why}; lowered to Low because ${reasons.join(' and ')}` };
 }
 
 function emptyReceipt(overrides: Partial<FactorReceipt> = {}): FactorReceipt {
@@ -577,14 +607,14 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
       mode: 'ranked',
       nd_reason: null,
       ranked,
-      receipt: { ...receipt, trace },
+      receipt: { ...receipt, trace, band_reason: dominantBand.reason },
       evidence,
     }, { enrichmentGaps: gaps }).result;
   }
 
   // ---- Clean direction: dials set the band --------------------------------
   const verdict: Verdict = keeps.length > 0 ? 'KEPT' : 'BROKE';
-  const { band, why } = bandWithText(directed, unreadCount, gaps);
+  const { band, why, reason } = bandWithText(directed, unreadCount, gaps);
   trace.push(`G2 passed: direction is unanimous (${verdict}).`);
   trace.push(`Band ${band} — ${why}.`);
 
@@ -594,7 +624,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
     mode: 'single',
     nd_reason: null,
     ranked: [],
-    receipt: { ...receipt, trace },
+    receipt: { ...receipt, trace, band_reason: reason },
     evidence,
   }, { enrichmentGaps: gaps }).result;
 }

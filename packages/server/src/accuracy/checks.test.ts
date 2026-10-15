@@ -86,7 +86,7 @@ describe('1. verdict', () => {
   });
 
   it('a flagged band is reported, not failed', () => {
-    const r = result(score([row('a-1', { score: 0.6 })]));
+    const r = result(score([row('a-1', { alignment_confidence: 0.5 })]));
     expect(r.scored.band).toBe('Low');
     const rep = checkCase(base({ flag_band: ['Low'] }), r, '');
     expect(rep.verdict.pass).toBe(true);

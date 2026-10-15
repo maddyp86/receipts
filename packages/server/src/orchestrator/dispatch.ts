@@ -1393,6 +1393,11 @@ async function evaluateEffectsOnce(
       // the action date is a stand-in — so FLOOR_LEADER can only originate
       // here. Handoff v2 §4 lists it in `vote_flags` beside SPLIT_VOTE.
       vote_flags: gates[m.action_uid]?.context.vote_flags ?? [],
+      // For the confidence band: a broad package or a partial match answers
+      // less clearly than a bill squarely about the statement.
+      bill_class: gates[m.action_uid]?.context.bill_class ?? null,
+      relevance_verdict:
+        (session.evaluated ?? []).find((c) => String(c.action_uid ?? '') === m.action_uid)?.relevance.verdict ?? null,
       // Which text this was judged against. Set only for bills with version
       // rows, so every other evidence row is unchanged.
       ...(textVersions[m.action_uid] ? { text_version: textVersions[m.action_uid]!.disclosure } : {}),

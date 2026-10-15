@@ -481,6 +481,16 @@ export interface DirectedAction extends MatchedAction {
    * read for scoring. Absent on results stored before it existed.
    */
   vote_context?: VoteTally[];
+
+  /**
+   * How the pre-evaluator gates classed the bill: TARGETED, REVERSAL or
+   * BROAD_VEHICLE. Read by the confidence band only (a broad package answers
+   * less clearly than a bill squarely about the statement).
+   */
+  bill_class?: string | null;
+
+  /** The relevance check's verdict on this action: TRUE_POSITIVE or PARTIAL. Read by the band only. */
+  relevance_verdict?: string | null;
 }
 
 /** One roll call, counted from the stored member votes. */
@@ -710,7 +720,42 @@ export interface FactorReceipt {
   /** Ordered gate/dial trace, e.g. "G1 passed: 4 of 10 matches above floor". */
   trace: string[];
   scoring_flags: string[];
+  /**
+   * Why the band is what it is, as a code the reader copy turns into a
+   * sentence. Absent on results stored before it existed.
+   */
+  band_reason?: BandReason;
 }
+
+/**
+ * Why the evidence answers the question as clearly as it does. Confidence
+ * measures how clearly, not how much: one recorded vote on a bill squarely
+ * about the statement is a clear answer even when it is the only one there is.
+ *
+ * DIRECT_VOTE       a final-passage vote (or cloture and passage agreeing) on a bill squarely about this, read with high certainty
+ * PROCEDURAL_ONLY   the clearest evidence is a vote to end debate with no final vote, or a split between the two
+ * SPONSORSHIP_ONLY  the clearest evidence is a sponsorship or co-sponsorship
+ * BROAD_PACKAGE     the clearest evidence is a vote on a large package that covers much more than this
+ * UNCERTAIN_READ    the bill's effect on the statement was read with only moderate or low certainty
+ * INDIRECT_ONLY     only indirect evidence (an abstention or an action whose direction is unclear)
+ * PARTIAL_MATCH     the bills were judged only partly about the statement
+ * NEAR_MISS         found only by the wider second search, below the usual similarity floor
+ * TEXT_UNAVAILABLE  lowered: a bill was read in a later version than the one acted on
+ * UNREAD_BILL       lowered: a bill behind a vote or sponsorship could not be read
+ * RECORD_GAPS       lowered: part of the record the checks depend on could not be read
+ */
+export type BandReason =
+  | 'DIRECT_VOTE'
+  | 'PROCEDURAL_ONLY'
+  | 'SPONSORSHIP_ONLY'
+  | 'BROAD_PACKAGE'
+  | 'UNCERTAIN_READ'
+  | 'INDIRECT_ONLY'
+  | 'PARTIAL_MATCH'
+  | 'NEAR_MISS'
+  | 'TEXT_UNAVAILABLE'
+  | 'UNREAD_BILL'
+  | 'RECORD_GAPS';
 
 export interface RankedEntry {
   verdict: Exclude<Verdict, 'NOT_DETERMINABLE'>;
