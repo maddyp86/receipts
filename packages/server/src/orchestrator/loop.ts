@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { clarifyFor, whichPolicyFor } from '@receipts/shared';
+import { clarifyFor, sanitizeReaderText, whichPolicyFor } from '@receipts/shared';
 import type { GatedAction, QueryResult, RewrittenEvent, StepId, StreamEvent, ToolError } from '@receipts/shared';
 import { config } from '../config.js';
 import { dispatchTool, newSession, type QuerySession } from './dispatch.js';
@@ -146,6 +146,26 @@ async function runTool(
   return env;
 }
 
+/** Run every reader-facing text field through sanitizeReaderText, in place. Exported for tests. */
+export function cleanReaderText(result: QueryResult): void {
+  const c = sanitizeReaderText;
+  const ex = result.explanation;
+  ex.why = c(ex.why);
+  if (ex.card_summary) ex.card_summary = c(ex.card_summary);
+  for (const k of Object.keys(ex.connectors)) ex.connectors[k] = c(ex.connectors[k]!);
+  for (const g of result.gated ?? []) g.reason = c(g.reason);
+  for (const n of result.not_counted ?? []) n.reason = c(n.reason);
+  if (result.search) result.search.exclusions = result.search.exclusions.map((x) => c(x));
+  for (const e of result.scored.evidence) {
+    e.summary = c(e.summary);
+    e.bill_effect_reasoning = c(e.bill_effect_reasoning);
+    if (e.record) e.record = c(e.record);
+    if (e.record_detail) e.record_detail = c(e.record_detail);
+    if (e.intended_effects) e.intended_effects = c(e.intended_effects);
+    if (e.mechanisms) e.mechanisms = c(e.mechanisms);
+  }
+}
+
 /**
  * Assemble the user-facing result from server-held state, never from prose.
  *
@@ -244,6 +264,10 @@ export function finish(session: QuerySession, emit: Emit): boolean {
         }
       : {}),
   };
+  // No em dashes reach a reader (15 Oct). The prompts and fixed copy avoid
+  // them; this catches model text and older stored data. Reader fields only:
+  // the trace keeps every value as it was produced.
+  cleanReaderText(result);
   // Stashed so persistence stores exactly what the user saw, rather than
   // rebuilding it later from parts that may have moved on.
   session.result = result;

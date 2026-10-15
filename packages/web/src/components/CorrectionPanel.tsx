@@ -102,7 +102,7 @@ export function CorrectionPanel({
     <section className="correction-panel" aria-label="Correct the classification">
       <h3>Correct the classification</h3>
       <p className="correction-note">
-        These values are part of the search itself — changing one changes which bills are
+        These values are part of the search itself. Changing one changes which bills are
         found. Corrections are applied by re-running the whole check, not by re-filtering
         what is on screen.
       </p>
@@ -176,7 +176,7 @@ export function CorrectionPanel({
             <strong>He actually promised this.</strong> Switches the wording from
             &ldquo;consistent with his record&rdquo; to &ldquo;kept / broke&rdquo;.{' '}
             <em>
-              This is your claim, not ours — we have no record of the commitment. It will be
+              This is your claim, not ours. We have no record of the commitment. It will be
               labelled as yours wherever the result is shown or shared.
             </em>
           </span>

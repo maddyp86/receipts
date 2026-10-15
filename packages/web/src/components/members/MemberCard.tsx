@@ -35,7 +35,7 @@ export function MemberCard({ member, selected, onSelect, coveredAlternative }: P
           </div>
         </div>
         <p className="mt-3 text-[15px] leading-snug text-ink-soft">
-          Not checked yet — we’re still going through {member.name}’s record.
+          Not checked yet. We’re still going through {member.name}’s record.
           {coveredAlternative ? ` You can check ${coveredAlternative.name} now.` : ''}
         </p>
       </div>

@@ -201,7 +201,7 @@ export function ErrorState({
       <p>{error.message}</p>
       {limitHeadline ? null : (
         <p>
-          We’d rather show you this than a half-finished answer — nothing was scored, so there’s no
+          We’d rather show you this than a half-finished answer. Nothing was scored, so there’s no
           partial verdict hiding behind it.
         </p>
       )}
@@ -333,7 +333,7 @@ export function HaltState({
           // The fallback, when no rewording was offered (input help off, or
           // nothing on the reader's topic could be suggested).
           <p>
-            Try it as a statement that takes a side — for example “supports expanding background checks” or “opposes
+            Try it as a statement that takes a side, for example “supports expanding background checks” or “opposes
             cuts to Social Security.”
           </p>
         )

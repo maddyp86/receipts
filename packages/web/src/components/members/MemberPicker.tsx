@@ -103,7 +103,7 @@ export function MemberPicker({ members, selectedId, onSelect }: Props) {
           </summary>
           <div className="border-t border-rule px-4 pb-4 pt-3">
             <p className="text-[15px] leading-snug text-ink-soft">
-              We’re going through these records now. You can’t check them yet — they’ll appear above as each one is
+              We’re going through these records now. You can’t check them yet. They’ll appear above as each one is
               finished.
             </p>
             <ul className="mt-3 divide-y divide-rule">
@@ -301,7 +301,7 @@ function StateView({ stateCode, members, selectedId, onSelect, onBack, coveredSt
             {reps.length === 0 ? (
               <p className="mt-2 text-[15px] text-ink-soft">We haven’t added any House members from {name} yet.</p>
             ) : atLarge ? (
-              <p className="mt-1 text-[15px] text-ink-soft">{name} has one district — the whole state.</p>
+              <p className="mt-1 text-[15px] text-ink-soft">{name} has one district: the whole state.</p>
             ) : (
               <div className="mt-3">
                 <label htmlFor="district-select" className="block text-[15px] text-ink-soft">
@@ -319,7 +319,7 @@ function StateView({ stateCode, members, selectedId, onSelect, onBack, coveredSt
                     return (
                       <option key={d} value={d}>
                         District {d}
-                        {known?.area ? ` — ${known.area}` : ''}
+                        {known?.area ? `, ${known.area}` : ''}
                       </option>
                     );
                   })}

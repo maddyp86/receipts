@@ -44,7 +44,7 @@ export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, o
         What does {memberName ?? 'your lawmaker'} stand for, or what did they promise?
       </label>
       <p id="promise-help" className="mt-2 text-[17px] text-ink-soft">
-        Use your own words, and say it as a statement — one idea at a time works best. We’ll check it against how they
+        Use your own words, and say it as a statement. One idea at a time works best. We’ll check it against how they
         voted and what bills they backed.
       </p>
 
@@ -192,7 +192,7 @@ export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, o
             <li className="flex items-start gap-2">
               <XIcon className="mt-0.5 h-4 w-4 shrink-0 text-broken" aria-hidden="true" />
               <span>
-                <span className="font-medium text-ink">Can't check</span> "{cantCheck.text}" — {cantCheck.why}.
+                <span className="font-medium text-ink">Can't check</span> "{cantCheck.text}": {cantCheck.why}.
               </span>
             </li>
           </ul>

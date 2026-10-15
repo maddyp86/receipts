@@ -36,7 +36,7 @@ export const glossary: GlossaryEntry[] = [
   {
     id: 'district',
     term: 'Congressional district',
-    definition: 'The area a representative is elected from. Small states may have just one district — the whole state.',
+    definition: 'The area a representative is elected from. Small states may have just one district: the whole state.',
   },
   {
     id: 'position',

@@ -51,7 +51,7 @@ describe('How to ask', () => {
       '"Do they support our veterans?"',
       '"Have they backed expanding VA health care?"',
       `"Did they vote to raise veterans' disability pay?"`,
-      `"Are they a good leader?" — a voting record can't answer that.`,
+      `"Are they a good leader?": a voting record can't answer that.`,
     ]) {
       expect(text).toContain(s);
     }

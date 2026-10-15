@@ -147,7 +147,7 @@ export function applyWithholding(
   if (breaking.length && breaking.every((e) => (e.vote_flags ?? []).includes(TEXT_AT_ACTION_UNAVAILABLE))) {
     const reason =
       `This reading would say the senator broke the promise, but every action behind it was judged ` +
-      `against a later version of the bill than the one in effect when the senator acted — that ` +
+      `against a later version of the bill than the one in effect when the senator acted, and that ` +
       `version's text is not available. An accusation is not published on the strength of a ` +
       `different version.`;
     return {

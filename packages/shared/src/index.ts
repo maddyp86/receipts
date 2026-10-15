@@ -538,7 +538,7 @@ export interface PathStep {
  * so: the reading does not depend on it.
  */
 export const HISTORY_UNAVAILABLE_COPY =
-  "We couldn't load this bill's history for this answer — how far it got and which committees acted on it. The reading above doesn't depend on it.";
+  "We couldn't load this bill's history for this answer: how far it got and which committees acted on it. The reading above doesn't depend on it.";
 
 /** The act whose date picked the text: the same act that governs the verdict. */
 export type TextVersionGoverningAct = 'CLOTURE' | 'PASSAGE' | 'VOTE' | 'SPONSORSHIP';
@@ -878,10 +878,10 @@ export function enrichmentGapSentence(gaps: EnrichmentGap[] | null | undefined):
   const known = [...new Set(gaps ?? [])].filter((g) => ENRICHMENT_GAP_PHRASE[g] && DECISIVE_ENRICHMENT_GAPS.includes(g));
   if (!known.length) return null;
   const parts = known.map((g) => ENRICHMENT_GAP_PHRASE[g]);
-  const list = parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join('; ')}; and ${parts[parts.length - 1]}`;
+  const list = parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join(', ')}${parts.length > 2 ? ',' : ''} and ${parts[parts.length - 1]}`;
   return (
     `Part of the record we check against couldn't be read for this answer: ${list}. ` +
-    'The checks that depend on it ran without it, so treat this result with extra caution — trying again may complete it.'
+    'The checks that depend on it ran without it, so treat this result with extra caution. Trying again may complete it.'
   );
 }
 
@@ -1072,16 +1072,16 @@ export const JUDGE_DISPOSITION_COPY: Record<string, string> = {
   PASS_ON_RETRY:
     'A second check found fault with this reading at first. It was looked at again and passed, and is held to a lower confidence as a result.',
   REVIEW_REQUIRED:
-    'A second check of this reading disagreed with it, and offered no reading of its own we could stand behind, so we are not publishing it. The bills and votes are on the Receipts tab — read them and judge for yourself.',
+    'A second check of this reading disagreed with it, and offered no reading of its own we could stand behind, so we are not publishing it. The bills and votes are on the Receipts tab. Read them and judge for yourself.',
   // The query tool withholds here; it does not publish the judge's correction
   // as its own verdict. The sentence must not claim a corrected reading is on
   // screen — nothing is.
   REVIEW_REQUIRED_JUDGE_CORRECTED:
-    'A second check of this reading disagreed with it and read the record differently, so we are not publishing it. The bills and votes are on the Receipts tab — read them and judge for yourself.',
+    'A second check of this reading disagreed with it and read the record differently, so we are not publishing it. The bills and votes are on the Receipts tab. Read them and judge for yourself.',
   // NOT "a reviewer disagreed". Nobody looked, and saying otherwise would claim
   // a scrutiny this reading never received.
   JUDGE_ERROR:
-    'The second-opinion review could not run, so this reading has not been checked by anything but the evaluator. We do not publish an accusation no reviewer has seen. The bills and votes are on the Receipts tab — read them and judge for yourself.',
+    'The second-opinion review could not run, so this reading has not been checked by anything but the evaluator. We do not publish an accusation no reviewer has seen. The bills and votes are on the Receipts tab. Read them and judge for yourself.',
 };
 
 /**
@@ -1095,7 +1095,7 @@ export function judgeDispositionSentence(disposition: string | null | undefined)
   if (!disposition) return null;
   if (JUDGE_DISPOSITION_COPY[disposition]) return JUDGE_DISPOSITION_COPY[disposition]!;
   if (disposition.startsWith('GATED_')) {
-    return 'A rule-based check stopped this reading before it reached review, so we are not publishing it. The bills and votes are on the Receipts tab — read them and judge for yourself.';
+    return 'A rule-based check stopped this reading before it reached review, so we are not publishing it. The bills and votes are on the Receipts tab. Read them and judge for yourself.';
   }
   return null;
 }
@@ -1214,7 +1214,7 @@ export const FEEDBACK_PROMPT_KINDS: Record<FeedbackLevel, FeedbackKind[]> = {
 };
 
 /** Shown after a prompt is answered. Like FEEDBACK_THANKS, says it changes nothing on screen. */
-export const FEEDBACK_PROMPT_THANKS = "Thanks — noted. It doesn't change this answer.";
+export const FEEDBACK_PROMPT_THANKS = "Thanks, noted. It doesn't change this answer.";
 
 /** What the browser sends. The run id ties it to the trace of what was shown. */
 export interface FeedbackRequest {
@@ -1233,7 +1233,7 @@ export const FEEDBACK_CONTROL_LABEL = 'Something look wrong?';
 
 /** Shown after sending. Says plainly that it changes nothing on screen. */
 export const FEEDBACK_THANKS =
-  "Thanks — this goes to a person for review. It doesn't change this answer.";
+  "Thanks, this goes to a person for review. It doesn't change this answer.";
 
 // ---------------------------------------------------------------------------
 // What the beta covers, said to every tester. Approved wording; change it only
@@ -1787,7 +1787,7 @@ export function evidenceTallySentence(result: QueryResult): string | null {
   body = body.charAt(0).toUpperCase() + body.slice(1);
 
   const setAside = gated
-    ? ` ${gated} more ${one(gated) ? 'was' : 'were'} found but set aside — see “Found, but not evaluated”.`
+    ? ` We set aside ${gated} more without weighing ${one(gated) ? 'it' : 'them'}. See Receipts for the reason.`
     : '';
 
   return `${lead} ${body}${setAside}`;
@@ -1804,6 +1804,38 @@ export const BAND_PHRASE: Record<ConfidenceBand, string> = {
   Medium: 'moderate evidence',
   Low: 'low confidence',
 };
+
+/** The confidence level, as a reader says it. */
+export const BAND_LEVEL: Record<ConfidenceBand, string> = { High: 'high', Medium: 'moderate', Low: 'low' };
+
+/**
+ * Why the confidence is what it is, as the end of "with moderate confidence
+ * because …". Confidence measures how clearly the evidence answers, so each
+ * reason is about the kind of evidence, never about how much of it there is.
+ */
+export const BAND_REASON_COPY: Record<BandReason, string> = {
+  DIRECT_VOTE: 'it rests on a final vote on a bill squarely about this',
+  PROCEDURAL_ONLY: 'the clearest evidence is a vote to end debate, not a final vote on the bill',
+  SPONSORSHIP_ONLY: 'it rests on sponsorship, with no recorded vote on the bill',
+  BROAD_PACKAGE: 'the clearest vote was on a large package that covered much more than this',
+  UNCERTAIN_READ: 'it is not clear-cut how the bill bears on this statement',
+  INDIRECT_ONLY: 'the evidence is indirect',
+  PARTIAL_MATCH: 'the bills are only partly about this statement',
+  NEAR_MISS: 'the bills were only a loose match for this statement',
+  TEXT_UNAVAILABLE: 'a bill was read in a later version than the one the senator acted on',
+  UNREAD_BILL: 'a bill behind a vote or sponsorship could not be read',
+  RECORD_GAPS: 'part of the record could not be read for this answer',
+};
+
+/**
+ * The confidence, said with its reason: "with moderate confidence because the
+ * clearest evidence is a vote to end debate, not a final vote on the bill".
+ * A result stored before `band_reason` existed gets the level alone.
+ */
+export function confidencePhrase(band: ConfidenceBand, reason?: BandReason | null): string {
+  const level = `${BAND_LEVEL[band]} confidence`;
+  return reason ? `with ${level} because ${BAND_REASON_COPY[reason]}` : `with ${level}`;
+}
 
 export const STRENGTH_PHRASE: Record<MatchStrength, string> = {
   STRONG: 'closely related',
@@ -1866,33 +1898,33 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   ALL_NEUTRAL:
     "As we read them, the bills we found touch this subject but don't move the goal in this statement in either direction.",
   NO_ACTION:
-    "We found related legislation, but the record we have shows no vote by this senator on it and no sponsorship — so there's no action to judge.",
+    "We found related legislation, but the record we have shows no vote by this senator on it and no sponsorship, so there's no action to judge.",
   PROCEDURAL_SWITCH:
     'They sponsored this bill and then voted against it. Those point opposite ways, so we don’t read it as either for or against this statement.',
   NON_LEGISLATIVE:
     "As we read it, this statement isn't something a bill or a vote can settle, and we only track legislative action.",
   NOT_EVALUABLE:
-    'This statement is too broad to hold against specific bills. Try naming a specific policy, program or bill — for example, “promised to protect clean air standards from rollback”.',
+    'This statement is too broad to hold against specific bills. Try naming a specific policy, program or bill, for example, “promised to protect clean air standards from rollback”.',
   UNDIRECTABLE_METADATA:
     "We found related legislation but couldn't establish which way it cuts on this statement, so we're not going to guess.",
   // Deliberately NOT exculpatory. Withholding an accusation is not a finding
   // that he kept it, and this sentence must never be readable as one.
   WITHHELD_LOW_CONFIDENCE:
-    "Our reading of the record leans against this statement, but not clearly enough for us to say so. The bills and votes are on the Receipts tab — read them and judge for yourself.",
+    "Our reading of the record leans against this statement, but not clearly enough for us to say so. The bills and votes are on the Receipts tab. Read them and judge for yourself.",
   // Also deliberately not exculpatory. "A reviewer disagreed" is not "he kept
   // it", and the sentence must not be readable as either an accusation or a
   // clearing.
   WITHHELD_PENDING_REVIEW:
-    "A second review didn't back this reading, so we're not publishing it. The bills and votes are on the Receipts tab — read them and judge for yourself.",
+    "A second review didn't back this reading, so we're not publishing it. The bills and votes are on the Receipts tab. Read them and judge for yourself.",
   // Not exculpatory either. We lack a reliable summary of the text the senator
   // acted on — missing, or flagged as wrong — which says nothing about which
   // way they acted.
   WITHHELD_TEXT_UNAVAILABLE:
-    "We don't have a reliable summary of the version of the bill in effect when the senator acted, so it could only be read against a later version, which may say something different. We won't make a call against the senator on the strength of a text they may not have voted on. The bills and votes are on the Receipts tab — read them and judge for yourself.",
+    "We don't have a reliable summary of the version of the bill in effect when the senator acted, so it could only be read against a later version, which may say something different. We won't make a call against the senator on the strength of a text they may not have voted on. The bills and votes are on the Receipts tab. Read them and judge for yourself.",
   // Neither exculpatory nor accusatory, and not "no effect": we did not
   // finish reading the bills, so we say that and nothing more.
   EVALUATION_FAILED:
-    "We couldn't finish checking this: a step failed for this answer — either reading the bills against this statement, or reading the part of the record we check them against. That says nothing about the senator either way. The bills and votes are on the Receipts tab, and trying again may complete the check.",
+    "We couldn't finish checking this: a step failed for this answer (either reading the bills against this statement, or reading the part of the record we check them against). That says nothing about the senator either way. The bills and votes are on the Receipts tab, and trying again may complete the check.",
   // The record, and only the record. A missed vote has reasons the data can't
   // tell apart, so this sentence names none and implies none — and it is not
   // "no effect", which is a claim about the bills.
@@ -1901,9 +1933,9 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
   // Not "can't settle": the gates are rules, and the copy says a rule set the
   // bills aside rather than that the bills are incapable of bearing on it.
   CONTESTED_READING:
-    "We found bills on this subject, but at least one can reasonably be read either way — as advancing the goal in this statement or as setting it back — and we couldn't settle which, so it isn't counted in either direction. The bills and votes are on the Receipts tab — read them and judge for yourself.",
+    "We found bills on this subject, but at least one can reasonably be read either way (as advancing the goal in this statement or as setting it back), and we couldn't settle which, so it isn't counted in either direction. The bills and votes are on the Receipts tab. Read them and judge for yourself.",
   GATED:
-    "Our rules set aside everything we found before weighing it — the window the statement applied to had closed, or the bills were too broad to say anything about it specifically. Each item below says which.",
+    "Our rules set aside everything we found before weighing it: the window the statement applied to had closed, or the bills were too broad to say anything about it specifically. Each item below says which.",
 };
 
 /**
@@ -1918,7 +1950,7 @@ export const ND_REASON_COPY: Record<NotDeterminableReason, string> = {
  * Says only what is actually known: no defensible reading, reason unrecorded.
  */
 export const ND_NO_REASON_COPY =
-  "We couldn't reach a defensible reading here, and the specific reason wasn't recorded. Anything we did find is on the Receipts tab — read it and judge for yourself.";
+  "We couldn't reach a defensible reading here, and the specific reason wasn't recorded. Anything we did find is on the Receipts tab. Read it and judge for yourself.";
 
 /**
  * Plain-language rendering of `vote_governing`, for Level 1.
@@ -1940,14 +1972,14 @@ export const GOVERNING_VOTE_COPY: Record<string, string> = {
   'CLOTURE (60-vote threshold; split vote)':
     'Two votes here, and they point different ways. We count the vote on whether to let the bill proceed, because in the Senate that is usually the stage where a bill lives or dies.',
   'CLOTURE+PASSAGE (agree)':
-    'They voted the same way twice — once on whether to let the bill proceed, once on the bill itself.',
+    'They voted the same way twice: once on whether to let the bill proceed, and once on the bill itself.',
   'CLOTURE (only vote recorded)':
     'The one recorded vote was on whether to let the bill proceed, not on the bill itself.',
   'PASSAGE (no cloture vote)':
     'The recorded vote was on the bill itself; there was no separate vote on whether to let it proceed.',
   'VOTE (untyped)':
     'The record shows a single vote on this bill without saying which stage it belonged to.',
-  SPONSORSHIP: 'There was no vote to read here — putting their name to the bill is the action.',
+  SPONSORSHIP: 'There was no vote to read here. Putting their name to the bill is the action.',
   SPONSOR_NAY:
     'They put their name to this bill and then voted against it. We do not read that as either keeping or breaking the statement.',
 };
@@ -1985,12 +2017,12 @@ export const EFFECT_UNREAD = 'EFFECT_UNREAD';
  * Unknown flags render nothing here and appear raw in the analyst trace.
  */
 export const VOTE_FLAG_COPY: Record<string, string> = {
-  SPLIT_VOTE: 'Split vote — the two votes on this bill went different ways.',
+  SPLIT_VOTE: 'Split vote: the two votes on this bill went different ways.',
   // Institutional fact, not a motive. The platform's non-goals rule out intent
   // attribution, so this says what the role involves and leaves the reading to
   // the reader.
   FLOOR_LEADER:
-    'They held a floor leadership role at the time — a role that involves casting procedural votes on the chamber\'s behalf.',
+    'They held a floor leadership role at the time, a role that involves casting procedural votes on the chamber\'s behalf.',
   ACTION_DATE_PROXY:
     'We do not have an exact date for this action, so the start of that Congress was used when checking timing.',
   // Said wherever it applies, because without it the reader assumes the bill
@@ -1998,7 +2030,7 @@ export const VOTE_FLAG_COPY: Record<string, string> = {
   // bill it may not be.
   // A failed read, not a finding: says the row counts for nothing, and why.
   [EFFECT_UNREAD]:
-    "We couldn't read this bill against the statement — the step that does it failed — so it isn't counted either way, and this reading is low confidence.",
+    "We couldn't read this bill against the statement (the step that does it failed), so it isn't counted either way, and this reading is low confidence.",
   [TEXT_AT_ACTION_UNAVAILABLE]:
     'We don’t have a reliable summary of the version of this bill in effect when the senator acted. It was judged against a later version, which may say something different, so this reading is low confidence.',
 };
@@ -2056,7 +2088,7 @@ export const TEXT_VERSION_PHRASE: Record<string, string> = {
   ats: 'as agreed to by the Senate',
   ath: 'as agreed to by the House',
   pap: 'as printed after passage',
-  enr: 'as enrolled — the final text agreed by both chambers',
+  enr: 'as enrolled (the final text agreed by both chambers)',
 };
 
 const versionPhrase = (code: string | null, type: string | null): string => {
@@ -2110,7 +2142,7 @@ export function textVersionLines(d: TextVersionDisclosure | null | undefined): s
     lines.push(`Judged against the text in effect ${moment}: ${phrase}${date ? ` (${date})` : ''}${own}.`);
   } else if (d.status === 'TEXT_UNAVAILABLE') {
     lines.push(
-      `We don't have a reliable summary of the text in effect ${moment} — ${phrase}${date ? ` (${date})` : ''} — so a later version was used.`,
+      `We don't have a reliable summary of the text in effect ${moment} (${phrase}${date ? `, ${date}` : ''}), so a later version was used.`,
     );
   } else if (d.status === 'NO_ACTION_DATE') {
     lines.push(
@@ -2195,3 +2227,32 @@ export const BANNED_MOTIVE_TERMS = [
   'wanted to',
   'tried to hide',
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Reader text: no em dashes
+// ---------------------------------------------------------------------------
+
+/**
+ * The last pass over text a reader sees: no em dashes (Matt, 15 Oct). The
+ * prompts and the fixed copy already avoid them; this catches what a model
+ * still writes and what older stored data holds.
+ *
+ * A dash between words becomes a comma ("a decision — each one" → "a
+ * decision, each one"); a dash in a number range becomes a hyphen
+ * ("2023–2024" → "2023-2024"); a dash at the start or end of the text is
+ * dropped. Nothing else is rewritten.
+ */
+export function sanitizeReaderText(text: string): string;
+export function sanitizeReaderText(text: string | null | undefined): string | null | undefined;
+export function sanitizeReaderText(text: string | null | undefined): string | null | undefined {
+  if (!text || !/[—–]/.test(text)) return text;
+  return text
+    .replace(/(\d)\s*[–—]\s*(\d)/g, '$1-$2')
+    .replace(/^\s*[—–]\s*/, '')
+    .replace(/\s*[—–]\s*$/, '')
+    .replace(/\s*[—–]\s*([.,;:!?)])/g, '$1')
+    .replace(/([(])\s*[—–]\s*/g, '$1')
+    .replace(/\s*[—–]+\s*/g, ', ')
+    .replace(/,\s*,/g, ',')
+    .replace(/:\s*,/g, ':');
+}

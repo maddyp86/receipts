@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { sanitizeReaderText } from '@receipts/shared';
 import { config } from '../config.js';
 import { explanationProblems } from '../orchestrator/dispatch.js';
 import type { TraceRecord } from '../trace/TraceStore.js';
@@ -45,7 +46,7 @@ You are given the record of how that result was reached: what the person asked, 
 - Explain the result. Point at the specific bill, vote, gate or rule the answer turns on, and quote the reasoning the record holds for it.
 - Say plainly when the record does not contain the answer. "The record does not say" is a good answer.
 - Say a reading as a reading. Which way a bill pushes the goal is the evaluator's reading of its text, not a fact about the bill: "it was read as setting the goal back". A bill read as CONTESTED was read both ways, not as having no effect; a bill whose effect is ERROR was never read.
-- If the question would need a new search, a different senator, a different statement, or a re-scoring — say that it is a new question and that the person should run it as one. Do not guess.
+- If the question would need a new search, a different senator, a different statement, or a re-scoring, say that it is a new question and that the person should run it as one. Do not guess.
 
 ## WHAT YOU NEVER DO
 - NEVER produce, change, or second-guess a verdict, a band, a weight, or any number. The result is fixed. If asked "should this be Kept?", explain what the record shows and say the verdict is computed by code from that record, not by you.
@@ -55,7 +56,7 @@ You are given the record of how that result was reached: what the person asked, 
 - Do not invent bills, votes, dates, or provisions that are not in the record.
 
 ## VOICE
-Plain, conversational, direct. Address the reader. Refer to the senator by surname. Two to five sentences; more only if the question genuinely needs it. No headings, no bullet lists unless listing bills.`;
+A nonpartisan analyst: plain, conversational, direct. Do not judge ideology or policy merit. Address the reader. Refer to the senator by surname. Two to five sentences, more only if the question genuinely needs it. No headings, no bullet lists unless listing bills. Never use em dashes or en dashes; use a comma, a period or parentheses. Avoid semicolons.`;
 
 /** One prior exchange, as the client keeps it. Never persisted server-side. */
 export interface FollowupTurn {
@@ -277,7 +278,7 @@ export function liveFollowupFetch(): FollowupFetch {
 }
 
 const REFUSAL =
-  'I could not phrase an answer to that within the rules this tool holds itself to — no numbers, no guessing at motive, and no second-guessing the verdict. The evidence cards and "How we got here" are the record; the trace link under the steps has every detail.';
+  'I could not phrase an answer to that within the rules this tool holds itself to: no numbers, no guessing at motive, and no second-guessing the verdict. The evidence cards and "How we got here" are the record, and the trace link under the steps has every detail.';
 
 /** The verdict and statement type the guard checks against, from the trace. */
 function guardInputs(record: TraceRecord): { verdict: string; statementType: string } {
@@ -363,5 +364,5 @@ export async function answerFollowup(
 
   trace.record({ stage: 'DONE', kind: 'control', label: refused ? 'refused after two attempts' : 'answered', output: { refused } });
   await trace.close('result');
-  return { answer, refused, followup_run_id: trace.runId };
+  return { answer: sanitizeReaderText(answer), refused, followup_run_id: trace.runId };
 }

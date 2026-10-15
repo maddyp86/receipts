@@ -91,7 +91,7 @@ export function Entry({
       <header>
         <h1 className="font-serif text-[36px] leading-none text-ink sm:text-[44px]">Receipts</h1>
         <p className="mt-3 max-w-[38ch] text-[19px] leading-snug text-ink-soft sm:text-[21px]">
-          See if what a member of Congress says matches what they do — checked against their real votes and bills.
+          See if what a member of Congress says matches what they do, checked against their real votes and bills.
         </p>
         <BetaNotice full={showScopeNote} />
       </header>

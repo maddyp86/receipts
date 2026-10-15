@@ -95,14 +95,14 @@ describe('every read reports its own failure', () => {
 
 describe('what the reader is told', () => {
   it('every read maps to a part of the record a reader recognises', () => {
-    const parts: EnrichmentPart[] = ['roles', 'cloture_results', 'actions', 'whip_votes', 'cloture_questions', 'bill_progress', 'text_versions', 'bill_statements'];
+    const parts: EnrichmentPart[] = ['roles', 'cloture_results', 'actions', 'whip_votes', 'cloture_questions', 'vote_tallies', 'bill_progress', 'text_versions', 'bill_statements'];
     for (const p of parts) expect(ENRICHMENT_GAP_PHRASE[ENRICHMENT_GAP_OF[p]]).toBeTruthy();
   });
 
   it('says which part, that the checks ran without it, and to try again', () => {
     expect(enrichmentGapSentence(['vote_records', 'text_versions'])).toBe(
-      "Part of the record we check against couldn't be read for this answer: the dates of the senator's votes and sponsorships; and which version of each bill's text was in effect. " +
-        'The checks that depend on it ran without it, so treat this result with extra caution — trying again may complete it.',
+      "Part of the record we check against couldn't be read for this answer: the dates of the senator's votes and sponsorships and which version of each bill's text was in effect. " +
+        'The checks that depend on it ran without it, so treat this result with extra caution. Trying again may complete it.',
     );
   });
 
