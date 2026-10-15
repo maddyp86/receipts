@@ -30,10 +30,11 @@ describe('the copy', () => {
   });
 
   it('says kept or set aside only once the evidence gate has decided', () => {
-    expect(relevanceDoneNote('A1', 's1-119', 'PARTIAL').status).toBe('running');
-    expect(relevanceDoneNote('A1', 's1-119', 'PARTIAL').text).not.toMatch(/kept|set aside/);
-    expect(relevanceDoneNote('A1', 's1-119', 'PARTIAL', false)).toMatchObject({ status: 'skipped', text: 'S. 1: partly about this — set aside' });
-    expect(relevanceDoneNote('A1', 's1-119', 'TRUE_POSITIVE', true)).toMatchObject({ status: 'done', text: 'S. 1: about this — kept' });
+    const found = relevanceDoneNote('A1', 's1-119', 'PARTIAL');
+    expect(found.text).not.toMatch(/kept|set aside/);
+    expect(found.outcome).toBeUndefined();
+    expect(relevanceDoneNote('A1', 's1-119', 'PARTIAL', false)).toMatchObject({ status: 'skipped', outcome: 'set_aside', text: 'S. 1: partly about this — set aside' });
+    expect(relevanceDoneNote('A1', 's1-119', 'TRUE_POSITIVE', true)).toMatchObject({ status: 'done', outcome: 'kept', text: 'S. 1: about this — kept' });
   });
 
   it('a gated row carries the first sentence of its reason', () => {

@@ -55,9 +55,12 @@ const RELEVANCE_COPY: Record<string, string> = {
  */
 export function relevanceDoneNote(actionUid: string, billId: string, verdict: string, admitted?: boolean): Omit<NoteEvent, 'type'> {
   const found = RELEVANCE_COPY[verdict] ?? RELEVANCE_COPY.ERROR!;
-  const status: NoteEvent['status'] = admitted === undefined ? 'running' : admitted ? 'done' : 'skipped';
-  const outcome = admitted === undefined ? '' : admitted ? ' — kept' : ' — set aside';
-  return { step: 'search', key: `rel:${actionUid}`, group: 'relevance', status, text: `${cite(billId)}: ${found}${outcome}` };
+  const status: NoteEvent['status'] = admitted === false ? 'skipped' : 'done';
+  const suffix = admitted === undefined ? '' : admitted ? ' — kept' : ' — set aside';
+  return {
+    step: 'search', key: `rel:${actionUid}`, group: 'relevance', status, text: `${cite(billId)}: ${found}${suffix}`,
+    ...(admitted === undefined ? {} : { outcome: admitted ? 'kept' : 'set_aside' }),
+  };
 }
 
 export function nearMissNote(count: number, step: StepId = 'search'): Omit<NoteEvent, 'type'> {
@@ -90,6 +93,7 @@ export function textVersionNote(actionUid: string, billId: string, versionType: 
   return {
     step: 'score',
     key: `ver:${actionUid}`,
+    group: 'version',
     status: 'done',
     text: `${cite(billId)} changed as it moved — reading the text in front of them when they acted${which ? ` (${which})` : ''}`,
   };
@@ -98,7 +102,7 @@ export function textVersionNote(actionUid: string, billId: string, versionType: 
 /** A row a rule closed before it was read. The first sentence of its reason is reader copy already. */
 export function gatedNote(actionUid: string, billId: string, reason: string): Omit<NoteEvent, 'type'> {
   const first = /^(.+?[.!?])(\s|$)/.exec(reason.trim())?.[1] ?? reason.trim();
-  return { step: 'score', key: `gate:${actionUid}`, status: 'skipped', text: `${cite(billId)}: not counted. ${first}` };
+  return { step: 'score', key: `gate:${actionUid}`, group: 'gated', status: 'skipped', text: `${cite(billId)}: not counted. ${first}` };
 }
 
 export function readStartNote(actionUid: string, billId: string, title: string): Omit<NoteEvent, 'type'> {

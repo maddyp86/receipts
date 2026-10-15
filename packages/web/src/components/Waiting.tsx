@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeftIcon, CheckIcon, LightbulbIcon, Loader2Icon, MinusIcon, TriangleAlertIcon } from 'lucide-react';
+import { ArrowLeftIcon, CheckIcon, ChevronRightIcon, LightbulbIcon, Loader2Icon, MinusIcon, TriangleAlertIcon } from 'lucide-react';
 import { surnameOf, type Interpretation, type NoteEvent, type StepEvent, type StepId } from '@receipts/shared';
 import type { Member } from '../data/roster.js';
 import { SelectedMember } from './members/SelectedMember.js';
@@ -81,25 +81,121 @@ export function notesFor(stage: { steps: StepId[] }, notes: NoteEvent[]): NoteEv
   return notes.filter((n) => stage.steps.includes(n.step));
 }
 
-/** "3 of 8 read", from the bill-reading notes. Null before any bill is being read. */
-export function readProgress(notes: NoteEvent[]): string | null {
-  const read = notes.filter((n) => n.group === 'read');
-  if (!read.length) return null;
-  const finished = read.filter((n) => n.status !== 'running').length;
-  return `${finished} of ${read.length} read`;
+/**
+ * One line under a stage: what part of it is happening, said once. A group of
+ * notes ("each bill checked", "each bill read") becomes one summary line, and
+ * its notes are kept behind it for the reader who wants to see each one. A
+ * note with no group is its own line.
+ */
+export interface Subtask {
+  key: string;
+  status: NoteEvent['status'];
+  text: string;
+  /** The individual notes behind the summary. Empty for a single note. */
+  items: NoteEvent[];
+}
+
+/** Which summary line a group's notes sit under. A version note is about a bill being read. */
+const BUCKET: Record<NonNullable<NoteEvent['group']>, string> = {
+  relevance: 'relevance',
+  read: 'read',
+  version: 'read',
+  gated: 'gated',
+};
+
+const bills = (n: number) => `${n} ${n === 1 ? 'bill' : 'bills'}`;
+
+function summarize(bucket: string, items: NoteEvent[]): Pick<Subtask, 'status' | 'text'> {
+  switch (bucket) {
+    case 'relevance': {
+      const decided = items.filter((n) => n.outcome);
+      if (decided.length === items.length) {
+        const kept = decided.filter((n) => n.outcome === 'kept').length;
+        return { status: 'done', text: `${kept} about this · ${decided.length - kept} set aside` };
+      }
+      const checked = items.filter((n) => n.status !== 'running').length;
+      return { status: 'running', text: `Checking which are about this · ${checked} of ${items.length}` };
+    }
+    case 'read': {
+      const reads = items.filter((n) => n.group === 'read');
+      const finished = reads.filter((n) => n.status !== 'running').length;
+      return finished < reads.length
+        ? { status: 'running', text: `Reading ${finished} of ${bills(reads.length)}` }
+        : { status: 'done', text: `Read ${bills(reads.length)}` };
+    }
+    case 'gated':
+      return { status: 'skipped', text: `${bills(items.length)} not counted, by rule` };
+    default:
+      return { status: 'done', text: '' };
+  }
+}
+
+export function subtasksFor(lines: NoteEvent[]): Subtask[] {
+  const out: Subtask[] = [];
+  const grouped = new Map<string, NoteEvent[]>();
+  for (const n of lines) {
+    if (!n.group) {
+      out.push({ key: n.key, status: n.status, text: n.text, items: [] });
+      continue;
+    }
+    const bucket = BUCKET[n.group];
+    const items = grouped.get(bucket);
+    if (items) items.push(n);
+    else {
+      grouped.set(bucket, [n]);
+      // Placed where the group first appeared, filled in below.
+      out.push({ key: `group:${bucket}`, status: 'running', text: '', items: [] });
+    }
+  }
+  return out.map((t) => {
+    if (!t.key.startsWith('group:')) return t;
+    const bucket = t.key.slice('group:'.length);
+    const items = grouped.get(bucket)!;
+    return { ...t, ...summarize(bucket, items), items };
+  });
+}
+
+function StatusMark({ status, size = 'h-3.5 w-3.5' }: { status: NoteEvent['status']; size?: string }) {
+  return status === 'running' ? (
+    <Loader2Icon className={`${size} animate-spin text-ink-soft motion-reduce:animate-none`} />
+  ) : status === 'done' ? (
+    <CheckIcon className={`${size} text-ink`} strokeWidth={3} />
+  ) : (
+    <MinusIcon className={`${size} text-ink-soft`} strokeWidth={3} />
+  );
+}
+
+/** A subtask's line, and — folded until the reader opens it — each thing behind it. */
+function SubtaskLine({ task }: { task: Subtask }) {
+  return (
+    <li className="animate-fade-in text-[14px] leading-snug" data-status={task.status}>
+      <div className="flex items-start gap-2">
+        <span className="mt-[3px] flex h-3.5 w-3.5 shrink-0 items-center justify-center" aria-hidden="true">
+          <StatusMark status={task.status} />
+        </span>
+        <span className={`tabular-nums ${task.status === 'skipped' ? 'text-ink-soft' : 'text-ink'}`}>{task.text}</span>
+      </div>
+      {task.items.length ? (
+        <details className="group ml-[22px]">
+          <summary className="flex min-h-[32px] cursor-pointer list-none items-center gap-1 text-[13px] font-medium text-focus [&::-webkit-details-marker]:hidden">
+            <ChevronRightIcon className="h-3.5 w-3.5 transition-transform group-open:rotate-90" aria-hidden="true" />
+            <span className="group-open:hidden">See each bill ({task.items.length})</span>
+            <span className="hidden group-open:inline">Hide</span>
+          </summary>
+          <ul className="mb-1 space-y-1.5 border-l border-rule pl-3">
+            {task.items.map((n) => <NoteLine key={n.key} note={n} />)}
+          </ul>
+        </details>
+      ) : null}
+    </li>
+  );
 }
 
 function NoteLine({ note }: { note: NoteEvent }) {
   return (
-    <li className="flex animate-fade-in items-start gap-2 text-[14px] leading-snug" data-status={note.status}>
-      <span className="mt-[3px] flex h-3.5 w-3.5 shrink-0 items-center justify-center" aria-hidden="true">
-        {note.status === 'running' ? (
-          <Loader2Icon className="h-3.5 w-3.5 animate-spin text-ink-soft motion-reduce:animate-none" />
-        ) : note.status === 'done' ? (
-          <CheckIcon className="h-3.5 w-3.5 text-ink" strokeWidth={3} />
-        ) : (
-          <MinusIcon className="h-3.5 w-3.5 text-ink-soft" strokeWidth={3} />
-        )}
+    <li className="flex items-start gap-2 text-[13px] leading-snug" data-status={note.status}>
+      <span className="mt-[2px] flex h-3 w-3 shrink-0 items-center justify-center" aria-hidden="true">
+        <StatusMark status={note.status} size="h-3 w-3" />
       </span>
       <span className={note.status === 'skipped' ? 'text-ink-soft' : 'text-ink'}>{note.text}</span>
     </li>
@@ -276,8 +372,7 @@ export function Waiting({ member, promise, steps, notes = [], interpretation, re
         {STAGES.map((stage, i) => {
           const status = statuses[i]!;
           const detail = detailFor(stage);
-          const lines = status === 'waiting' ? [] : notesFor(stage, notes);
-          const progress = stage.steps.includes('score') && status !== 'waiting' ? readProgress(lines) : null;
+          const tasks = status === 'waiting' ? [] : subtasksFor(notesFor(stage, notes));
           return (
             <li key={i} className="flex min-h-[56px] items-start gap-4 rounded-lg px-3 py-3" data-status={status}>
               <span className="flex h-8 w-8 shrink-0 items-center justify-center" aria-hidden="true">
@@ -301,24 +396,15 @@ export function Waiting({ member, promise, steps, notes = [], interpretation, re
                 >
                   {stage.label(member.name)}
                 </span>
-                {detail && status !== 'waiting' ? (
+                {/* The subtasks say what the detail line says, and more. */}
+                {detail && status !== 'waiting' && !tasks.length ? (
                   <span className="block text-[14px] text-ink-soft">{detail}</span>
                 ) : null}
-                {progress ? <span className="block text-[14px] tabular-nums text-ink-soft">{progress}</span> : null}
-                {/* The narration. Open while the stage is working; once it is
-                    done it folds away, a tap from being read again. */}
-                {lines.length && status === 'done' ? (
-                  <details className="mt-1">
-                    <summary className="min-h-[32px] cursor-pointer text-[14px] font-medium text-focus">
-                      What we checked ({lines.length})
-                    </summary>
-                    <ul className="mt-1 space-y-1.5">
-                      {lines.map((n) => <NoteLine key={n.key} note={n} />)}
-                    </ul>
-                  </details>
-                ) : lines.length ? (
+                {/* Three levels: the stage, one line per part of it, and —
+                    a tap away — each bill behind that line. */}
+                {tasks.length ? (
                   <ul className="mt-2 space-y-1.5">
-                    {lines.map((n) => <NoteLine key={n.key} note={n} />)}
+                    {tasks.map((t) => <SubtaskLine key={t.key} task={t} />)}
                   </ul>
                 ) : null}
                 <span className="sr-only">

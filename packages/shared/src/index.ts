@@ -1285,8 +1285,14 @@ export interface NoteEvent {
   key: string;
   text: string;
   status: 'running' | 'done' | 'skipped';
-  /** Notes that belong together, e.g. every bill read in this step. Drives "3 of 8 read". */
-  group?: 'relevance' | 'read';
+  /**
+   * Notes that belong together, e.g. every bill read in this step. The screen
+   * shows one summary line per group ("Reading 3 of 8 bills") and the notes
+   * themselves only when the reader opens it.
+   */
+  group?: 'relevance' | 'read' | 'version' | 'gated';
+  /** Set once a rule has decided whether a checked row is used. */
+  outcome?: 'kept' | 'set_aside';
 }
 
 /**
