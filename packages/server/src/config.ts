@@ -421,6 +421,33 @@ export const config = {
      */
     feedbackPrompts: boolOverride(process.env.ENABLE_FEEDBACK_PROMPTS) ?? false,
   },
+
+  /**
+   * Readers fund a not-yet-checked senator's record (funding/funding.ts).
+   *
+   * OFF by default, and off whatever the flag says until both Stripe values
+   * and DATABASE_URL are set: a button that takes money with nowhere to record
+   * it is worse than no button. Migration 018 must have been run.
+   */
+  funding: {
+    enabled:
+      (boolOverride(process.env.ENABLE_FUNDING) ?? false) &&
+      str(process.env.STRIPE_SECRET_KEY) !== '' &&
+      str(process.env.STRIPE_WEBHOOK_SECRET) !== '' &&
+      databaseUrl !== '',
+    stripeSecretKey: str(process.env.STRIPE_SECRET_KEY),
+    stripeWebhookSecret: str(process.env.STRIPE_WEBHOOK_SECRET),
+    /** Covers a Collins-sized member (~$18.77) plus Stripe's fee. */
+    priceCents: Math.round(num(process.env.FUNDING_PRICE_CENTS, 2000)),
+    currency: str(process.env.FUNDING_CURRENCY).toLowerCase() || 'usd',
+    /** Live within this many days, or refunded. */
+    slaDays: Math.round(num(process.env.FUNDING_SLA_DAYS, 14)),
+    /**
+     * Where Stripe sends the reader back. Blank falls back to the first
+     * CORS_ORIGIN; a config value, never the request's Origin header.
+     */
+    returnUrl: (str(process.env.FUNDING_RETURN_URL) || str(process.env.CORS_ORIGIN).split(',')[0]?.trim() || '').replace(/\/+$/, ''),
+  },
 } as const;
 
 /** One-line startup banner so the active mode is never a surprise. */

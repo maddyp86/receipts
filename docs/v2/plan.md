@@ -182,6 +182,18 @@ One member at a time, with the same checklist:
 
 Order: Ossoff (41 of his statements can be reused from the backup), Collins, Sullivan, Marshall, Warner, Luján.
 
+#### Funded members
+
+A reader can pay once (default $20) to have a senator who is not checked yet added. The record then goes live for everyone. The code is in `packages/server/src/funding/`, the table is `app.member_funding` (migration 018), and it is off unless `ENABLE_FUNDING` and the Stripe keys are set. A payment writes one row and nothing else. It does not set `in_scope`.
+
+1. Every morning, list open rows as postgres: `select member_id, display_name, paid_at, refund_due_at from app.member_funding where status in ('paid', 'processing') order by refund_due_at;`
+2. A funded member goes ahead of the order above. Set their rows to `processing` and run the checklist.
+3. When you set `live`, set their rows to `live` with `live_at = now()`.
+4. A row still not live at `refund_due_at` is refunded in the Stripe dashboard, then set to `refunded` with `refunded_at = now()`.
+5. If two readers paid for the same member in the same minute, refund the second one.
+
+`app.member_requests` holds the free requests (a reader asked about someone who isn't live), so free and paid demand can be compared.
+
 ### Phase 5: House members
 
 1. **Scraper.** Add House simple resolutions (`hres`) to the bill upload.
