@@ -1333,6 +1333,9 @@ export async function runQuery(
   }
 
   const session = newSession(politicianId, promiseText, corrections, meta.statementDate);
+  // Narration goes straight to the browser and is NOT recorded for replay: it
+  // describes work being done, and a replayed answer did none.
+  session.narrate = (note) => emit({ type: 'note', ...note });
   const trace = new QueryTrace(traceSinks, { politicianId, promiseText, meta: traceMeta });
   trace.adopt(whichSteps);
 

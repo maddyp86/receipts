@@ -194,6 +194,7 @@ export default function App() {
               member={member}
               promise={promise.trim()}
               steps={stream.steps}
+              notes={stream.notes}
               interpretation={stream.interpretation}
               rewritten={stream.rewritten}
               asked={askedText}

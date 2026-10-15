@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { StepEvent, StepId } from '@receipts/shared';
-import { stageStatuses } from './Waiting.js';
+import type { NoteEvent, StepEvent, StepId } from '@receipts/shared';
+import { Waiting, readProgress, stageStatuses } from './Waiting.js';
 import { Entry } from './Entry.js';
 
 // The test runner compiles JSX with the classic transform.
@@ -107,5 +107,46 @@ describe('the entry screen and coverage', () => {
     // The only selectable card is the covered member's.
     expect(page.match(/data-covered="true"/g)).toHaveLength(1);
     expect(page).not.toMatch(/data-covered="true"[^>]*>[\s\S]{0,400}Pat Sample/);
+  });
+});
+
+// ===========================================================================
+// THE NARRATION under each stage: what the server says it is doing, as it
+// does it. Open under the stage that is working, folded under one that is done.
+// ===========================================================================
+
+describe('the narration', () => {
+  const note = (key: string, step: StepId, status: NoteEvent['status'], text: string, group?: NoteEvent['group']): NoteEvent =>
+    ({ type: 'note', key, step, status, text, ...(group ? { group } : {}) });
+
+  const notes: NoteEvent[] = [
+    note('retrieved', 'search', 'done', 'Found 3 votes and bills that come up for this topic'),
+    note('rel:A', 'search', 'done', 'S. 1: about this — kept', 'relevance'),
+    note('rel:B', 'search', 'skipped', 'S. 2: about something else — set aside', 'relevance'),
+    note('read:A', 'score', 'done', 'S. 1: the bill pushes toward this', 'read'),
+    note('read:C', 'score', 'running', 'Reading H.R. 3 — A bill', 'read'),
+  ];
+
+  it('counts bills read, not bills started', () => {
+    expect(readProgress(notes)).toBe('1 of 2 read');
+    expect(readProgress(notes.slice(0, 3))).toBeNull();
+  });
+
+  it('shows each line under its stage while it works, and folds a finished stage', () => {
+    const steps = (['classify_scope', 'interpret', 'resolve_senator', 'embed', 'search'] as StepId[])
+      .map((id) => step(id, 'done'))
+      .concat(step('score', 'running'));
+    const page = renderToStaticMarkup(
+      React.createElement(Waiting, {
+        member: { politician_id: 'X1', name: 'Jane Example', chamber: 'senate', cached: true },
+        promise: 'supports something', steps, notes, interpretation: null,
+        onCancel: () => {}, onChange: () => {},
+      }),
+    );
+    expect(page).toContain('Reading H.R. 3 — A bill');
+    expect(page).toContain('1 of 2 read');
+    // The search is done: its lines are a tap away, not gone.
+    expect(page).toContain('What we checked (3)');
+    expect(page).toContain('S. 2: about something else — set aside');
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeftIcon, CheckIcon, LightbulbIcon, Loader2Icon, TriangleAlertIcon } from 'lucide-react';
-import { surnameOf, type Interpretation, type StepEvent, type StepId } from '@receipts/shared';
+import { ArrowLeftIcon, CheckIcon, LightbulbIcon, Loader2Icon, MinusIcon, TriangleAlertIcon } from 'lucide-react';
+import { surnameOf, type Interpretation, type NoteEvent, type StepEvent, type StepId } from '@receipts/shared';
 import type { Member } from '../data/roster.js';
 import { SelectedMember } from './members/SelectedMember.js';
 
@@ -9,8 +9,10 @@ import { SelectedMember } from './members/SelectedMember.js';
 //
 // Driven by the REAL progress stream, not a timer: a stage is ticked when the
 // server says its steps finished, and the server's own detail ("looked at
-// 10 bills · 2 directly about this") is printed under it. The visible progress is the
-// traceability, so nothing here is simulated.
+// 10 bills · 2 directly about this") is printed under it — and under that, the
+// server's narration as it works: each bill checked, kept or set aside, read,
+// and which way it pushes. The visible progress is the traceability, so
+// nothing here is simulated.
 //
 // Above it, one card says what the reader asked and what we are checking to
 // answer it, as soon as that is known, with one way to change it. The check
@@ -72,6 +74,36 @@ export function stageStatuses(steps: StepEvent[]): StageStatus[] {
 function stageIsComplete(stage: Stage, byId: Map<StepId, StepEvent>): boolean {
   const last = stage.steps[stage.steps.length - 1]!;
   return byId.get(last)?.status === 'done';
+}
+
+/** The notes that belong under a stage, in arrival order. */
+export function notesFor(stage: { steps: StepId[] }, notes: NoteEvent[]): NoteEvent[] {
+  return notes.filter((n) => stage.steps.includes(n.step));
+}
+
+/** "3 of 8 read", from the bill-reading notes. Null before any bill is being read. */
+export function readProgress(notes: NoteEvent[]): string | null {
+  const read = notes.filter((n) => n.group === 'read');
+  if (!read.length) return null;
+  const finished = read.filter((n) => n.status !== 'running').length;
+  return `${finished} of ${read.length} read`;
+}
+
+function NoteLine({ note }: { note: NoteEvent }) {
+  return (
+    <li className="flex animate-fade-in items-start gap-2 text-[14px] leading-snug" data-status={note.status}>
+      <span className="mt-[3px] flex h-3.5 w-3.5 shrink-0 items-center justify-center" aria-hidden="true">
+        {note.status === 'running' ? (
+          <Loader2Icon className="h-3.5 w-3.5 animate-spin text-ink-soft motion-reduce:animate-none" />
+        ) : note.status === 'done' ? (
+          <CheckIcon className="h-3.5 w-3.5 text-ink" strokeWidth={3} />
+        ) : (
+          <MinusIcon className="h-3.5 w-3.5 text-ink-soft" strokeWidth={3} />
+        )}
+      </span>
+      <span className={note.status === 'skipped' ? 'text-ink-soft' : 'text-ink'}>{note.text}</span>
+    </li>
+  );
 }
 
 /**
@@ -164,6 +196,8 @@ interface Props {
   member: Member;
   promise: string;
   steps: StepEvent[];
+  /** The server's line-by-line narration; see NoteEvent. */
+  notes?: NoteEvent[];
   interpretation: Interpretation | null;
   /** Set when the reader typed a question and a statement is being checked in its place. */
   rewritten?: { original: string; statement: string } | null;
@@ -174,7 +208,7 @@ interface Props {
   onChange: (statement: string) => void;
 }
 
-export function Waiting({ member, promise, steps, interpretation, rewritten = null, asked = null, onCancel, onChange }: Props) {
+export function Waiting({ member, promise, steps, notes = [], interpretation, rewritten = null, asked = null, onCancel, onChange }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [tip, setTip] = useState(0);
   const statuses = stageStatuses(steps);
@@ -242,8 +276,10 @@ export function Waiting({ member, promise, steps, interpretation, rewritten = nu
         {STAGES.map((stage, i) => {
           const status = statuses[i]!;
           const detail = detailFor(stage);
+          const lines = status === 'waiting' ? [] : notesFor(stage, notes);
+          const progress = stage.steps.includes('score') && status !== 'waiting' ? readProgress(lines) : null;
           return (
-            <li key={i} className="flex min-h-[56px] items-center gap-4 rounded-lg px-3 py-2" data-status={status}>
+            <li key={i} className="flex min-h-[56px] items-start gap-4 rounded-lg px-3 py-3" data-status={status}>
               <span className="flex h-8 w-8 shrink-0 items-center justify-center" aria-hidden="true">
                 {status === 'done' ? (
                   <span className="flex h-7 w-7 items-center justify-center rounded-full bg-ink text-paper">
@@ -257,7 +293,7 @@ export function Waiting({ member, promise, steps, interpretation, rewritten = nu
                   <span className="h-6 w-6 rounded-full border-2 border-rule" />
                 )}
               </span>
-              <span>
+              <div className="min-w-0 flex-1 pt-1">
                 <span
                   className={`block text-[17px] ${
                     status === 'working' ? 'font-semibold text-ink' : status === 'waiting' ? 'text-ink-soft' : 'text-ink'
@@ -268,6 +304,23 @@ export function Waiting({ member, promise, steps, interpretation, rewritten = nu
                 {detail && status !== 'waiting' ? (
                   <span className="block text-[14px] text-ink-soft">{detail}</span>
                 ) : null}
+                {progress ? <span className="block text-[14px] tabular-nums text-ink-soft">{progress}</span> : null}
+                {/* The narration. Open while the stage is working; once it is
+                    done it folds away, a tap from being read again. */}
+                {lines.length && status === 'done' ? (
+                  <details className="mt-1">
+                    <summary className="min-h-[32px] cursor-pointer text-[14px] font-medium text-focus">
+                      What we checked ({lines.length})
+                    </summary>
+                    <ul className="mt-1 space-y-1.5">
+                      {lines.map((n) => <NoteLine key={n.key} note={n} />)}
+                    </ul>
+                  </details>
+                ) : lines.length ? (
+                  <ul className="mt-2 space-y-1.5">
+                    {lines.map((n) => <NoteLine key={n.key} note={n} />)}
+                  </ul>
+                ) : null}
                 <span className="sr-only">
                   {status === 'done'
                     ? '— done'
@@ -277,7 +330,7 @@ export function Waiting({ member, promise, steps, interpretation, rewritten = nu
                         ? '— failed'
                         : '— up next'}
                 </span>
-              </span>
+              </div>
             </li>
           );
         })}
