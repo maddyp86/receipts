@@ -272,20 +272,31 @@ describe('the headline', () => {
     renderToStaticMarkup(React.createElement(Verdict, { result: r })),
   )![1]!.replace(/<[^>]+>/g, '').replace(/&#x27;/g, "'").replace(/^[✓✕—]/, '');
 
-  // One sentence with the reason for the confidence (15 Oct): "low
-  // confidence" on its own told the reader nothing.
-  it('says the confidence with its reason, in one sentence', () => {
+  const sub = (r: QueryResult) => /<p class="verdict-confidence[^"]*">([\s\S]*?)<\/p>/.exec(
+    renderToStaticMarkup(React.createElement(Verdict, { result: r })),
+  )?.[1]?.replace(/<[^>]+>/g, '').replace(/&#x27;/g, "'") ?? null;
+
+  // A short headline, then the confidence and its reason as a subheadline
+  // (15 Oct): "low confidence" alone told the reader nothing, and the whole
+  // thing as one display-type sentence was too long.
+  it('is short, with the confidence and its reason underneath', () => {
     const r = score([row(KEEP)], 'Campaign Promise');
-    const level = r.band === 'High' ? 'high' : r.band === 'Medium' ? 'moderate' : 'low';
-    expect(headline(result(r, { statement_type: 'Campaign Promise', provenance: 'corpus' }))).toMatch(
-      new RegExp(`^Likely kept, with ${level} confidence because .+\\.$`),
-    );
+    const level = r.band === 'High' ? 'High' : r.band === 'Medium' ? 'Moderate' : 'Low';
+    const res = result(r, { statement_type: 'Campaign Promise', provenance: 'corpus' });
+    expect(headline(res)).toBe('Likely kept');
+    expect(sub(res)).toMatch(new RegExp(`^${level} confidence: .+\\.$`));
+  });
+
+  it('drops "Their record" for a position, which the label above already says', () => {
+    const res = result(score([row(KEEP)]));
+    expect(headline(res)).toBe('Likely consistent with this position');
   });
 
   it('keeps the mixed suffix in ranked mode', () => {
     const r = score([row(KEEP), row(KEEP), row(BREAK)]);
     expect(r.mode).toBe('ranked');
-    expect(headline(result(r))).toMatch(/^Their record is likely consistent with this position, but it’s mixed\. We have \w+ confidence because .+\.$/);
+    expect(headline(result(r))).toBe('Likely consistent with this position, but it’s mixed');
+    expect(sub(result(r))).toMatch(/^\w+ confidence: .+\.$/);
   });
 
   it('NOT_DETERMINABLE headlines are unchanged', () => {
@@ -298,8 +309,8 @@ describe('the order on the card', () => {
   it('headline → you asked about → the count → Here’s why', () => {
     const card = render(React.createElement(Verdict, { result: result(score([row(KEEP), row(BREAK), row(KEEP)])) }));
     const at = (s: string) => card.indexOf(s);
-    expect(at('likely consistent')).toBeGreaterThanOrEqual(0);
-    expect(at('likely consistent')).toBeLessThan(at('you asked about'));
+    expect(at('Likely consistent')).toBeGreaterThanOrEqual(0);
+    expect(at('Likely consistent')).toBeLessThan(at('you asked about'));
     expect(at('you asked about')).toBeLessThan(at('We found 3 actions'));
     expect(at('We found 3 actions')).toBeLessThan(at('Here’s why. Because.'));
   });

@@ -86,9 +86,10 @@ function usesPromiseVocabulary(result: QueryResult): boolean {
  * verdict is a reading of the record.
  */
 /**
- * The headline as [lead, confidence]: one sentence (15 Oct), rendered with the
- * confidence clause in body type so a phone shows the answer first, not eight
- * lines of display type.
+ * The headline and its subheadline (15 Oct): a short verdict in display type,
+ * then the confidence and its reason in body type. "Their record" is dropped
+ * from the verdict because the label above it already says "Their record vs.
+ * this position".
  */
 function headlineParts(result: QueryResult): [string, string] {
   const { verdict, band, mode, receipt } = result.scored;
@@ -96,13 +97,15 @@ function headlineParts(result: QueryResult): [string, string] {
   // "we couldn't find enough", which reads as a fact about the record.
   if (verdict === 'NOT_DETERMINABLE') return [notDeterminableHeadline(result.scored.nd_reason), ''];
   const { statement_type, provenance } = result.interpretation;
-  // One sentence, with the reason for the confidence (15 Oct): "low
-  // confidence" on its own told the reader nothing.
-  const base = likelyOutcomeHeadline(verdict, statement_type, provenance);
-  if (!band) return [`${base}${mode === 'ranked' ? ', but it’s mixed' : ''}.`, ''];
-  return mode === 'ranked'
-    ? [`${base}, but it’s mixed.`, ` We have ${BAND_LEVEL[band]} confidence because ${receipt.band_reason ? BAND_REASON_COPY[receipt.band_reason] : 'the record points both ways'}.`]
-    : [`${base},`, ` ${confidencePhrase(band, receipt.band_reason)}.`];
+  const full = likelyOutcomeHeadline(verdict, statement_type, provenance);
+  const short = full.replace(/^Their record (is )?/, '');
+  const lead = `${short.charAt(0).toUpperCase()}${short.slice(1)}${mode === 'ranked' ? ', but it’s mixed' : ''}`;
+  if (!band) return [lead, ''];
+  const level = BAND_LEVEL[band];
+  const why = receipt.band_reason
+    ? BAND_REASON_COPY[receipt.band_reason]
+    : mode === 'ranked' ? 'the record points both ways' : '';
+  return [lead, `${level.charAt(0).toUpperCase()}${level.slice(1)} confidence${why ? `: ${why}` : ''}.`];
 }
 
 export function AnalystTrace({ result }: { result: QueryResult }) {
@@ -380,14 +383,10 @@ export function VerdictCard(props: VerdictProps) {
         </div>
         {/* Styled from styles.css by its class alone: the tests read the
             headline out of the markup by this exact tag. */}
-        <h2 className="verdict-label">
-          {headlineParts(result)[0]}
-          {headlineParts(result)[1] ? (
-            <span className="verdict-confidence mt-1 block font-sans text-[18px] font-normal leading-snug text-ink">
-              {headlineParts(result)[1]}
-            </span>
-          ) : null}
-        </h2>
+        <h2 className="verdict-label">{headlineParts(result)[0]}</h2>
+        {headlineParts(result)[1] ? (
+          <p className="verdict-confidence mt-1.5 text-[17px] leading-snug text-ink">{headlineParts(result)[1]}</p>
+        ) : null}
         {/* The reader's OWN words, attributed to the reader. The restatement
             is the classifier's paraphrase; printing it in quotation marks
             beside the senator's name presented model output as something the
@@ -403,10 +402,9 @@ export function VerdictCard(props: VerdictProps) {
             {[
               { n: funnel.searched, label: 'actions in record' },
               { n: funnel.close, label: 'read closely' },
-              // The same two numbers the bar and the sentence use, so the
-              // card adds up: counted plus set aside is what was about it.
-              { n: isND ? funnel.about : counts(result).counted, label: isND ? 'about your question' : 'counted' },
-              { n: !isND && counts(result).setAside ? counts(result).setAside : null, label: 'set aside' },
+              // The bar's legend splits this into consistent, counter and set
+              // aside, so the card adds up without repeating those counts.
+              { n: funnel.about, label: 'about your question' },
             ].map((x) =>
               x.n === null ? null : (
                 <div key={x.label} className="flex items-baseline gap-1.5 rounded-full border border-rule bg-card/80 px-3 py-1">
