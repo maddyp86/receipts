@@ -12,7 +12,11 @@ const LARGE_BILL_KEYWORDS = [
   'military activities of the Department of Defense',
   'Consolidated Appropriations',
   'Making Appropriations',
-  'Omnibus',
+  // Not bare 'Omnibus': that matched every bill amending the Omnibus Crime
+  // Control and Safe Streets Act of 1968, which then got the BILLSTATUS summary
+  // instead of its text, and a new bill has no summary yet (s3724-119, s520-119).
+  'Omnibus Appropriations',
+  'Omnibus Consolidated',
   'Further Consolidated',
   'Further Additional Continuing',
   'Continuing Appropriations',
