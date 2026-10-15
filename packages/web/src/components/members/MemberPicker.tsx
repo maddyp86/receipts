@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeftIcon, ChevronDownIcon, ExternalLinkIcon, SearchIcon } from 'lucide-react';
+import { ArrowLeftIcon, ExternalLinkIcon, SearchIcon } from 'lucide-react';
 import type { Member } from '../../data/roster.js';
-import { districtCount, memberTitle, stateName } from '../../lib/members.js';
+import { districtCount, stateName } from '../../lib/members.js';
 import { GlossaryTerm } from '../glossary/GlossaryTerm.js';
 import { MemberCard } from './MemberCard.js';
 import { StateCombobox } from './StateCombobox.js';
@@ -19,6 +19,8 @@ const FIND_DISTRICT_URL = 'https://www.house.gov/representatives/find-your-repre
 
 /** Up to this many covered members are shown as cards; past it, as state shortcuts. */
 const GRID_LIMIT = 8;
+/** Name matches shown at once. All of Congress is listed, so a short query matches hundreds. */
+const NAME_MATCH_LIMIT = 12;
 
 type FindMode = 'state' | 'name';
 
@@ -34,7 +36,6 @@ export function MemberPicker({ members, selectedId, onSelect }: Props) {
   const [nameQuery, setNameQuery] = useState('');
 
   const covered = useMemo(() => members.filter((m) => m.cached), [members]);
-  const upcoming = useMemo(() => members.filter((m) => !m.cached), [members]);
   const coveredCountByState = useMemo(
     () =>
       covered.reduce<Record<string, number>>((acc, m) => {
@@ -86,42 +87,7 @@ export function MemberPicker({ members, selectedId, onSelect }: Props) {
         </div>
       )}
 
-      {/* 2. Who is coming. Names only, so the list reads as a queue, not as choices. */}
-      {upcoming.length ? (
-        <details className="group mt-5 rounded-card border border-rule bg-card">
-          <summary className="flex min-h-[52px] cursor-pointer list-none items-center justify-between gap-3 px-4 text-[16px] text-ink [&::-webkit-details-marker]:hidden">
-            <span>
-              <span className="font-medium">Being added next</span>{' '}
-              <span className="text-ink-soft">
-                · {upcoming.length} more {upcoming.length === 1 ? 'member' : 'members'}
-              </span>
-            </span>
-            <ChevronDownIcon
-              className="h-5 w-5 shrink-0 text-ink-soft transition-transform duration-200 group-open:rotate-180"
-              aria-hidden="true"
-            />
-          </summary>
-          <div className="border-t border-rule px-4 pb-4 pt-3">
-            <p className="text-[15px] leading-snug text-ink-soft">
-              We’re going through these records now. You can’t check them yet. They’ll appear above as each one is
-              finished.
-            </p>
-            <ul className="mt-3 divide-y divide-rule">
-              {upcoming.map((m) => (
-                <li key={m.politician_id} className="flex flex-wrap items-baseline justify-between gap-x-3 py-2.5">
-                  <span className="text-[16px] font-medium text-ink">{m.name}</span>
-                  <span className="text-[14px] text-ink-soft">
-                    {memberTitle(m)}
-                    {m.on_ballot_2026 ? ' · on the ballot this November' : ''}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </details>
-      ) : null}
-
-      {/* 3. Find someone specific. */}
+      {/* 2. Find anyone: checked, or not yet and fundable. */}
       <div className="mt-8">
         <p className="text-[16px] text-ink-soft">Looking for someone else? Find them by state or by name.</p>
         <div
@@ -181,7 +147,7 @@ export function MemberPicker({ members, selectedId, onSelect }: Props) {
               </div>
               <p className="mt-2 text-[15px] text-ink-soft">Searches senators and House members.</p>
               <div className="mt-3 grid gap-3 sm:grid-cols-2" aria-live="polite">
-                {nameMatches.map((m) => (
+                {nameMatches.slice(0, NAME_MATCH_LIMIT).map((m) => (
                   <MemberCard
                     key={m.politician_id}
                     member={m}
@@ -190,6 +156,11 @@ export function MemberPicker({ members, selectedId, onSelect }: Props) {
                   />
                 ))}
               </div>
+              {nameMatches.length > NAME_MATCH_LIMIT ? (
+                <p className="mt-2 text-[15px] text-ink-soft">
+                  Showing {NAME_MATCH_LIMIT} of {nameMatches.length}. Keep typing to narrow it down.
+                </p>
+              ) : null}
               {q && nameMatches.length === 0 ? (
                 <p className="mt-2 text-[16px] text-ink-soft">
                   We haven’t added anyone by that name yet. More members are being added.

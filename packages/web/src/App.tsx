@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ArrowLeftIcon, RotateCcwIcon } from 'lucide-react';
-import { surnameOf, type Corrections, type Senator } from '@receipts/shared';
+import { surnameOf, type Corrections, type DirectoryMember, type Senator } from '@receipts/shared';
 import { useReceiptStream } from './lib/useReceiptStream.js';
 import { apiUrl } from './lib/api.js';
 import { buildRoster, type Member } from './data/roster.js';
@@ -46,6 +46,7 @@ function Page({ width, children }: { width: 'narrow' | 'wide'; children: ReactNo
 
 export default function App() {
   const [senators, setSenators] = useState<Senator[]>([]);
+  const [directory, setDirectory] = useState<DirectoryMember[]>([]);
   const [modes, setModes] = useState({ demo: false, fixture: false, override: false, followups: false, feedback: false, prompts: false });
   const [taxonomy, setTaxonomy] = useState<TaxonomyEntry[]>([]);
   // Nobody is preselected: with a short list, a default is a nudge.
@@ -98,6 +99,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    fetch(apiUrl('/api/members'))
+      .then((r) => r.json())
+      .then((d) => setDirectory(Array.isArray(d.members) ? d.members : []))
+      .catch(() => {
+        /* No directory: the picker falls back to the covered members and the planned list. */
+      });
+  }, []);
+
+  useEffect(() => {
     fetch(apiUrl('/api/taxonomy'))
       .then((r) => r.json())
       .then((d) => setTaxonomy(d.primary_issues ?? []))
@@ -108,7 +118,7 @@ export default function App() {
 
   // Coverage is the server's. The roster only adds chamber and district for
   // members it knows, and the planned members the server does not cover yet.
-  const roster = useMemo(() => buildRoster(senators), [senators]);
+  const roster = useMemo(() => buildRoster(senators, directory), [senators, directory]);
   const member: Member | null = roster.find((m) => m.politician_id === selected && m.cached) ?? null;
 
   // "This was a campaign promise" is the reader's assertion, sent as a

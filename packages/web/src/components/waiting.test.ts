@@ -100,13 +100,13 @@ describe('the entry screen and coverage', () => {
     expect(page).not.toContain('Check their record');
   });
 
-  it('an uncovered member is listed as coming, not offered as a choice', () => {
+  it('an uncovered member is not offered as a choice, and there is no "coming next" list', () => {
     const page = render('');
-    expect(page).toContain('Being added next');
-    expect(page).toContain('Pat Sample');
+    // Readers find (and can fund) anyone by state or name; the front lists only the checked.
+    expect(page).not.toContain('Being added next');
+    expect(page).not.toContain('Pat Sample');
     // The only selectable card is the covered member's.
     expect(page.match(/data-covered="true"/g)).toHaveLength(1);
-    expect(page).not.toMatch(/data-covered="true"[^>]*>[\s\S]{0,400}Pat Sample/);
   });
 });
 
