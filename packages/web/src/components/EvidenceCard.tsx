@@ -315,38 +315,52 @@ function shortDate(iso: string | null): string | null {
   });
 }
 
-/** The bill's path, left to right. The senator's own act is the filled dot. */
+/**
+ * The bill's path, left to right. The senator's own act is the filled dot.
+ * Dots are evenly spaced across the full width: the first step sits flush
+ * left, the last flush right, and each middle step is centred on its dot.
+ * The grid has two columns per gap, so a middle step spans the two columns
+ * either side of its dot.
+ */
 function BillPath({ steps, surname }: { steps: PathStep[]; surname: string }) {
+  const gaps = Math.max(steps.length - 1, 1);
   return (
     <section aria-label="The bill’s path" className="bill-path mt-4">
       <h4 className="text-[14px] font-medium text-ink-soft">The bill’s path</h4>
-      <ol className="mt-2 flex overflow-x-auto pb-1">
-        {steps.map((st, i) => {
-          // The last step sits flush right, so the line runs the full width.
-          const last = i === steps.length - 1;
-          return (
-            <li
-              key={`${st.label}-${i}`}
-              className={`relative min-w-[118px] pt-5 text-[13px] leading-snug text-ink-soft ${last ? 'flex-none pl-3 text-right' : 'flex-1 pr-3'}`}
-              data-senator={st.senator ? 'true' : undefined}
-            >
-              {i > 0 || !last ? (
-                <span className={`absolute top-[9px] h-0.5 bg-rule ${last ? 'left-0 right-[7px]' : 'left-[7px] right-0'}`} aria-hidden="true" />
-              ) : null}
-              <span
-                className={`absolute top-[3px] h-[14px] w-[14px] rounded-full border-2 ${last ? 'right-0' : 'left-0'} ${
-                  st.senator ? 'border-ink bg-ink' : st.outcome ? 'border-ink-soft bg-card' : 'border-rule bg-card'
-                }`}
-                aria-hidden="true"
-              />
-              <span className="block font-medium text-ink">{st.label}</span>
-              {shortDate(st.date) ? <span className="block">{shortDate(st.date)}</span> : null}
-              {st.senator ? <span className="block font-semibold text-ink">{surname}: {st.senator.act}</span> : null}
-              {st.note ? <span className="block">{st.note}</span> : null}
-            </li>
-          );
-        })}
-      </ol>
+      <div className="mt-2 overflow-x-auto pb-1">
+        <ol
+          className="relative grid"
+          style={{ gridTemplateColumns: `repeat(${gaps * 2}, minmax(0, 1fr))`, minWidth: `${steps.length * 88}px` }}
+        >
+          {steps.length > 1 ? <span className="absolute left-[7px] right-[7px] top-[9px] h-0.5 bg-rule" aria-hidden="true" /> : null}
+          {steps.map((st, i) => {
+            const first = i === 0;
+            const last = i === steps.length - 1 && !first;
+            const place = first ? 'text-left' : last ? 'text-right' : 'px-2 text-center';
+            const dot = first ? 'left-0' : last ? 'right-0' : 'left-1/2 -translate-x-1/2';
+            const gridColumn = first ? '1 / span 1' : last ? `${gaps * 2} / span 1` : `${i * 2} / span 2`;
+            return (
+              <li
+                key={`${st.label}-${i}`}
+                className={`relative pt-5 text-[13px] leading-snug text-ink-soft ${place}`}
+                style={{ gridColumn, gridRow: 1 }}
+                data-senator={st.senator ? 'true' : undefined}
+              >
+                <span
+                  className={`absolute top-[3px] h-[14px] w-[14px] rounded-full border-2 ${dot} ${
+                    st.senator ? 'border-ink bg-ink' : st.outcome ? 'border-ink-soft bg-card' : 'border-rule bg-card'
+                  }`}
+                  aria-hidden="true"
+                />
+                <span className="block font-medium text-ink">{st.label}</span>
+                {shortDate(st.date) ? <span className="block">{shortDate(st.date)}</span> : null}
+                {st.senator ? <span className="block font-semibold text-ink">{surname}: {st.senator.act}</span> : null}
+                {st.note ? <span className="block">{st.note}</span> : null}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
     </section>
   );
 }
