@@ -157,3 +157,21 @@ export async function classifyInputKind(text: string, fetch: CleanupFetcher = li
     return { kind: 'STATEMENT', decided_by: 'model_failed', reason: `the model was unavailable, so the statement path, as before: ${err instanceof Error ? err.message : String(err)}` };
   }
 }
+
+/**
+ * What the issue classifier is given for a record question. Its prompt is
+ * written for statements, and given a bare question it can refuse it as "a
+ * factual question rather than a policy statement" (trace for "Did they vote
+ * for the 2025 rescissions package?"). It is asked to classify the action
+ * the question names, kept the way the voter put it, so the answer's "for"
+ * and "against" mean what the voter asked. The voter's text itself is never
+ * rewritten: this goes to the classifier only.
+ */
+export function recordClassifierText(question: string): string {
+  return [
+    `A voter's question about a senator's record: "${clean(question)}"`,
+    'Classify the policy action it asks about, in the direction the voter gave it, as you would the same action stated plainly.',
+    'Use a primary_issue and sub_issue pair exactly as it appears in the approved taxonomy.',
+    'A question that names a bill, program or policy can be checked (is_evaluable true).',
+  ].join('\n');
+}

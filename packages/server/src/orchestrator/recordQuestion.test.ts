@@ -95,6 +95,14 @@ describe('the record-mode wording check', () => {
     ).toEqual([]);
   });
 
+  // Trace 7b5181a8: a good draft was sent back three times for "Care".
+  it('does not read a bill name or the voter\'s own words as a claim', () => {
+    expect(recordExplanationProblems(`You asked: "${q}" Collins voted Yea on the Affordable Care Act credits bill.`, q, true)).toEqual([]);
+    const asked = 'Did she vote for what she wanted on drug prices?';
+    expect(recordExplanationProblems(`You asked: "${asked}" She voted Yea on S.1.`, asked, true)).toEqual([]);
+    expect(recordExplanationProblems('Collins cares about health costs.', q).length).toBeGreaterThan(0);
+  });
+
   it('requires the opening to quote the question', () => {
     expect(recordExplanationProblems('You asked whether Collins supports the credits.', q, true).join(' ')).toMatch(/open with the voter's question/);
   });

@@ -279,8 +279,9 @@ export function finish(session: QuerySession, emit: Emit): boolean {
   traceStep({
     stage: 'RESULT',
     kind: 'control',
-    label:
-      `${result.scored.verdict}` +
+    label: result.record
+      ? `${result.record.label} · ${result.record.reason} (record question: no verdict shown or stored)`
+      : `${result.scored.verdict}` +
       (result.scored.band ? ` · ${result.scored.band}` : '') +
       (result.scored.nd_reason ? ` · ${result.scored.nd_reason}` : '') +
       (result.judge ? ` · judge ${result.judge.disposition}` : ''),

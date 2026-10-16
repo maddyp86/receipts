@@ -61,6 +61,7 @@ import {
   type DispositionResult,
 } from '../judge/dispositions.js';
 import { classifyPromise, type ClassifyFetcher } from '../evaluation/classify.js';
+import { recordClassifierText } from '../cleanup/inputKind.js';
 import { statedStance } from '../evaluation/statedStance.js';
 import type { CorrectionDelta, Corrections } from '@receipts/shared';
 import { scoreMatches, type ScorableMatch } from '../scoring/score.js';
@@ -256,7 +257,10 @@ async function interpretPromise(
 
   if (classifyFetcher || config.anthropic.apiKey) {
     try {
-      const classified = await classifyPromise(session.promiseText, classifyFetcher);
+      // A record question is classified as the action it asks about; the
+      // voter's text is unchanged everywhere else.
+      const classifierText = session.inputKind === 'RECORD_QUESTION' ? recordClassifierText(session.promiseText) : session.promiseText;
+      const classified = await classifyPromise(classifierText, classifyFetcher);
       classifierInput = classified.input;
       classifierModel = classified.model;
 
@@ -2026,8 +2030,12 @@ export function figuresNotGiven(text: string, evidence: DirectedAction[], gated 
     const num = Number(String(e.bill_number ?? '').replace(/\D/g, ''));
     if (num) allowed.add(num);
     for (const d of [e.action_date, e.cloture_vote_date, e.passage_vote_date]) {
-      const y = /(\d{4})/.exec(String(d ?? ''))?.[1];
-      if (y) allowed.add(Number(y));
+      // The year, and the month and day ("July 17"), of each date given.
+      for (const part of String(d ?? '').match(/\d+/g) ?? []) allowed.add(Number(part));
+    }
+    // What the bill does, as its title and summary say ("through 2028").
+    for (const text of [e.title, e.summary]) {
+      for (const n of String(text ?? '').replace(/(\d),(\d{3})/g, '$1$2').match(/\d+/g) ?? []) allowed.add(Number(n));
     }
   }
   const out: string[] = [];
@@ -2046,7 +2054,8 @@ const RECORD_BANNED = [
   /\bkept\b/, /\bbroke\b/, /\bbroken\b/, /\bpromise[sd]?\b/,
   /\bconsistent with\b/, /\binconsistent\b/, /\bruns? counter\b/, /\bran counter\b/,
   /\bstated position\b/, /\b(his|her|their) position\b/, /\bher stance\b/, /\bhis stance\b/,
-  /\b(believes?|believed|wants?|wanted|intends?|intended|cares?|cared|committed to|true to)\b/,
+  // Claims about belief. "care" alone is not one: "the Affordable Care Act".
+  /\b(believes?|believed|wants?|wanted|intends?|intended|cares? about|cared about|(is|was|remains|stayed) committed to|true to)\b/,
 ];
 
 /**
@@ -2057,8 +2066,11 @@ const RECORD_BANNED = [
 export function recordExplanationProblems(text: string, question: string, opening = false): string[] {
   const problems: string[] = [];
   const t = lower(text);
+  // The voter's own words, quoted in the opening, are theirs: checked only
+  // for being there, never for the banned words.
+  const said = t.replace(lower(question.trim()), '');
   for (const re of RECORD_BANNED) {
-    const m = re.exec(t);
+    const m = re.exec(said);
     if (m) problems.push(`remove "${m[0]}": this is a question about the record, so say what they did, never whether a statement was kept or what they believe`);
   }
   for (const term of BANNED_LEVEL1_TERMS) {

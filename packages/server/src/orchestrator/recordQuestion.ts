@@ -134,14 +134,18 @@ async function explainRecord(session: QuerySession, answer: RecordAnswer): Promi
     const end = traceBegin();
     let message: Anthropic.Message;
     try {
-      message = await client.messages.create({
-        model: config.models.explain,
-        max_tokens: config.anthropic.maxTokens,
-        system: RECORD_EXPLANATION_CONSTRAINTS,
-        tools: [EXPLAIN_TOOL],
-        tool_choice: { type: 'tool', name: 'explain_result' },
-        messages,
-      });
+      // Streamed, as the orchestrator's turns are: the SDK refuses an
+      // unstreamed call at this max_tokens.
+      message = await client.messages
+        .stream({
+          model: config.models.explain,
+          max_tokens: config.anthropic.maxTokens,
+          system: RECORD_EXPLANATION_CONSTRAINTS,
+          tools: [EXPLAIN_TOOL],
+          tool_choice: { type: 'tool', name: 'explain_result' },
+          messages,
+        })
+        .finalMessage();
     } catch (err) {
       end({
         stage: 'ORCHESTRATOR_TURN', kind: 'model', status: 'error', label: `record explanation call ${attempt} failed`,
