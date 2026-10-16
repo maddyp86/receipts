@@ -47,7 +47,16 @@ const STATEMENT_OPENER = /^(supports?|opposes?|backs?|wants?|will|i will|we will
  * A goal stated as a verb phrase: "Lower prescription drug prices", "protect
  * clean air standards". The voter is naming a position to check, not asking.
  */
-const GOAL_OPENER = /^(lower|lowers|raise|raises|cut|cuts|protect|protects|ban|bans|expand|expands|repeal|repeals|end|ends|stop|stops|secure|secures|fund|funds|defund|cancel|cancels|legalize|legalise|restrict|restricts|extend|extends|keep|keeps|increase|increases|reduce|reduces|abolish|eliminate|strengthen|weaken|tighten|limit|codify|overturn|restore|prohibit|forgive|privatize|privatise|pass|passes|defend|defends|fight|fights|make|build|create|require|requires|allow|allows|support|oppose|no new)\b/i;
+const GOAL_OPENER = /^(lower|lowers|raise|raises|cut|cuts|protect|protects|ban|bans|expand|expands|repeal|repeals|end|ends|stop|stops|secure|secures|fund|funds|defund|cancel|cancels|legalize|legalise|classify|reclassify|restrict|restricts|extend|extends|keep|keeps|increase|increases|reduce|reduces|abolish|eliminate|strengthen|weaken|tighten|limit|codify|overturn|restore|prohibit|forgive|privatize|privatise|pass|passes|defend|defends|fight|fights|make|build|create|require|requires|allow|allows|support|oppose|no new)\b/i;
+
+/** "Congress should…", "tariffs must be ended": what ought to happen, a position. */
+const NORMATIVE = /\b(should|must|ought to|needs? to)\b/i;
+
+/** "I support our veterans", "We will pass…": the speaker's own words. */
+const FIRST_PERSON = /^(i|we|i'm|we're|i've|we've|i’m|we’re)\b/i;
+
+/** "Permanently classify…": a goal verb after a manner word. */
+const LEADING_ADVERB = /^(permanently|fully|immediately|finally|always|never)\s+/i;
 
 const QUOTED = /^\s*["“'‘].{8,}["”'’]\s*$|^\s*["“].+["”]/;
 
@@ -77,10 +86,16 @@ export function inputKindByRule(text: string): InputKindDecision | null {
   if (t.endsWith('?')) {
     return { kind: 'RECORD_QUESTION', decided_by: 'rule:question_mark', reason: 'ends with a question mark' };
   }
+  if (NORMATIVE.test(t)) {
+    return { kind: 'STATEMENT', decided_by: 'rule:normative', reason: 'says what should happen' };
+  }
+  if (FIRST_PERSON.test(t)) {
+    return { kind: 'STATEMENT', decided_by: 'rule:first_person', reason: 'in the first person' };
+  }
   if (STATEMENT_OPENER.test(t)) {
     return { kind: 'STATEMENT', decided_by: 'rule:statement_opener', reason: 'opens like a statement that takes a side' };
   }
-  if (GOAL_OPENER.test(t)) {
+  if (GOAL_OPENER.test(t.replace(LEADING_ADVERB, ''))) {
     return { kind: 'STATEMENT', decided_by: 'rule:goal_opener', reason: 'states a goal to check' };
   }
   return null;

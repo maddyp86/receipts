@@ -401,7 +401,11 @@
       "senator": "S000148",
       "statement": "I support our veterans.",
       "pick": "health",
-      "verdict": ["NOT_DETERMINABLE", "KEPT", "KEPT_MIXED"],
+      "verdict": [
+        "NOT_DETERMINABLE",
+        "KEPT",
+        "KEPT_MIXED"
+      ],
       "nd_reasons": [
         "NOT_EVALUABLE"
       ],
@@ -459,7 +463,12 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "A 'How to ask' Try example, and the question form of case 3. Refused as RHETORIC on 2026-10-10 (trace d4631308-d8f0-413a-a6b6-8d71d1b9e7a8)."
+      "note": "A 'How to ask' Try example, and the question form of case 3. Refused as RHETORIC on 2026-10-10 (trace d4631308-d8f0-413a-a6b6-8d71d1b9e7a8). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED. KEPT before: a vote for. MIXED allowed: a majority leader often votes Nay on a failed motion to end debate so he can move to reconsider it.",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "MIXED_RECORD"
+      ]
     },
     {
       "id": "22-thune-15-weeks-question",
@@ -475,7 +484,11 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Was a 'How to ask' Try example; replaced on 2026-10-10 by case 29's question. The record holds no 15-week bill. Before the stance fix (#64) it passed as KEPT · Low on one stretched reading (a pro-access resolution read as hindering a 15-week limit). With the label matching the words, the reader calls the abortion funding bills and that resolution a different object, twice (runs 11e3eca1, 3281112b). Kept as the honest answer: it doesn't settle it, and must never say the senator did nothing."
+      "note": "Was a 'How to ask' Try example; replaced on 2026-10-10 by case 29's question. The record holds no 15-week bill. Before the stance fix (#64) it passed as KEPT · Low on one stretched reading (a pro-access resolution read as hindering a 15-week limit). With the label matching the words, the reader calls the abortion funding bills and that resolution a different object, twice (runs 11e3eca1, 3281112b). Kept as the honest answer: it doesn't settle it, and must never say the senator did nothing. Record mode (2026-10-15): a question, so answered with a label. Was verdict NOT_DETERMINABLE. NOT_DETERMINABLE before: the record holds no 15-week bill.",
+      "mode": "record",
+      "answer": [
+        "NO_RECORDED_ACTION_FOUND"
+      ]
     },
     {
       "id": "23-schumer-va-health-care-question",
@@ -491,7 +504,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "A question-box example (2026-10-10): every example must return a real verdict, not a refusal. Senator is the one it is most likely tried on (a guess; change freely). A 'How to ask' Try example."
+      "note": "A question-box example (2026-10-10): every example must return a real verdict, not a refusal. Senator is the one it is most likely tried on (a guess; change freely). A 'How to ask' Try example. Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "24-schumer-veterans-disability-pay-question",
@@ -507,7 +528,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "A question-box example (2026-10-10): every example must return a real verdict, not a refusal. Senator is the one it is most likely tried on (a guess; change freely). A 'How to ask' Try example."
+      "note": "A question-box example (2026-10-10): every example must return a real verdict, not a refusal. Senator is the one it is most likely tried on (a guess; change freely). A 'How to ask' Try example. Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "25-thune-tcja-question",
@@ -526,7 +555,13 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "The question form of case 13."
+      "note": "The question form of case 13. Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED. KEPT before, on hr1-119. ONLY_BROAD_VOTES allowed: the 2025 law covered much more than the tax cuts, and a broad package never decides the label alone.",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "MIXED_RECORD",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "26-schumer-topic-aca-tax-credits",
@@ -542,7 +577,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter (replaced 2026-10-10 after the first live run found nothing). Must return a real verdict, either way. Was \"capping the cost of insulin at $35 a month\": the cap was the 2022 law, before the record."
+      "note": "Topic starter (replaced 2026-10-10 after the first live run found nothing). Must return a real verdict, either way. Was \"capping the cost of insulin at $35 a month\": the cap was the 2022 law, before the record. Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "27-schumer-topic-medicaid-cuts",
@@ -558,7 +601,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter (replaced 2026-10-10 after the first live run found nothing). Must return a real verdict, either way. Was \"protecting coverage for people with pre-existing conditions\": ALL_NEUTRAL."
+      "note": "Topic starter (replaced 2026-10-10 after the first live run found nothing). Must return a real verdict, either way. Was \"protecting coverage for people with pre-existing conditions\": ALL_NEUTRAL. Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "28-schumer-topic-protect-access-to-abortion",
@@ -574,7 +625,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Abortion' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Abortion' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "29-thune-topic-restricting-abortion",
@@ -590,7 +649,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Abortion' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Also a 'How to ask' Try example from 2026-10-10 (replacing case 22): KEPT · Medium after the stance fix, run ab2449ce."
+      "note": "Topic starter under 'Abortion' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Also a 'How to ask' Try example from 2026-10-10 (replacing case 22): KEPT · Medium after the stance fix, run ab2449ce. Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "30-thune-topic-oppose-federal-funding-for-abortion",
@@ -606,7 +673,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Abortion' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Abortion' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "31-schumer-topic-expand-background-checks-for-gun-sales",
@@ -622,7 +697,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Guns' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Guns' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "32-thune-topic-the-right-to-carry-a-concealed-firearm-a",
@@ -638,7 +721,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Guns' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Guns' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "33-schumer-topic-ban-assault-weapons",
@@ -654,7 +745,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Guns' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Guns' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "34-thune-topic-secure-the-border-and-stop-illegal-immig",
@@ -670,7 +769,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Immigration' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Immigration' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "35-thune-topic-laken-riley-act",
@@ -682,11 +789,20 @@
         "BROKE_JUDGED",
         "BROKE_MIXED"
       ],
-      "must_have": [],
+      "must_have": [
+        {
+          "bill": "s5-119",
+          "direction": "any"
+        }
+      ],
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter (replaced 2026-10-10 after the first live run found nothing). Must return a real verdict, either way. Was \"a path to citizenship for Dreamers\": NO_MATCHES."
+      "note": "Topic starter (replaced 2026-10-10 after the first live run found nothing). Must return a real verdict, either way. Was \"a path to citizenship for Dreamers\": NO_MATCHES. Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. Thune voted Yea on all three Senate votes on S.5 (roll calls 1, 5 and 7 of 2025; passed 64-35), checked in core.member_votes.",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR"
+      ]
     },
     {
       "id": "36-thune-topic-extend-the-2017-tax-cuts",
@@ -702,7 +818,13 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Taxes' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Taxes' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. As case 25.",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "MIXED_RECORD",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "37-schumer-topic-making-large-corporations-pay-more-in-ta",
@@ -718,7 +840,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Taxes' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Taxes' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "38-schumer-topic-expand-the-child-tax-credit",
@@ -734,7 +864,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Taxes' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Taxes' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "39-schumer-topic-debt-limit",
@@ -750,7 +888,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter (replaced 2026-10-10 after the first live run found nothing). Must return a real verdict, either way. Was \"raise the federal minimum wage\": ALL_NEUTRAL."
+      "note": "Topic starter (replaced 2026-10-10 after the first live run found nothing). Must return a real verdict, either way. Was \"raise the federal minimum wage\": ALL_NEUTRAL. Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "40-schumer-topic-ending-tariffs-on-imported-goods",
@@ -766,7 +912,12 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "No longer a topic starter (removed 2026-10-10). Kept as a regression case for a stance double-negative: \"supports ending tariffs on imported goods\" was classified Opposed and two identical tariff-ending resolutions were read as HINDER (run fb5fcdba-4d23-4427-abb5-5b56165de898). Expected KEPT for Schumer."
+      "note": "No longer a topic starter (removed 2026-10-10). Kept as a regression case for a stance double-negative: \"supports ending tariffs on imported goods\" was classified Opposed and two identical tariff-ending resolutions were read as HINDER (run fb5fcdba-4d23-4427-abb5-5b56165de898). Expected KEPT for Schumer. Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. KEPT before (the stance double-negative regression): the tariff-ending resolutions must read as votes for.",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "MIXED_RECORD"
+      ]
     },
     {
       "id": "41-thune-topic-clear-rules-for-stablecoins-and-crypto",
@@ -782,7 +933,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Jobs & the economy' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Jobs & the economy' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "42-schumer-topic-protect-clean-air-standards-from-rollbac",
@@ -798,7 +957,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Environment & energy' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Environment & energy' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "44-schumer-topic-expand-clean-energy-tax-credits",
@@ -814,7 +981,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Environment & energy' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Environment & energy' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "45-schumer-topic-canceling-student-debt",
@@ -830,7 +1005,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Education' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Education' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "46-schumer-topic-expand-pell-grants",
@@ -846,7 +1029,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Education' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Education' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "47-schumer-topic-protect-social-security-benefits-from-cu",
@@ -862,7 +1053,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Social Security' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Social Security' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "48-schumer-topic-end-the-penalties-that-cut-social-securi",
@@ -878,7 +1077,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Social Security' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Social Security' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "49-thune-topic-requiring-photo-id-to-vote",
@@ -894,7 +1101,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Voting' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Voting' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "50-schumer-topic-making-election-day-a-federal-holiday",
@@ -910,7 +1125,15 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "Topic starter under 'Voting' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess)."
+      "note": "Topic starter under 'Voting' (2026-10-10). Must return a real verdict, either way, not a refusal or 'nothing found'. Senator is the one it is most likely asked about (a guess). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED | BROKE_JUDGED | BROKE_MIXED. A real answer either way, as the verdict case required: not \"nothing found\".",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR",
+        "VOTED_AGAINST",
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY",
+        "ONLY_BROAD_VOTES"
+      ]
     },
     {
       "id": "51-schumer-promised-not-to-raise-taxes",
@@ -950,6 +1173,60 @@
         }
       ],
       "note": "The near-miss review (2026-10-10). Typed by a reader; trace 7e1e8f99 answered 'nothing found' with all ten candidates at 0.45–0.499 and the 2025 reconciliation tax law (hr1-119) at 0.473. The law must now be weighed. Which way it counts is left to the reader (it extended the 2017 individual cuts; a vote against it can be read as against the goal, or the bill as contested), but never as consistent with 'not raising taxes'. Must not answer NO_MATCHES. KNOWN FAILING (2026-10-11): the near-miss review does not reach hr1-119 when the classifier files this under Tax Cuts & Credits (three bills then clear the floor, hr1-119 ranks 6th–8th; runs ad9e0464, 2276f291), and the classifier also flips between checkable and too broad. A target for asking the reader which taxes they mean, with their permission. 2026-10-11: now asked \"Which taxes do you mean?\" before anything is checked; the case picks the income-tax option, as a reader would."
+    },
+    {
+      "id": "52-collins-aca-tax-credits",
+      "senator": "C001035",
+      "statement": "Did they vote to extend the enhanced Affordable Care Act tax credits?",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR"
+      ],
+      "verdict": [],
+      "must_have": [
+        {
+          "bill": "s3385-119",
+          "direction": "any"
+        }
+      ],
+      "forbidden": [
+        "DID_NOTHING_WORDING"
+      ],
+      "note": "Run 3bf66a32, the bug record mode exists for: rewritten to 'supports extending' and graded as Collins's own position. Collins voted Yea to end debate on S.3385 (roll call 644, 2025-12-11; rejected 51-48, 3/5 required), checked in core.member_votes. S.2882, a stopgap, must not decide the label: set aside or a broad package."
+    },
+    {
+      "id": "53-collins-rescissions-2025",
+      "senator": "C001035",
+      "statement": "Did they vote for the 2025 rescissions package?",
+      "mode": "record",
+      "answer": [
+        "VOTED_AGAINST"
+      ],
+      "verdict": [],
+      "must_have": [
+        {
+          "bill": "hr4-119",
+          "direction": "any"
+        }
+      ],
+      "note": "Collins voted Nay on passage of H.R. 4, the Rescissions Act of 2025 (roll call 411, 2025-07-17; passed 51-48), checked in core.member_votes."
+    },
+    {
+      "id": "54-collins-laken-riley-act",
+      "senator": "C001035",
+      "statement": "Did Collins vote for the Laken Riley Act?",
+      "mode": "record",
+      "answer": [
+        "VOTED_FOR"
+      ],
+      "verdict": [],
+      "must_have": [
+        {
+          "bill": "s5-119",
+          "direction": "any"
+        }
+      ],
+      "note": "Collins voted Yea on all three Senate votes on S.5 (roll calls 1, 5 and 7 of 2025; passed 64-35), checked in core.member_votes. The Thune version is case 35."
     }
   ]
 }

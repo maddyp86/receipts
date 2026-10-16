@@ -41,6 +41,11 @@ describe('clear statements', () => {
     // A goal stated as a verb phrase.
     'Lower prescription drug prices.',
     'protect clean air standards from rollback',
+    'Permanently classify fentanyl-related drugs as Schedule I so traffickers face full penalties.',
+    // What ought to happen, or the speaker's own words.
+    'Congress should repeal the outdated Iraq war authorizations.',
+    "Trump's tariffs are a tax on American families and should be ended.",
+    'I support our veterans.',
     // A quotation is the senator's words, whatever its punctuation.
     '"We must expand background checks for every gun sale."',
     '“Will I ever vote to raise taxes on working families? Never.”',
