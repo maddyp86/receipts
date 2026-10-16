@@ -87,7 +87,6 @@ describe('createCheckout', () => {
 
   it.each([
     ['O000174', 409, /already checked/],
-    ['L000599', 409, /senators only/],
     ['G000359', 409, /no longer in office/],
     ['X000000', 404, /on file/],
     ['not-an-id', 400, /not a member id/],
@@ -110,6 +109,16 @@ describe('createCheckout', () => {
     expect(out.ok).toBe(false);
     if (!out.ok) expect(out.message).toMatch(/already funded/);
     expect(created).toHaveLength(0);
+  });
+});
+
+describe('createCheckout for the House', () => {
+  it('opens a session for a House member who is not live', async () => {
+    const { d, created } = deps();
+    const out = await createCheckout('L000599', d);
+    expect(out.ok).toBe(true);
+    expect(created[0]!.metadata).toEqual({ member_id: 'L000599' });
+    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/Michael Lawler’s voting record/);
   });
 });
 

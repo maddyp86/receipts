@@ -13,7 +13,8 @@ import { FundingProvider, formatPrice, useFundingStatus } from '../members/FundR
 //   - funding: app.member_funding (email, optional credit name), card
 //     details only ever at Stripe; the name is shown only on 'live' rows
 //     (migration 019); the email is used for the go-live notice;
-//   - the tab id is sessionStorage (session.ts); no cookies, no analytics;
+//   - the tab id is sessionStorage (session.ts); requested member ids are
+//     localStorage (FundRecord.tsx); no cookies, no analytics;
 //   - IP addresses are used by the rate limiter in memory and not stored by
 //     the app (hosts keep their own logs).
 // ===========================================================================
@@ -28,7 +29,7 @@ export type PolicyKind = (typeof POLICY_PATHS)[keyof typeof POLICY_PATHS];
 
 const UPDATED = 'October 15, 2026';
 const DEFAULT_PRICE_CENTS = 2000;
-const DEFAULT_SLA_DAYS = 14;
+const DEFAULT_SLA_DAYS = 7;
 
 const TITLES: Record<PolicyKind, string> = {
   terms: 'Terms of use',
@@ -98,7 +99,7 @@ function Terms() {
 
       <H2>Funding a record</H2>
       <p>
-        You can pay a one-time fee to have a senator whose record we haven’t checked yet added to Receipts. The payment
+        You can pay a one-time fee to have a senator or representative whose record we haven’t checked yet added to Receipts. The payment
         covers the cost of checking that record once. When it’s done, the record is free for everyone. The payment
         doesn’t change what we find, and it doesn’t buy you any say over the result. It is a purchase of a service, not
         a donation, and it is not tax-deductible. Stripe handles the payment. If you give a name at checkout, we show
@@ -138,6 +139,11 @@ function Privacy() {
         <li>
           If you ask about a member we haven’t checked yet, we store the question and the member’s name as a request.
           That tells us whose records people want.
+        </li>
+        <li>
+          If you press “Request this record”, we store which member you asked for and when. Nothing else comes with
+          it. Your browser also remembers which members you’ve requested, so the button doesn’t ask twice. That list
+          stays on your device.
         </li>
         <li>
           Your browser keeps a random ID for the current tab, used only so a repeated question can be answered from a
@@ -195,12 +201,12 @@ function Refunds() {
   return (
     <>
       <p>
-        This covers the one-time payment ({price}) to have a senator’s record checked and added to Receipts.
+        This covers the one-time payment ({price}) to have a member of Congress’s record checked and added to Receipts.
       </p>
 
       <H2>What you’re paying for</H2>
       <p>
-        We check the senator’s votes and sponsored bills, review them by hand, and publish the record so anyone can
+        We check the member’s votes and sponsored bills, review them by hand, and publish the record so anyone can
         check it for free. The payment doesn’t affect what the record shows. It is not a donation and is not
         tax-deductible.
       </p>
@@ -212,7 +218,7 @@ function Refunds() {
           refund you in full without being asked.
         </li>
         <li>
-          <span className="font-semibold text-ink">Someone else already paid for the same senator.</span> If two
+          <span className="font-semibold text-ink">Someone else already paid for the same member.</span> If two
           payments arrive for one record, the later one is refunded in full.
         </li>
         <li>

@@ -2,7 +2,7 @@ import type Stripe from 'stripe';
 import type { FunderCredit, FundingStore } from './FundingStore.js';
 
 // ===========================================================================
-// A reader funds a not-yet-checked senator's record.
+// A reader funds a not-yet-checked member's record (Senate or House).
 //
 // WHAT A PAYMENT BUYS: the work of adding the member, once, for everyone. It
 // never buys a finding. The member goes through the same pipeline and the
@@ -46,8 +46,7 @@ export const CREDIT_FIELD = 'credit_name';
 /**
  * Start a Checkout Session for one member, or say why not.
  *
- * Refused for: an unknown id, a House member (the query tool covers senators
- * only), a member who has left office, one already live, and one someone has
+ * Refused for: an unknown id, a member who has left office, one already live, and one someone has
  * already funded. Two readers paying in the same minute can still both get
  * through; the operator refunds the second.
  */
@@ -57,9 +56,6 @@ export async function createCheckout(memberId: string, deps: FundingDeps): Promi
 
   const member = await deps.store.member(id);
   if (!member) return { ok: false, status: 404, code: 'NOT_FUNDABLE', message: 'We don’t have that member on file.' };
-  if (member.chamber !== 'Senate') {
-    return { ok: false, status: 409, code: 'NOT_FUNDABLE', message: 'Funding is open for senators only for now.' };
-  }
   if (member.left_at) return { ok: false, status: 409, code: 'NOT_FUNDABLE', message: `${member.full_name} is no longer in office.` };
   if (member.live) return { ok: false, status: 409, code: 'NOT_FUNDABLE', message: `${member.full_name}’s record is already checked.` };
   if ((await deps.store.open()).some((o) => o.member_id === id)) {
@@ -78,7 +74,7 @@ export async function createCheckout(memberId: string, deps: FundingDeps): Promi
           product_data: {
             name: `Add ${member.full_name} to Receipts`,
             description:
-              `Covers the one-time cost of checking ${member.full_name}’s Senate record. ` +
+              `Covers the one-time cost of checking ${member.full_name}’s voting record. ` +
               `Live for everyone within ${slaDays} days, or a full refund. We'll email you when it's live. Not tax-deductible.`,
           },
         },

@@ -27,10 +27,10 @@ describe('routing', () => {
 });
 
 describe('the promises match the Fund button', () => {
-  it('refunds: full refund if not live in 14 days, at the default $20, and none once live', () => {
+  it('refunds: full refund if not live in 7 days, at the default $20, and none once live', () => {
     const html = page('refunds');
     expect(html).toContain('($20)');
-    expect(html).toContain("isn't live within 14 days");
+    expect(html).toContain("isn't live within 7 days");
     expect(html).toContain("Once the record is live");
     expect(html).toContain('not tax-deductible');
   });
