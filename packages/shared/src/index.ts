@@ -41,7 +41,63 @@ export type StatementType = 'Campaign Promise' | 'Policy Position';
 export type ProvenanceSource =
   | 'default'    // free text, no evidence he said it — Policy Position
   | 'corpus'     // matched a tracked statement; type came from that row
-  | 'asserted';  // the user ticked "he promised this"; premise is theirs
+  | 'asserted'   // the user ticked "he promised this"; premise is theirs
+  | 'voter_question'; // the voter asked what the senator did; nothing is attributed to the senator
+
+/**
+ * What the voter typed, one level above `statement_type`.
+ *
+ * STATEMENT: a claim, promise or position attributed to the senator. Both of
+ * today's statement types (Campaign Promise, Policy Position) are this, and
+ * their path is unchanged.
+ * RECORD_QUESTION: a question about what the senator did or supports ("Did
+ * they vote to…", "Has she sponsored…", "Does he support…"). Answered from
+ * the record with a label, never graded as the senator's own words.
+ */
+export type InputKind = 'STATEMENT' | 'RECORD_QUESTION';
+
+/** How the voter's input kind was decided, for the trace. */
+export interface InputKindDecision {
+  kind: InputKind | 'UNCLEAR';
+  /** Which rule or the model decided: "rule:question_opener", "model", … */
+  decided_by: string;
+  /** The model's confidence, when the model decided. */
+  confidence?: number;
+  reason: string;
+}
+
+/** The answer to a record question. Deterministic; see scoring/answerLabel.ts. */
+export type AnswerLabel =
+  | 'VOTED_FOR'
+  | 'VOTED_AGAINST'
+  | 'MIXED_RECORD'
+  | 'SPONSORSHIP_ONLY'
+  | 'ONLY_BROAD_VOTES'
+  | 'NO_RECORDED_ACTION_FOUND';
+
+/** One vote or sponsorship read against what the question asked. */
+export type RecordReading = 'for' | 'against' | 'no_vote' | 'not_counted';
+
+export interface RecordRow {
+  action_uid: string;
+  bill_id: string;
+  /** Which act: the vote to end debate, the final vote, an untyped vote, or a sponsorship. */
+  stage: 'cloture' | 'passage' | 'vote' | 'sponsor' | 'cosponsor';
+  vote: 'YEA' | 'NAY' | 'NOT_VOTING' | null;
+  bill_effect: BillEffect;
+  reading: RecordReading;
+  /** A large package that covered much more than this. Never decides the label. */
+  broad: boolean;
+}
+
+export interface RecordAnswer {
+  label: AnswerLabel;
+  /** Why the label is what it is; separates "nothing found" from "nothing counted". */
+  reason: 'VOTES' | 'SPONSORSHIP' | 'BROAD_ONLY' | 'NOTHING_COUNTED' | 'NOTHING_FOUND';
+  rows: RecordRow[];
+  counted: { for: number; against: number };
+  set_aside: number;
+}
 
 /**
  * Everything the alignment table can return, including outcomes that are not
@@ -326,6 +382,11 @@ export interface Interpretation {
    */
   statement_type: StatementType;
   provenance: ProvenanceSource;
+  /**
+   * STATEMENT or RECORD_QUESTION. Absent on results stored before it existed,
+   * which were all statements.
+   */
+  input_kind?: InputKind;
   /** One-line neutral paraphrase shown back to the user. */
   restated: string;
   /** Fields the user corrected on this run, for the delta display. */
@@ -1338,6 +1399,12 @@ export interface QueryResult {
    * it — absent means "not recorded", never "there were none".
    */
   not_counted?: NotCountedAction[];
+  /**
+   * The answer to a record question. Present only when
+   * `interpretation.input_kind` is RECORD_QUESTION; the page then shows this
+   * label and the bills, never a verdict or a confidence band.
+   */
+  record?: RecordAnswer;
   /**
    * Set when this answer is a stored one, returned because the same senator
    * and question were asked again (answer reuse). The reader is told when it
