@@ -11,7 +11,8 @@ import { FundingProvider, formatPrice, useFundingStatus } from '../members/FundR
 //     app.app_query_trace_* (the model calls), app.member_requests;
 //   - feedback: app.app_feedback, no IP, user agent or session id;
 //   - funding: app.member_funding (email, optional credit name), card
-//     details only ever at Stripe;
+//     details only ever at Stripe; the name is shown only on 'live' rows
+//     (migration 019); the email is used for the go-live notice;
 //   - the tab id is sessionStorage (session.ts); no cookies, no analytics;
 //   - IP addresses are used by the rate limiter in memory and not stored by
 //     the app (hosts keep their own logs).
@@ -100,7 +101,9 @@ function Terms() {
         You can pay a one-time fee to have a senator whose record we haven’t checked yet added to Receipts. The payment
         covers the cost of checking that record once. When it’s done, the record is free for everyone. The payment
         doesn’t change what we find, and it doesn’t buy you any say over the result. It is a purchase of a service, not
-        a donation, and it is not tax-deductible. Stripe handles the payment. Refunds are covered in the{' '}
+        a donation, and it is not tax-deductible. Stripe handles the payment. If you give a name at checkout, we show
+        it on the record as its funder once the record is live; we may leave out a name that isn’t fit to publish. We
+        email you when the record is ready. Refunds are covered in the{' '}
         <Link href="/refunds">refund policy</Link>.
       </p>
 
@@ -155,8 +158,10 @@ function Privacy() {
       <H2>When you fund a record</H2>
       <p>
         Stripe takes the payment on its own page. We never see or store your card number. Stripe gives us your email,
-        the amount, and the name you asked to be credited with, if you entered one. We keep these to deliver the record,
-        to send a refund if one is owed, and to answer questions about your payment.
+        the amount, and the name you asked to be credited with, if you entered one. We use your email to tell you when
+        the record is live, to send a refund if one is owed, and to answer questions about your payment. We don’t add
+        you to a mailing list. If you gave a name, it is shown publicly on the record as its funder once the record is
+        live. Leave it blank and you won’t be named.
       </p>
 
       <H2>Who else handles this data</H2>

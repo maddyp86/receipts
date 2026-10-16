@@ -16,6 +16,8 @@ export interface FundingStatus {
   currency?: string;
   sla_days?: number;
   funded?: { member_id: string; live_by: string }[];
+  /** Names credited on live records, chosen by the payer and seen by an operator first. */
+  credits?: { member_id: string; name: string }[];
 }
 
 const OFF: FundingStatus = { enabled: false };
@@ -26,7 +28,8 @@ export function FundingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetch(apiUrl('/api/fund/status'))
       .then((r) => r.json())
-      .then((d: FundingStatus) => setStatus(d?.enabled ? d : OFF))
+      // Off still carries credits: a funded record keeps its thank-you.
+      .then((d: FundingStatus) => setStatus(d?.enabled ? d : { enabled: false, credits: d?.credits ?? [] }))
       .catch(() => {
         /* No status: no button. Nothing else depends on it. */
       });
@@ -106,8 +109,9 @@ export function FundRecord({ memberId, name }: { memberId: string; name: string 
         {busy ? 'Opening payment…' : `Fund this record — ${price}`}
       </button>
       <p className="text-[14px] leading-snug text-ink-soft">
-        Covers what it costs us to check this record, once. When it’s done it’s free for everyone. Live
-        within {status.sla_days} days or a full refund. Paying never changes what we find. Not a
+        Covers what it costs us to check this record, once. When it’s done it’s free for everyone, and
+        we’ll email you to come and check it. Add a name at checkout and we’ll credit you on the record.
+        Live within {status.sla_days} days or a full refund. Paying never changes what we find. Not a
         tax-deductible donation.
       </p>
       {error ? (
@@ -127,12 +131,24 @@ export function FundedThanks({ memberName, onClose }: { memberName: string | nul
       <p className="text-[17px] font-semibold text-ink">Thank you, your payment went through.</p>
       <p className="mt-1 text-[15px] leading-relaxed text-ink-soft">
         We’ll check {memberName ?? 'this senator'}’s record and make it free for everyone
-        {status.sla_days ? ` within ${status.sla_days} days` : ''}. If we don’t, you get a full refund.
-        Stripe has emailed your receipt.
+        {status.sla_days ? ` within ${status.sla_days} days` : ''}, and email you when it’s ready to check.
+        If we don’t, you get a full refund. Stripe has emailed your receipt.
       </p>
       <button type="button" onClick={onClose} className="mt-2 text-[15px] font-medium text-ink underline underline-offset-2">
         Close
       </button>
     </div>
+  );
+}
+
+/** "Record funded by …" for a live record whose payer gave a name. Nothing otherwise. */
+export function FunderCredit({ memberId, className = '' }: { memberId: string; className?: string }) {
+  const names = (useFundingStatus().credits ?? []).filter((c) => c.member_id === memberId).map((c) => c.name);
+  if (!names.length) return null;
+  return (
+    // A span, not a p: it sits inside the cards' own <p> and <button>.
+    <span className={`block text-[14px] leading-snug text-ink-soft ${className}`} data-funder-credit="true">
+      Record funded by <span className="font-medium text-ink">{names.join(', ')}</span>
+    </span>
   );
 }

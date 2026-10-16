@@ -16,8 +16,8 @@ import { TAXONOMY_IS_COMPLETE } from './embeddings/taxonomy.js';
 import { feedbackLimiter, globalDailyCap, queryBurstLimiter, queryDailyLimiter, readOnlyLimiter, refundDailyCheck } from './rateLimit.js';
 import { feedbackStore, usageCounter } from './services.js';
 import { validateFeedback } from './data/FeedbackStore.js';
-import { fundingDeps } from './services.js';
-import { createCheckout, handleWebhook, fundingStatus } from './funding/funding.js';
+import { fundingDeps, fundingStore } from './services.js';
+import { createCheckout, fundingCredits, fundingStatus, handleWebhook } from './funding/funding.js';
 
 /** After the per-IP limiters: a request they refuse never spends the shared budget. */
 const globalCap = globalDailyCap(usageCounter, config.rateLimit.globalQueryPerDay);
@@ -259,7 +259,8 @@ app.post('/api/feedback', feedbackLimiter, async (req, res) => {
  */
 app.get('/api/fund/status', async (_req, res) => {
   if (!fundingDeps) {
-    res.json({ enabled: false });
+    // Credits stay up after funding is switched off: they were promised.
+    res.json({ enabled: false, credits: fundingStore ? await fundingCredits(fundingStore) : [] });
     return;
   }
   try {
