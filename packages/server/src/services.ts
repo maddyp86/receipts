@@ -91,9 +91,12 @@ export function describeTraceSinks(): string {
  * ENABLE_FUNDING is on AND both Stripe values and DATABASE_URL are set;
  * the routes then answer "not available" and the button is not shown.
  */
-export const fundingDeps: FundingDeps | null = config.funding.enabled
+/** Read for funder credits whenever there is a database, so they outlast funding being switched off. */
+export const fundingStore = config.database.url ? new SupabaseFundingStore(config.database.url) : null;
+
+export const fundingDeps: FundingDeps | null = config.funding.enabled && fundingStore
   ? {
-      store: new SupabaseFundingStore(config.database.url),
+      store: fundingStore,
       stripe: new Stripe(config.funding.stripeSecretKey),
       settings: {
         priceCents: config.funding.priceCents,

@@ -2,7 +2,7 @@ import { CheckIcon } from 'lucide-react';
 import type { Member } from '../../data/roster.js';
 import { memberArea, memberTitle, partyName } from '../../lib/members.js';
 import { MemberPortrait } from './MemberPortrait.js';
-import { FundRecord } from './FundRecord.js';
+import { FunderCredit, FundRecord } from './FundRecord.js';
 
 interface Props {
   member: Member;
@@ -59,6 +59,7 @@ export function MemberCard({ member, selected, onSelect, coveredAlternative }: P
       <span className="min-w-0 flex-1">
         <span className="block text-[18px] font-semibold leading-snug text-ink">{member.name}</span>
         {details}
+        <FunderCredit memberId={member.politician_id} className="mt-1" />
       </span>
       <span
         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${

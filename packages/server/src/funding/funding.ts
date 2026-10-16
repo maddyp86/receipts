@@ -1,5 +1,5 @@
 import type Stripe from 'stripe';
-import type { FundingStore } from './FundingStore.js';
+import type { FunderCredit, FundingStore } from './FundingStore.js';
 
 // ===========================================================================
 // A reader funds a not-yet-checked senator's record.
@@ -79,7 +79,7 @@ export async function createCheckout(memberId: string, deps: FundingDeps): Promi
             name: `Add ${member.full_name} to Receipts`,
             description:
               `Covers the one-time cost of checking ${member.full_name}’s Senate record. ` +
-              `Live for everyone within ${slaDays} days, or a full refund. Not tax-deductible.`,
+              `Live for everyone within ${slaDays} days, or a full refund. We'll email you when it's live. Not tax-deductible.`,
           },
         },
       },
@@ -89,7 +89,7 @@ export async function createCheckout(memberId: string, deps: FundingDeps): Promi
     custom_fields: [
       {
         key: CREDIT_FIELD,
-        label: { type: 'custom', custom: 'Name to credit (optional)' },
+        label: { type: 'custom', custom: 'Name to show publicly as the funder (optional)' },
         type: 'text',
         optional: true,
         text: { maximum_length: 80 },
@@ -151,11 +151,25 @@ export async function handleWebhook(
   }
 }
 
-/** For the picker: who is funded, and the day each is promised by. */
+/**
+ * Public funder credits. A read that fails (migration 019 not run yet) is no
+ * credits, never a failed page: the credit is a thank-you, not the record.
+ */
+export async function fundingCredits(store: FundingStore): Promise<FunderCredit[]> {
+  try {
+    return await store.credits();
+  } catch (err) {
+    console.warn('[funding] credits not readable (has migration 019 run?):', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+/** For the picker: who is funded, the day each is promised by, and who to credit. */
 export async function fundingStatus(deps: Pick<FundingDeps, 'store' | 'settings'>) {
   const open = await deps.store.open();
   return {
     enabled: true,
+    credits: await fundingCredits(deps.store),
     price_cents: deps.settings.priceCents,
     currency: deps.settings.currency,
     sla_days: deps.settings.slaDays,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import Stripe from 'stripe';
-import { createCheckout, fundingStatus, handleWebhook, CREDIT_FIELD, type FundingDeps, type StripeLike } from './funding.js';
+import { createCheckout, fundingCredits, fundingStatus, handleWebhook, CREDIT_FIELD, type FundingDeps, type StripeLike } from './funding.js';
 import { MemoryFundingStore, type FundableMember } from './FundingStore.js';
 
 // ===========================================================================
@@ -82,7 +82,7 @@ describe('createCheckout', () => {
     expect(created[0]!.line_items![0]!.price_data!.unit_amount).toBe(2000);
     expect(created[0]!.success_url).toBe('https://receipts.example/?funded=S001198&session_id={CHECKOUT_SESSION_ID}');
     // The promise and the not-a-donation line travel onto Stripe's own page.
-    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/14 days, or a full refund\. Not tax-deductible/);
+    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/14 days, or a full refund\..*Not tax-deductible/);
   });
 
   it.each([
@@ -185,10 +185,41 @@ describe('fundingStatus', () => {
     await handleWebhook(body, sign(body), d);
     expect(await fundingStatus(d)).toEqual({
       enabled: true,
+      credits: [],
       price_cents: 2000,
       currency: 'usd',
       sla_days: 14,
       funded: [{ member_id: 'S001198', live_by: '2026-10-29' }],
     });
+  });
+});
+
+describe('funder credits', () => {
+  it('lists only names an operator has set live', async () => {
+    const { d, store } = deps();
+    const body = paidEvent();
+    await handleWebhook(body, sign(body), d);
+    // Paid but not live: a name given at checkout is not shown yet.
+    expect((await fundingStatus(d)).credits).toEqual([]);
+    store.live.push({ member_id: 'S001198', name: 'A reader in Anchorage' });
+    expect((await fundingStatus(d)).credits).toEqual([{ member_id: 'S001198', name: 'A reader in Anchorage' }]);
+  });
+
+  it('a credits read that fails (migration 019 not run) is no credits, not a failed status', async () => {
+    const store = new MemoryFundingStore(MEMBERS);
+    store.credits = async () => {
+      throw new Error('permission denied for table member_funding');
+    };
+    expect(await fundingCredits(store)).toEqual([]);
+    expect((await fundingStatus(deps(store).d)).credits).toEqual([]);
+  });
+
+  it('asks at checkout for a PUBLIC name, and says we will email', async () => {
+    const { d, created } = deps();
+    await createCheckout('S001198', d);
+    const field = created[0]!.custom_fields![0]!;
+    expect(field.label.custom).toMatch(/publicly/);
+    expect(field.optional).toBe(true);
+    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/email you when it's live/);
   });
 });

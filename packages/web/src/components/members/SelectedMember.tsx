@@ -2,6 +2,7 @@ import { CheckIcon } from 'lucide-react';
 import type { Member } from '../../data/roster.js';
 import { memberTitle, partyName } from '../../lib/members.js';
 import { MemberPortrait } from './MemberPortrait.js';
+import { FunderCredit } from './FundRecord.js';
 
 interface Props {
   member: Member;
@@ -24,6 +25,7 @@ export function SelectedMember({ member, onChange, compact = false }: Props) {
             <span className="text-ink-soft">Checking:</span> <span className="font-semibold">{member.name}</span>
           </span>
           <span className="block text-[14px] text-ink-soft">{memberTitle(member)}</span>
+          <FunderCredit memberId={member.politician_id} />
         </p>
         {onChange ? (
           <button
@@ -58,6 +60,7 @@ export function SelectedMember({ member, onChange, compact = false }: Props) {
           {memberTitle(member)}
           {party ? ` · ${party}` : ''}
         </p>
+        <FunderCredit memberId={member.politician_id} className="mt-1" />
       </div>
       {onChange ? (
         <button

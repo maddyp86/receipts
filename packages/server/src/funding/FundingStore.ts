@@ -42,6 +42,16 @@ export interface FundingStore {
   open(): Promise<OpenFunding[]>;
   /** Idempotent on stripe_session_id: true when this call wrote the row. */
   record(row: FundingRow): Promise<boolean>;
+  /**
+   * Names to credit publicly: only rows the operator has set 'live' (and so
+   * looked at), with a name the payer chose to give. Migration 019.
+   */
+  credits(): Promise<FunderCredit[]>;
+}
+
+export interface FunderCredit {
+  member_id: string;
+  name: string;
 }
 
 export class SupabaseFundingStore implements FundingStore {
@@ -77,6 +87,16 @@ export class SupabaseFundingStore implements FundingStore {
     return rows;
   }
 
+  async credits(): Promise<FunderCredit[]> {
+    const { rows } = await this.pool.query<FunderCredit>(
+      `select member_id, display_name as name
+         from app.member_funding
+        where status = 'live' and display_name is not null and btrim(display_name) <> ''
+        order by live_at nulls last, paid_at`,
+    );
+    return rows;
+  }
+
   async record(r: FundingRow): Promise<boolean> {
     const { rowCount } = await this.pool.query(
       `insert into app.member_funding
@@ -92,6 +112,8 @@ export class SupabaseFundingStore implements FundingStore {
 /** In memory, for tests. */
 export class MemoryFundingStore implements FundingStore {
   readonly rows: FundingRow[] = [];
+  /** Stands in for rows an operator has set 'live'. */
+  readonly live: FunderCredit[] = [];
   constructor(private readonly members: FundableMember[] = []) {}
 
   async member(memberId: string): Promise<FundableMember | null> {
@@ -105,6 +127,10 @@ export class MemoryFundingStore implements FundingStore {
       if (!cur || r.refund_due_at < cur) byMember.set(r.member_id, r.refund_due_at);
     }
     return [...byMember].map(([member_id, refund_due_at]) => ({ member_id, refund_due_at }));
+  }
+
+  async credits(): Promise<FunderCredit[]> {
+    return [...this.live];
   }
 
   async record(r: FundingRow): Promise<boolean> {
