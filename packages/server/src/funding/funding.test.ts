@@ -82,7 +82,7 @@ describe('createCheckout', () => {
     expect(created[0]!.line_items![0]!.price_data!.unit_amount).toBe(2000);
     expect(created[0]!.success_url).toBe('https://receipts.example/?funded=S001198&session_id={CHECKOUT_SESSION_ID}');
     // The promise and the not-a-donation line travel onto Stripe's own page.
-    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/14 days, or a full refund\..*Not tax-deductible/);
+    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/within 14 days, or a full refund\..*sponsor.*Not tax-deductible/);
   });
 
   it.each([
@@ -101,13 +101,13 @@ describe('createCheckout', () => {
     expect(created).toHaveLength(0);
   });
 
-  it('refuses a member someone has already funded', async () => {
+  it('refuses a member who already has a sponsor', async () => {
     const { d, store, created } = deps();
     await handleWebhook(paidEvent(), sign(paidEvent()), d);
     expect(store.rows).toHaveLength(1);
     const out = await createCheckout('S001198', d);
     expect(out.ok).toBe(false);
-    if (!out.ok) expect(out.message).toMatch(/already funded/);
+    if (!out.ok) expect(out.message).toMatch(/already has a sponsor/);
     expect(created).toHaveLength(0);
   });
 });
@@ -118,7 +118,7 @@ describe('createCheckout for the House', () => {
     const out = await createCheckout('L000599', d);
     expect(out.ok).toBe(true);
     expect(created[0]!.metadata).toEqual({ member_id: 'L000599' });
-    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/Michael Lawler’s voting record/);
+    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/Michael Lawler’s votes/);
   });
 });
 
@@ -223,12 +223,12 @@ describe('funder credits', () => {
     expect((await fundingStatus(deps(store).d)).credits).toEqual([]);
   });
 
-  it('asks at checkout for a PUBLIC name, and says we will email', async () => {
+  it('asks at checkout for a sponsor name, and says we will email', async () => {
     const { d, created } = deps();
     await createCheckout('S001198', d);
     const field = created[0]!.custom_fields![0]!;
-    expect(field.label.custom).toMatch(/publicly/);
+    expect(field.label.custom).toMatch(/sponsor/);
     expect(field.optional).toBe(true);
-    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/email you when it's live/);
+    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/email you when it’s ready/);
   });
 });

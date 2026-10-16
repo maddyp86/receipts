@@ -35,8 +35,10 @@ describe('the promises match the Fund button', () => {
     expect(html).toContain('not tax-deductible');
   });
 
-  it('terms: payment never changes a finding and is not a donation', () => {
+  it('terms: sponsoring is named as such, says records are public, never changes a finding, is not a donation', () => {
     const html = page('terms');
+    expect(html).toContain('Sponsoring a record');
+    expect(html).toContain('anyone can read a record you sponsor');
     expect(html).toContain("doesn't change what we find");
     expect(html).toContain('not a donation');
   });
