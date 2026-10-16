@@ -1,4 +1,5 @@
 -- Migration 021: record questions (2026-10-15)
+-- APPLIED to production 2026-10-15 (Supabase migration 021_record_questions), at Matt's word.
 --
 -- A voter's question about what a senator did ("Did they vote to extend the
 -- enhanced ACA tax credits?") is answered from the record with a label, never

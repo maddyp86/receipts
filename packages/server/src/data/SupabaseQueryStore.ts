@@ -124,7 +124,7 @@ export class SupabaseQueryStore implements QueryStore {
       // A record question (migration 021) carries no statement and no grade:
       // statement_type, verdict and band are null, and the answer label is
       // stored instead. A statement's insert is exactly what it always was,
-      // so statements keep saving even where 020 has not been run yet.
+      // so statements keep saving even where 021 has not been run.
       const record = query.interpretation.input_kind === 'RECORD_QUESTION';
       const { rows } = await client.query<{ id: string }>(
         `insert into app.app_queries (
