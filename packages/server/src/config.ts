@@ -420,6 +420,13 @@ export const config = {
      * migration 013 has been run. Run it, then turn this on.
      */
     feedbackPrompts: boolOverride(process.env.ENABLE_FEEDBACK_PROMPTS) ?? false,
+    /**
+     * Record questions ("Did they vote to…?") answered from the record with a
+     * label, rather than rewritten into a statement and graded as the
+     * senator's own words. ON by default; ENABLE_RECORD_QUESTIONS=false puts
+     * every input back on the statement path, exactly as before.
+     */
+    recordQuestions: boolOverride(process.env.ENABLE_RECORD_QUESTIONS) ?? true,
   },
 
   /**

@@ -370,6 +370,9 @@ app.get('/api/query', queryDailyLimiter, queryBurstLimiter, globalCap, async (re
       statementDate: String(req.query.date ?? '').trim() || undefined,
       // Set when the reader picked this statement from options we offered.
       chosen: req.query.chosen === '1',
+      // Set when we asked whether this is a question or a statement and the
+      // reader answered. Anything else is ignored and the server decides.
+      inputKind: req.query.kind === 'record' ? 'RECORD_QUESTION' : req.query.kind === 'statement' ? 'STATEMENT' : undefined,
     });
   } finally {
     clearInterval(heartbeat);

@@ -43,6 +43,12 @@ const ATTRIBUTION = /\b(promise|promised|promises|pledge|pledged|pledges|vow|vow
 /** A statement that already takes a side, in the form the checker reads. */
 const STATEMENT_OPENER = /^(supports?|opposes?|backs?|wants?|will|i will|we will|i'll|we'll|i promise|plans? to|is committed to|committed to|fights? for|stands? (for|with|against)|believes?)\b/i;
 
+/**
+ * A goal stated as a verb phrase: "Lower prescription drug prices", "protect
+ * clean air standards". The voter is naming a position to check, not asking.
+ */
+const GOAL_OPENER = /^(lower|lowers|raise|raises|cut|cuts|protect|protects|ban|bans|expand|expands|repeal|repeals|end|ends|stop|stops|secure|secures|fund|funds|defund|cancel|cancels|legalize|legalise|restrict|restricts|extend|extends|keep|keeps|increase|increases|reduce|reduces|abolish|eliminate|strengthen|weaken|tighten|limit|codify|overturn|restore|prohibit|forgive|privatize|privatise|pass|passes|defend|defends|fight|fights|make|build|create|require|requires|allow|allows|support|oppose|no new)\b/i;
+
 const QUOTED = /^\s*["“'‘].{8,}["”'’]\s*$|^\s*["“].+["”]/;
 
 const clean = (t: string) => String(t ?? '').trim().replace(/\s+/g, ' ');
@@ -73,6 +79,9 @@ export function inputKindByRule(text: string): InputKindDecision | null {
   }
   if (STATEMENT_OPENER.test(t)) {
     return { kind: 'STATEMENT', decided_by: 'rule:statement_opener', reason: 'opens like a statement that takes a side' };
+  }
+  if (GOAL_OPENER.test(t)) {
+    return { kind: 'STATEMENT', decided_by: 'rule:goal_opener', reason: 'states a goal to check' };
   }
   return null;
 }
@@ -114,8 +123,11 @@ const live = (): CleanupFetcher =>
   (fetcher ??= liveFetcher(INPUT_KIND_PROMPT, INPUT_KIND_PROMPT_VERSION, 'INPUT_KIND_MODEL', 'input kind'));
 
 /**
- * The decision: rules, then the model, then UNCLEAR (ask the voter). A model
- * failure is UNCLEAR too, never a guess.
+ * The decision: rules, then the model, then UNCLEAR (ask the voter) when the
+ * model is unsure. A model that cannot be reached (no key, demo mode, an
+ * outage) falls back to the statement path, which is exactly how every input
+ * was handled before this check existed: asking every reader to choose
+ * whenever a call failed would block ordinary statements.
  */
 export async function classifyInputKind(text: string, fetch: CleanupFetcher = live()): Promise<InputKindDecision> {
   const byRule = inputKindByRule(text);
@@ -127,6 +139,6 @@ export async function classifyInputKind(text: string, fetch: CleanupFetcher = li
     }
     return { kind: 'UNCLEAR', decided_by: 'model', confidence, reason: 'the model could not tell, or was not sure' };
   } catch (err) {
-    return { kind: 'UNCLEAR', decided_by: 'model_failed', reason: err instanceof Error ? err.message : String(err) };
+    return { kind: 'STATEMENT', decided_by: 'model_failed', reason: `the model was unavailable, so the statement path, as before: ${err instanceof Error ? err.message : String(err)}` };
   }
 }

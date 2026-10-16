@@ -121,15 +121,20 @@ export class SupabaseQueryStore implements QueryStore {
     try {
       await client.query('begin');
 
+      // A record question (migration 020) carries no statement and no grade:
+      // statement_type, verdict and band are null, and the answer label is
+      // stored instead. A statement's insert is exactly what it always was,
+      // so statements keep saving even where 020 has not been run yet.
+      const record = query.interpretation.input_kind === 'RECORD_QUESTION';
       const { rows } = await client.query<{ id: string }>(
         `insert into app.app_queries (
            session_id, politician_id, promise_text, classification,
            corrections_applied, statement_type, provenance, user_asserted_premise,
            result, verdict, band, models_used, degraded,
            speech_act, scope, valid_until, anchor_entity, role_condition,
-           scope_confidence, scope_reasoning, scope_model
+           scope_confidence, scope_reasoning, scope_model${record ? ', input_kind, answer_label' : ''}
          ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
-                   $14,$15,$16,$17,$18,$19,$20,$21)
+                   $14,$15,$16,$17,$18,$19,$20,$21${record ? ',$22,$23' : ''})
          returning id`,
         [
           query.session_id,
@@ -139,14 +144,14 @@ export class SupabaseQueryStore implements QueryStore {
           query.interpretation.corrections_applied
             ? JSON.stringify(query.interpretation.corrections_applied)
             : null,
-          query.interpretation.statement_type,
+          record ? null : query.interpretation.statement_type,
           query.interpretation.provenance,
           query.user_asserted_premise,
           query.result ? JSON.stringify(query.result) : null,
           // Denormalised out of the frozen result so they are filterable in SQL
           // without unpacking jsonb on every analysis query.
-          query.result?.scored.verdict ?? null,
-          query.result?.scored.band ?? null,
+          record ? null : query.result?.scored.verdict ?? null,
+          record ? null : query.result?.scored.band ?? null,
           query.models_used ? JSON.stringify(query.models_used) : null,
           query.degraded ? JSON.stringify(query.degraded) : null,
           // Scope. Absent when classification was unavailable — recorded as
@@ -160,6 +165,7 @@ export class SupabaseQueryStore implements QueryStore {
           query.scope?.confidence ?? null,
           query.scope?.reasoning ?? null,
           query.scope?.model ?? null,
+          ...(record ? ['RECORD_QUESTION', query.result?.record?.label ?? 'NO_RECORDED_ACTION_FOUND'] : []),
         ],
       );
       const queryId = rows[0]!.id;

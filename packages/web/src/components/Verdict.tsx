@@ -8,6 +8,8 @@ import {
   XIcon,
 } from 'lucide-react';
 import {
+  ANSWER_LABEL_COPY,
+  ANSWER_REASON_COPY,
   BAND_LEVEL,
   BAND_REASON_COPY,
   confidencePhrase,
@@ -344,11 +346,14 @@ function readResult(props: VerdictProps) {
   // broke, lines up with or runs counter on a not-determinable answer. The
   // specific reason goes under it as a fixed sentence. Without a paragraph,
   // the reason alone is the answer, as before.
-  const reason = isND ? notDeterminableReason(result) : null;
+  // A record question has an answer label, never a verdict: none of the
+  // not-determinable copy applies to it, whatever the scorer said inside.
+  const record = Boolean(result.record);
+  const reason = isND && !record ? notDeterminableReason(result) : null;
   const written = String(explanation.why ?? '').trim();
-  const level1 = isND ? written || reason || ND_NO_REASON_COPY : explanation.why;
-  const reasonLine = isND && written ? reason : null;
-  return { isND, judgeSentence, level1, reasonLine, promise: usesPromiseVocabulary(result), feedback: feedbackContext(props) };
+  const level1 = record ? written : isND ? written || reason || ND_NO_REASON_COPY : explanation.why;
+  const reasonLine = isND && !record && written ? reason : null;
+  return { isND: isND && !record, record, judgeSentence, level1, reasonLine, promise: usesPromiseVocabulary(result), feedback: feedbackContext(props) };
 }
 
 /**
@@ -356,7 +361,92 @@ function readResult(props: VerdictProps) {
  * (its three numbers), which way the bills count, and what to do next. The
  * explanation, the receipts and how we checked sit in tabs below it.
  */
+/** For / against / not counted / set aside, one block per vote or sponsorship row. */
+function RecordBar({ answer, setAside }: { answer: NonNullable<QueryResult['record']>; setAside: number }) {
+  const fors = answer.rows.filter((r) => r.reading === 'for').length;
+  const againsts = answer.rows.filter((r) => r.reading === 'against').length;
+  const not = answer.rows.length - fors - againsts;
+  const segments = [
+    { key: 'for', n: fors, cls: 'bg-kept' },
+    { key: 'against', n: againsts, cls: 'bg-broken' },
+    { key: 'not', n: not + setAside, cls: 'bg-rule' },
+  ].filter((x) => x.n > 0);
+  const legend = [`${fors} for`, `${againsts} against`, ...(not ? [`${not} not counted`] : []), ...(setAside ? [`${setAside} set aside`] : [])];
+  if (!segments.length) return null;
+  return (
+    <div className="tally">
+      <div className="mt-3 flex h-2.5 gap-1" role="img" aria-label={legend.join(', ')}>
+        {segments.map((x) =>
+          Array.from({ length: x.n }).map((_, i) => <span key={`${x.key}-${i}`} className={`h-full flex-1 rounded-full ${x.cls}`} />),
+        )}
+      </div>
+      <p className="tally-legend mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-soft" aria-hidden="true">
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-kept" />{legend[0]}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-broken" />{legend[1]}</span>
+        {legend.slice(2).map((l) => (
+          <span key={l} className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-rule" />{l}</span>
+        ))}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The answer to a record question ("Did they vote to…?"). No verdict badge
+ * and no confidence band: the label says what they did, the bar shows each
+ * vote, and the summary gives the facts. Neutral colouring throughout, since
+ * a vote for or against is not good or bad in itself.
+ */
+function RecordCard(props: VerdictProps) {
+  const { result } = props;
+  const answer = result.record!;
+  const funnel = searchFunnel(result);
+  const boundary = recordBoundarySentence(result);
+  const sub = ANSWER_REASON_COPY[answer.reason];
+  const summary = result.explanation.card_summary?.trim();
+  return (
+    <section
+      className="verdict overflow-hidden rounded-card border border-rule bg-card shadow-soft"
+      data-record={answer.label}
+      aria-label="Answer"
+    >
+      <div className="px-5 pb-5 pt-5 sm:px-6">
+        <p className="text-[15px] text-ink-soft">What the record shows</p>
+        <h2 className="verdict-label record-label" style={{ color: 'var(--ink, inherit)' }}>
+          {ANSWER_LABEL_COPY[answer.label].replace(/\.$/, '')}
+        </h2>
+        {sub ? <p className="verdict-confidence mt-1.5 text-[17px] leading-snug text-ink">{sub}</p> : null}
+        <p className="verdict-band mt-2 text-[16px] leading-snug text-ink-soft">
+          {result.senator.name} · you asked: <span className="text-ink">“{result.interpretation.raw}”</span>
+        </p>
+        {funnel ? (
+          <dl className="search-funnel mt-4 flex flex-wrap gap-2">
+            {[
+              { n: funnel.searched, label: 'actions in record' },
+              { n: funnel.close, label: 'read closely' },
+              { n: funnel.about, label: 'about your question' },
+            ].map((x) =>
+              x.n === null ? null : (
+                <div key={x.label} className="flex items-baseline gap-1.5 rounded-full border border-rule bg-card/80 px-3 py-1">
+                  <dt className="sr-only">{x.label}</dt>
+                  <dd className="text-[16px] font-medium text-ink">{x.n.toLocaleString('en-US')}</dd>
+                  <dd className="text-[14px] text-ink-soft" aria-hidden="true">{x.label}</dd>
+                </div>
+              ),
+            )}
+          </dl>
+        ) : null}
+        <RecordBar answer={answer} setAside={answer.set_aside} />
+        {summary ? <p className="verdict-tally mt-3 text-[16px] leading-relaxed text-ink">{summary}</p> : null}
+        {boundary ? <p className="record-boundary mt-4 text-[16px] leading-relaxed text-ink">{boundary}</p> : null}
+        {props.actions ? <div className="result-actions mt-5">{props.actions}</div> : null}
+      </div>
+    </section>
+  );
+}
+
 export function VerdictCard(props: VerdictProps) {
+  if (props.result.record) return <RecordCard {...props} />;
   const { result } = props;
   const { scored, senator } = result;
   const style = VERDICT_STYLE[scored.verdict] ?? VERDICT_STYLE.NOT_DETERMINABLE!;
@@ -453,7 +543,7 @@ export function VerdictCard(props: VerdictProps) {
 export function WhyPanel(props: VerdictProps) {
   const { result } = props;
   const { scored } = result;
-  const { isND, judgeSentence, level1, reasonLine, promise, feedback } = readResult(props);
+  const { isND, record, judgeSentence, level1, reasonLine, promise, feedback } = readResult(props);
   const reused = reusedSentence(result.reused_from?.produced_at);
 
   return (
@@ -469,7 +559,7 @@ export function WhyPanel(props: VerdictProps) {
         ) : null}
       </div>
 
-      {scored.mode === 'ranked' ? (
+      {scored.mode === 'ranked' && !record ? (
         <p className="mixed-note rounded-lg bg-cantsay-wash px-3.5 py-3 text-[15px] leading-relaxed text-ink">
           Their record here is mixed. There is real evidence pointing the other way, and it’s
           shown under Receipts rather than averaged out.
@@ -483,7 +573,7 @@ export function WhyPanel(props: VerdictProps) {
           the level-1 copy above is already the disposition's own sentence,
           and a counterargument to an unpublished accusation would surface the
           accusation we just declined to make. */}
-      {result.judge && !result.judge.withheld && judgeSentence ? (
+      {result.judge && !result.judge.withheld && judgeSentence && !record ? (
         <div className="judge-note rounded-lg border border-rule">
           <div className="flex gap-3 p-4">
             <ShieldCheckIcon className="mt-0.5 h-5 w-5 shrink-0 text-ink-soft" aria-hidden="true" />
@@ -517,7 +607,7 @@ export function WhyPanel(props: VerdictProps) {
 
       {/* Which standard the wording follows, where it is the default. An
           asserted promise says so in its own headline. */}
-      {!isND && !promise && result.interpretation.provenance !== 'asserted' ? (
+      {!isND && !record && !promise && result.interpretation.provenance !== 'asserted' ? (
         <p className="text-[14px] leading-relaxed text-ink-soft">
           We treat this as a <GlossaryTerm id="position">position</GlossaryTerm> they’ve taken unless we can
           confirm they promised it.
@@ -645,8 +735,29 @@ export function EvidenceList(props: VerdictProps) {
       feedback={feedback}
       showDirection={!isND}
       promiseVocabulary={promise}
+      recordRows={result.record ? result.record.rows.filter((r) => r.action_uid === e.action_uid) : undefined}
     />
   );
+
+  // A record question: every bill and vote, each with how it reads against
+  // what was asked. No toward/against sections: those are a verdict's.
+  if (result.record) {
+    return (
+      <div id={EVIDENCE_ANCHOR} className="scroll-mt-4 space-y-8">
+        {scored.evidence.length ? (
+          <EvidenceSection
+            title="The bills and votes"
+            description="Each vote is read against what you asked about. Tap a chip to see how."
+            count={scored.evidence.length}
+          >
+            {scored.evidence.map(card)}
+          </EvidenceSection>
+        ) : null}
+        <NotCounted rows={result.not_counted} />
+        <GatedActions gated={result.gated} />
+      </div>
+    );
+  }
 
   return (
     <div id={EVIDENCE_ANCHOR} className="scroll-mt-4 space-y-8">

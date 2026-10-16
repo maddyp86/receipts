@@ -38,6 +38,9 @@ describe('clear statements', () => {
     'She said she would vote to lower drug prices',
     'will fight to secure the border',
     'I will protect clean air.',
+    // A goal stated as a verb phrase.
+    'Lower prescription drug prices.',
+    'protect clean air standards from rollback',
     // A quotation is the senator's words, whatever its punctuation.
     '"We must expand background checks for every gun sale."',
     '“Will I ever vote to raise taxes on working families? Never.”',
@@ -55,7 +58,7 @@ describe('what the rules leave to the existing path or to the model', () => {
 
   it('a bare phrase is not placed by a rule', () => {
     expect(inputKindByRule('her record on the debt limit')).toBeNull();
-    expect(inputKindByRule('lower taxes for working families')).toBeNull();
+    expect(inputKindByRule('taxes for working families')).toBeNull();
   });
 
   it('each decision says which rule made it', () => {
@@ -78,11 +81,13 @@ describe('the model fallback', () => {
     expect((await classifyInputKind('her record on the debt limit', said({ kind: 'UNCLEAR', confidence: 0.9 }))).kind).toBe('UNCLEAR');
   });
 
-  it('asks the voter when the model fails, rather than guessing', async () => {
+  // An outage must not make every reader choose: the statement path is how
+  // every input was handled before this check existed.
+  it('falls back to the statement path when the model cannot be reached', async () => {
     const d = await classifyInputKind('her record on the debt limit', async () => {
       throw new Error('boom');
     });
-    expect(d).toMatchObject({ kind: 'UNCLEAR', decided_by: 'model_failed' });
+    expect(d).toMatchObject({ kind: 'STATEMENT', decided_by: 'model_failed' });
   });
 
   it('never calls the model when a rule decides', async () => {

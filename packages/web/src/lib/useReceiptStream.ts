@@ -12,7 +12,7 @@ import type {
   StreamEvent,
   ToolError,
 } from '@receipts/shared';
-import type { Corrections } from '@receipts/shared';
+import type { Corrections, InputKind } from '@receipts/shared';
 import { apiUrl } from './api.js';
 import { sessionId } from './session.js';
 
@@ -110,7 +110,7 @@ export function useReceiptStream() {
       /** ISO date the statement was made. Resolves a bounded window. */
       statementDate?: string,
       /** The reader picked this statement from options we offered: check it as it stands. */
-      opts: { chosen?: boolean } = {},
+      opts: { chosen?: boolean; kind?: InputKind } = {},
     ) => {
       close();
       // FULL RESET, including the previous result and interpretation.
@@ -130,6 +130,7 @@ export function useReceiptStream() {
       if (session) query.set('session', session);
       if (statementDate) query.set('date', statementDate);
       if (opts.chosen) query.set('chosen', '1');
+      if (opts.kind) query.set('kind', opts.kind === 'RECORD_QUESTION' ? 'record' : 'statement');
       if (corrections && Object.keys(corrections).length) {
         query.set('corrections', JSON.stringify(corrections));
       }

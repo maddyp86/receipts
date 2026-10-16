@@ -29,6 +29,7 @@ import {
   surnameOf,
   type DirectedAction,
   type PathStep,
+  type RecordRow,
 } from '@receipts/shared';
 import { GlossaryTerm } from './glossary/GlossaryTerm.js';
 import type { GlossaryId } from '../data/glossary.js';
@@ -277,11 +278,40 @@ function countMeaning(e: DirectedAction, count: Count, surname: string, showDire
   return 'This bill isn’t counted for or against the statement.';
 }
 
+/**
+ * A record question's chip: how this bill's votes read against what was asked,
+ * each stage on its own. "Both ways" when one stage is for and another
+ * against: the reader is owed the split, not an average.
+ */
+function recordChip(rows: RecordRow[], surname: string): { count: Count; label: string; meaning: string } {
+  const counted = rows.filter((r) => r.reading === 'for' || r.reading === 'against');
+  const fors = counted.some((r) => r.reading === 'for');
+  const againsts = counted.some((r) => r.reading === 'against');
+  const stage = (r: RecordRow) =>
+    r.stage === 'cloture' ? 'to end debate' : r.stage === 'passage' ? 'on the final vote' : '';
+  const said = rows.map((r) => {
+    if (r.stage === 'sponsor' || r.stage === 'cosponsor') {
+      return `${surname} ${r.stage === 'sponsor' ? 'sponsored' : 'co-sponsored'} this bill${r.reading === 'for' ? ', which as we read it would do what you asked about' : r.reading === 'against' ? ', which as we read it would do the opposite' : ''}.`;
+    }
+    const at = stage(r) ? ` ${stage(r)}` : '';
+    if (r.vote === 'NOT_VOTING') return `${surname} did not vote${at}.`;
+    const vote = r.vote === 'YEA' ? 'Yea' : 'Nay';
+    const reading = r.reading === 'for' ? 'a vote for what you asked about' : r.reading === 'against' ? 'a vote against it' : 'not counted, because we did not read the bill as doing what you asked about';
+    return `${surname} voted ${vote}${at}: ${reading}.`;
+  });
+  const broad = rows.some((r) => r.broad)
+    ? ' This was a larger package that covered much more than this, so it does not decide the answer on its own.'
+    : '';
+  const count: Count = fors && !againsts ? 'toward' : againsts && !fors ? 'against' : 'not';
+  const label = fors && againsts ? 'Both ways' : fors ? 'For this' : againsts ? 'Against this' : 'Not counted';
+  return { count, label, meaning: `${said.join(' ')}${broad}` };
+}
+
 /** The chip, and the plain explanation it opens. */
-function CountChip({ count, meaning }: { count: Count; meaning: string }) {
+function CountChip({ count, meaning, label }: { count: Count; meaning: string; label?: string }) {
   const [open, setOpen] = useState(false);
   const id = useId();
-  const chip = COUNT_CHIP[count];
+  const chip = { ...COUNT_CHIP[count], ...(label ? { label } : {}) };
   return (
     <>
       <button
@@ -355,6 +385,8 @@ interface Props {
   showDirection?: boolean;
   /** Kept/broken wording — only where the headline uses it. */
   promiseVocabulary?: boolean;
+  /** A record question: this bill's votes read against what was asked. Replaces the statement chip. */
+  recordRows?: RecordRow[];
 }
 
 export function EvidenceCard({
@@ -364,6 +396,7 @@ export function EvidenceCard({
   feedback,
   showDirection = true,
   promiseVocabulary = false,
+  recordRows,
 }: Props) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -418,7 +451,11 @@ export function EvidenceCard({
               </p>
             ) : null}
           </div>
-          <CountChip count={count} meaning={countMeaning(action, count, surname, showDirection)} />
+          {recordRows ? (
+            <CountChip {...recordChip(recordRows, surname)} />
+          ) : (
+            <CountChip count={count} meaning={countMeaning(action, count, surname, showDirection)} />
+          )}
         </div>
         <h3 className="evidence-title mt-2 font-serif text-[21px] leading-snug text-ink">{action.title}</h3>
 

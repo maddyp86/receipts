@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ArrowLeftIcon, RotateCcwIcon } from 'lucide-react';
-import { surnameOf, type Corrections, type DirectoryMember, type Senator } from '@receipts/shared';
+import { surnameOf, type Corrections, type DirectoryMember, type InputKind, type Senator } from '@receipts/shared';
 import { useReceiptStream } from './lib/useReceiptStream.js';
 import { apiUrl } from './lib/api.js';
 import { buildRoster, type Member } from './data/roster.js';
@@ -147,12 +147,12 @@ export default function App() {
   /** Back to the entry screen with the words kept, to reword them. */
   const reword = () => stream.reset();
   /** The reader picked one of our options: that statement is now what they are asking. */
-  const checkStatement = (statement: string) => {
+  const checkStatement = (statement: string, kind?: InputKind) => {
     // Picked from options we offered: checked as it stands, never asked again,
     // and the reader's own words stay at the top of the answer.
     setAskedText(stream.clarify?.original ?? askedText ?? promise.trim());
     setPromise(statement);
-    stream.run(selected, statement, baseCorrections(), undefined, { chosen: true });
+    stream.run(selected, statement, baseCorrections(), undefined, { chosen: true, kind });
   };
   /** Back to the entry screen with the statement we checked, to change it. */
   const editStatement = (statement: string) => {

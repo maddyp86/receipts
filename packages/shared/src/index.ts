@@ -90,10 +90,28 @@ export interface RecordRow {
   broad: boolean;
 }
 
+/** The voter-facing answer lines (approved 15 Oct). */
+export const ANSWER_LABEL_COPY: Record<AnswerLabel, string> = {
+  VOTED_FOR: 'Voted for this.',
+  VOTED_AGAINST: 'Voted against this.',
+  MIXED_RECORD: 'Mixed record: voted both for and against.',
+  SPONSORSHIP_ONLY: 'Backed a bill on this, but no recorded vote.',
+  ONLY_BROAD_VOTES: 'Only voted on larger packages that included this.',
+  NO_RECORDED_ACTION_FOUND: 'No recorded vote or bill on this found.',
+};
+
+/** A second line under the label, where the label alone could mislead. */
+export const ANSWER_REASON_COPY: Partial<Record<RecordAnswer['reason'], string>> = {
+  NOTHING_COUNTED: 'We found bills on this, but none of them clearly does what you asked about. Each one is listed under Receipts with the reason.',
+  TOO_BROAD: 'This question is too broad to check against specific bills. Try naming a specific bill, program or policy.',
+  BROAD_ONLY: 'Each of those packages covered much more than this, so none says on its own how they stand on this piece.',
+  SPONSORSHIP: 'Putting their name on a bill is weaker evidence than a recorded vote.',
+};
+
 export interface RecordAnswer {
   label: AnswerLabel;
   /** Why the label is what it is; separates "nothing found" from "nothing counted". */
-  reason: 'VOTES' | 'SPONSORSHIP' | 'BROAD_ONLY' | 'NOTHING_COUNTED' | 'NOTHING_FOUND';
+  reason: 'VOTES' | 'SPONSORSHIP' | 'BROAD_ONLY' | 'NOTHING_COUNTED' | 'NOTHING_FOUND' | 'TOO_BROAD';
   rows: RecordRow[];
   counted: { for: number; against: number };
   set_aside: number;
@@ -1574,6 +1592,8 @@ export interface ClarifyOption {
   label: string;
   /** The statement to check if the reader picks it. */
   statement: string;
+  /** KIND_REQUIRED: which the reader means, sent back with the re-run so it is never asked again. */
+  kind?: InputKind;
 }
 
 /**
@@ -1586,10 +1606,11 @@ export interface QueryClarify {
   /**
    * SIDE_REQUIRED: a subject with no side ("which way?").
    * POLICY_REQUIRED: a side on a whole area several policies could mean
-   * ("which taxes?"). Either way nothing was checked, and each option is
-   * checked only if the reader picks it.
+   * ("which taxes?"). KIND_REQUIRED: we could not tell whether the reader is
+   * asking what the senator did or checking something they said. Either way
+   * nothing was checked, and each option is checked only if the reader picks it.
    */
-  reason: 'SIDE_REQUIRED' | 'POLICY_REQUIRED';
+  reason: 'SIDE_REQUIRED' | 'POLICY_REQUIRED' | 'KIND_REQUIRED';
   /** SIDE_REQUIRED: the neutral proposition both options are built from. POLICY_REQUIRED: the area, in the reader's words. */
   proposition: string;
   /** The question to the reader, e.g. "Which taxes do you mean?". */

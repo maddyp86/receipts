@@ -8,6 +8,8 @@ import {
   type Explanation,
   type Interpretation,
   type DirectedAction,
+  type InputKind,
+  type RecordAnswer,
   type MatchedAction,
   type ScoredResult,
   type Senator,
@@ -100,6 +102,14 @@ function responsesUsage(envelope: ResponsesEnvelope | null): TraceUsage | null {
 export interface QuerySession {
   politicianId: string;
   promiseText: string;
+  /**
+   * STATEMENT (the default, and every run before this field) or
+   * RECORD_QUESTION. A record question is never scored as the senator's
+   * words: no scope check, no judge, no verdict; an answer label instead.
+   */
+  inputKind?: InputKind;
+  /** The record question's answer, set by the record pipeline. */
+  record?: RecordAnswer;
   senator?: Senator;
   uncached: boolean;
   queued: boolean;
@@ -406,7 +416,10 @@ async function interpretPromise(
     statement_type: userAssertedPremise ? 'Campaign Promise' : 'Policy Position',
     // 'asserted' — the premise is the USER's, not evidence we hold. This value
     // is what every downstream surface keys the attribution off.
-    provenance: userAssertedPremise ? 'asserted' : 'default',
+    provenance: session.inputKind === 'RECORD_QUESTION' ? 'voter_question' : userAssertedPremise ? 'asserted' : 'default',
+    // Set only for a record question, so every statement's interpretation is
+    // exactly what it was.
+    ...(session.inputKind === 'RECORD_QUESTION' ? { input_kind: 'RECORD_QUESTION' as const } : {}),
     user_asserted_premise: userAssertedPremise || undefined,
     corrections_applied: deltas.length ? deltas : undefined,
     restated: String(input.restated ?? session.promiseText).trim(),
@@ -648,7 +661,10 @@ function baseFulfillmentCandidate(
     // which the evaluator applies per its system prompt. Never re-applied here.
     statement_type: c.statement_type,
     promise_uid: 'QUERY',
-    promise_text: session.promiseText,
+    // A record question gives the evaluator a neutral goal, the action the
+    // question names ("Extend the enhanced ACA tax credits"), never the
+    // question itself and never as anyone's statement.
+    promise_text: session.inputKind === 'RECORD_QUESTION' ? c.restated : session.promiseText,
     promise_stance: c.stance,
     promise_primary_issue: c.primary_issue,
     promise_sub_issue: c.sub_issue,
@@ -1525,7 +1541,9 @@ async function evaluateEffectsOnce(
   // inside it.
   //
   // Asymmetric, like contract 3: this can only ever withhold an accusation.
-  const isAccusation = scored.verdict === 'BROKE';
+  // A record question makes no accusation: there is no statement to have
+  // broken, so the second-opinion review never runs.
+  const isAccusation = scored.verdict === 'BROKE' && session.inputKind !== 'RECORD_QUESTION';
   const canJudge = Boolean(session.judgeFetcher) || Boolean(config.anthropic.apiKey);
 
   if (isAccusation && canJudge) {
@@ -2020,6 +2038,44 @@ export function figuresNotGiven(text: string, evidence: DirectedAction[], gated 
   return out;
 }
 
+/**
+ * Words that grade a statement. A record question has no statement to grade,
+ * and any of these would put the voter's question in the senator's mouth.
+ */
+const RECORD_BANNED = [
+  /\bkept\b/, /\bbroke\b/, /\bbroken\b/, /\bpromise[sd]?\b/,
+  /\bconsistent with\b/, /\binconsistent\b/, /\bruns? counter\b/, /\bran counter\b/,
+  /\bstated position\b/, /\b(his|her|their) position\b/, /\bher stance\b/, /\bhis stance\b/,
+  /\b(believes?|believed|wants?|wanted|intends?|intended|cares?|cared|committed to|true to)\b/,
+];
+
+/**
+ * The record-mode wording rules (input_kind RECORD_QUESTION). The statistics
+ * and motive bans still apply. `opening` additionally requires the reply to
+ * start with the voter's question as asked. Exported for tests.
+ */
+export function recordExplanationProblems(text: string, question: string, opening = false): string[] {
+  const problems: string[] = [];
+  const t = lower(text);
+  for (const re of RECORD_BANNED) {
+    const m = re.exec(t);
+    if (m) problems.push(`remove "${m[0]}": this is a question about the record, so say what they did, never whether a statement was kept or what they believe`);
+  }
+  for (const term of BANNED_LEVEL1_TERMS) {
+    if (t.includes(lower(term))) problems.push(`remove the word "${term}"`);
+  }
+  for (const term of BANNED_MOTIVE_TERMS) {
+    if (t.includes(lower(term))) problems.push(`remove "${term}": describe the behaviour, not the motive behind it`);
+  }
+  if (opening) {
+    const q = lower(question).replace(/[.?!\s]+$/, '');
+    if (!t.startsWith('you asked:') || !t.includes(q)) {
+      problems.push(`open with the voter's question exactly as asked: You asked: "${question.trim()}"`);
+    }
+  }
+  return problems;
+}
+
 async function explainResult(
   session: QuerySession,
   input: Record<string, unknown>,
@@ -2037,11 +2093,10 @@ async function explainResult(
     return fail({ code: 'BAD_INPUT', message: 'why is required.', recoverable: true });
   }
 
-  const problems = explanationProblems(
-    why,
-    session.scored.verdict,
-    session.interpretation?.statement_type ?? 'Campaign Promise',
-  );
+  const record = session.inputKind === 'RECORD_QUESTION';
+  const problems = record
+    ? recordExplanationProblems(why, session.promiseText, true)
+    : explanationProblems(why, session.scored.verdict, session.interpretation?.statement_type ?? 'Campaign Promise');
   if (problems.length) {
     // GATE: the wording checks. A rejected draft is sent back for another
     // turn, and the UI only ever sees the one that passed — so without this
@@ -2065,7 +2120,9 @@ async function explainResult(
   const cardSummary = String(input.card_summary ?? '').trim();
   if (cardSummary) {
     const cardProblems = [
-      ...explanationProblems(cardSummary, session.scored.verdict, session.interpretation?.statement_type ?? 'Campaign Promise'),
+      ...(record
+        ? recordExplanationProblems(cardSummary, session.promiseText)
+        : explanationProblems(cardSummary, session.scored.verdict, session.interpretation?.statement_type ?? 'Campaign Promise')),
       ...figuresNotGiven(cardSummary, session.scored.evidence, session.gated?.length ?? 0).map(
         (n) => `the figure ${n} is not in the result; use only the vote counts and figures it gives you`,
       ),

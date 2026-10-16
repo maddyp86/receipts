@@ -1,4 +1,6 @@
 import {
+  ANSWER_LABEL_COPY,
+  ANSWER_REASON_COPY,
   confidencePhrase,
   ND_NO_REASON_COPY,
   ND_REASON_COPY,
@@ -43,7 +45,7 @@ export function HowWeGotHere({ result }: { result: QueryResult }) {
   steps.push({
     title: 'What we understood',
     body:
-      `We read your statement as being about ${interpretation.primary_issue || 'this subject'}` +
+      `We read your ${result.record ? 'question' : 'statement'} as being about ${interpretation.primary_issue || 'this subject'}` +
       (interpretation.sub_issue ? `, specifically ${interpretation.sub_issue}` : '') +
       `, and that ${STANCE_PHRASE[interpretation.stance] ?? 'it is not clear which way you lean'}. ` +
       `In short: “${interpretation.restated.replace(/[.。]\s*$/, '')}.”`,
@@ -100,6 +102,25 @@ export function HowWeGotHere({ result }: { result: QueryResult }) {
     });
   }
 
+  // A record question: how each vote was read, then the answer. No verdict
+  // is added up and no second review runs, because nothing is graded.
+  if (result.record) {
+    const r = result.record;
+    steps.push({
+      title: 'How each vote was read',
+      body:
+        `For each bill, we asked whether passing it would do what you asked about. Then we read each of ${surname}’s votes against that, ` +
+        `the vote to end debate and the final vote separately: a Yea on a bill that does it is a vote for it, and a Nay is a vote against it. ` +
+        `For a bill that would do the opposite, it is the other way round. Votes on larger packages are shown, but they do not decide the answer.`,
+    });
+    steps.push({
+      title: 'The answer',
+      body:
+        `${ANSWER_LABEL_COPY[r.label]} ` +
+        `${plural(r.counted.for, 'vote')} read as for it and ${plural(r.counted.against, 'vote')} as against it.` +
+        (ANSWER_REASON_COPY[r.reason] ? ` ${ANSWER_REASON_COPY[r.reason]}` : ''),
+    });
+  } else {
   // 5. Direction on the goal — of each BILL, as the evaluator read it.
   //
   // Counted from each row's bill_effect, never from direction_split. Direction
@@ -184,6 +205,8 @@ export function HowWeGotHere({ result }: { result: QueryResult }) {
         ? 'A second, adversarial review runs when a reading accuses the senator of going against what they said. This one was withheld by the rule above before it got that far, so none ran.'
         : 'A second, adversarial review runs only when a reading accuses the senator of going against what they said. This reading does not, so none ran.',
   });
+
+  }
 
   return (
     <section className="walkthrough" aria-label="How we got here">

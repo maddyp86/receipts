@@ -38,6 +38,8 @@ export interface AnswerKeyParts {
   statementDate?: string;
   /** Overrides the mode tag. Tests only. */
   mode?: string;
+  /** A record question never shares an answer with a statement of the same words. */
+  inputKind?: import('@receipts/shared').InputKind;
 }
 
 /** Whitespace and case are not part of the question; wording and punctuation are. */
@@ -60,6 +62,8 @@ export function answerKey(parts: AnswerKeyParts): string {
     canonicalCorrections(parts.corrections),
     (parts.statementDate ?? '').trim(),
     parts.mode ?? modeTag(),
+    // Appended only for a record question, so every statement's key is unchanged.
+    ...(parts.inputKind === 'RECORD_QUESTION' ? ['record'] : []),
   ].join('\0');
   return createHash('sha256').update(material).digest('hex');
 }
