@@ -41,10 +41,11 @@ export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, o
   return (
     <div>
       <label htmlFor="promise" className="block font-serif text-[26px] leading-tight text-ink sm:text-[30px]">
-        What does {memberName ?? 'your lawmaker'} stand for, or what did they promise?
+        What do you want to check about {memberName ?? 'your lawmaker'}?
       </label>
       <p id="promise-help" className="mt-2 text-[17px] text-ink-soft">
-        Use your own words, and say it as a statement. One idea at a time works best. We’ll check it against how they
+        Ask what they did, like “Did they vote to extend the ACA tax credits?”, or check something they said, like
+        “promised to protect clean air standards”. One idea at a time works best. We’ll check it against how they
         voted and what bills they backed.
       </p>
 

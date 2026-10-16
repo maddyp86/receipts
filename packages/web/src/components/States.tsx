@@ -335,8 +335,8 @@ export function HaltState({
           // The fallback, when no rewording was offered (input help off, or
           // nothing on the reader's topic could be suggested).
           <p>
-            Try it as a statement that takes a side, for example “supports expanding background checks” or “opposes
-            cuts to Social Security.”
+            Try asking about a specific policy, like “Did they vote to expand background checks?”, or say what they
+            stand for, like “opposes cuts to Social Security”.
           </p>
         )
       ) : null}

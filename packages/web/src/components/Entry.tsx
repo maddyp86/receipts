@@ -65,7 +65,7 @@ export function Entry({
   const member = members.find((m) => m.politician_id === selected && m.cached) ?? null;
 
   const hasPromise = promise.trim().length > 2;
-  const blockedReason = !member ? 'Pick who to check first' : !hasPromise ? 'Tell us what they said' : null;
+  const blockedReason = !member ? 'Pick who to check first' : !hasPromise ? 'Tell us what to check' : null;
   const stepsDone = !member ? 0 : !hasPromise ? 1 : 2;
 
   function handleSubmit() {

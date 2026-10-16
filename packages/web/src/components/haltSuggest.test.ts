@@ -51,7 +51,7 @@ describe('a rewording of the reader\'s topic, not fixed examples', () => {
   });
 
   it('without one: the fixed examples stay as the fallback', () => {
-    expect(text(render({}))).toContain('supports expanding background checks');
+    expect(text(render({}))).toContain('Did they vote to expand background checks?');
   });
 
   it('two sides render as two buttons that each check their own statement', () => {

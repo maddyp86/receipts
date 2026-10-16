@@ -1,6 +1,6 @@
 import { CheckIcon } from 'lucide-react';
 
-const STEPS = ['Pick who to check', 'Say what they promised or stand for', 'See what they actually did'];
+const STEPS = ['Pick who to check', 'Ask what they did, or check what they said', 'See what they actually did'];
 
 /** The three steps, with the ones already finished on this screen ticked. */
 export function HowItWorks({ done }: { done: number }) {
