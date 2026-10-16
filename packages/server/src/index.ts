@@ -4,6 +4,7 @@ import type { StreamEvent } from '@receipts/shared';
 import { config, describeCredentials, describeMode, describeModels } from './config.js';
 import { senatorCache } from './data/SenatorCache.js';
 import { memberDirectory } from './data/MemberDirectory.js';
+import { queueStore } from './data/QueueStore.js';
 import { runQuery } from './orchestrator/loop.js';
 import { queryStore } from './services.js';
 import { describeTraceSinks, traceReader, traceSinks } from './services.js';
@@ -171,6 +172,22 @@ app.get('/api/senators', async (_req, res) => {
  * the picker's own rule, so listing someone never makes them checkable.
  * Empty without a database (demo, fixtures); the web then uses its roster.
  */
+/**
+ * A free request: "please check this member". Same signal as asking a
+ * question about an unchecked member (app.member_requests), sent from the
+ * card's button with no question attached (promise_text is empty).
+ */
+app.post('/api/members/request', feedbackLimiter, async (req, res) => {
+  const id = String((req.body ?? {}).memberId ?? '').trim();
+  const member = /^[A-Z]\d{6}$/.test(id) ? ((await memberDirectory.get(id)) ?? (await senatorCache.resolve(id))) : undefined;
+  if (!member) {
+    res.status(404).json({ error: { code: 'BAD_INPUT', message: 'We don’t have that member on file.', recoverable: false } });
+    return;
+  }
+  await queueStore.record({ politician_id: id, senator_name: member.name, promise_text: '', requested_at: new Date().toISOString() });
+  res.status(201).json({ ok: true });
+});
+
 app.get('/api/members', async (_req, res) => {
   const covered = new Set((await senatorCache.list()).map((s) => s.politician_id));
   res.json({ members: await memberDirectory.list(covered) });

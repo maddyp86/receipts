@@ -441,7 +441,7 @@ export const config = {
     priceCents: Math.round(num(process.env.FUNDING_PRICE_CENTS, 2000)),
     currency: str(process.env.FUNDING_CURRENCY).toLowerCase() || 'usd',
     /** Live within this many days, or refunded. */
-    slaDays: Math.round(num(process.env.FUNDING_SLA_DAYS, 14)),
+    slaDays: Math.round(num(process.env.FUNDING_SLA_DAYS, 7)),
     /**
      * Where Stripe sends the reader back. Blank falls back to the first
      * CORS_ORIGIN; a config value, never the request's Origin header.

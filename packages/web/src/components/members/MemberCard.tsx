@@ -39,8 +39,7 @@ export function MemberCard({ member, selected, onSelect, coveredAlternative }: P
           Not checked yet. We haven’t been through {member.name}’s record.
           {coveredAlternative ? ` You can check ${coveredAlternative.name} now.` : ''}
         </p>
-        {/* Senators only: the query tool does not cover the House yet. */}
-        {member.chamber === 'senate' ? <FundRecord memberId={member.politician_id} name={member.name} /> : null}
+        <FundRecord memberId={member.politician_id} name={member.name} />
       </div>
     );
   }
