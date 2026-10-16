@@ -188,7 +188,7 @@ A reader can pay once (default $20) to have a member who is not checked yet adde
 
 1. Every morning, list open rows as postgres: `select member_id, display_name, paid_at, refund_due_at from app.member_funding where status in ('paid', 'processing') order by refund_due_at;`
 2. A funded member goes ahead of the order above. Set their rows to `processing` and run the checklist.
-3. When you set `live`, look at each row's `display_name` (it is shown publicly) and clear it if it isn't fit to publish. Then set the rows to `live` with `live_at = now()`. The go-live email workflow sends the payer "it's live" once and sets `notified_at`.
+3. When you set `live`, look at each row's `display_name` (it is shown publicly) and clear it if it isn't fit to publish. Then set the rows to `live` with `live_at = now()`. The go-live email workflow (n8n `v2: Go-live email to funders`, qD0HXugzwbnTmcem, daily 8am, from Gmail account 2) sends the payer "it's live" once and sets `notified_at`. It needs migration 019. Its Dry Run webhook, run in test mode, lists who would be emailed and sends nothing.
 4. A row still not live at `refund_due_at` is refunded in the Stripe dashboard, then set to `refunded` with `refunded_at = now()`.
 5. If two readers paid for the same member in the same minute, refund the second one.
 
