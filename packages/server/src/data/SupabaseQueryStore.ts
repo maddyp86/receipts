@@ -121,7 +121,7 @@ export class SupabaseQueryStore implements QueryStore {
     try {
       await client.query('begin');
 
-      // A record question (migration 020) carries no statement and no grade:
+      // A record question (migration 021) carries no statement and no grade:
       // statement_type, verdict and band are null, and the answer label is
       // stored instead. A statement's insert is exactly what it always was,
       // so statements keep saving even where 020 has not been run yet.
