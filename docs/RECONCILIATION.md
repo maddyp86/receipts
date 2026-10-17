@@ -2206,3 +2206,640 @@ answer to protect. Not a proposal for the pipeline.
 The same day, the stated-stance rule gained "promised not to …",
 "pledged not to …", "will not …" and "won't …" as Opposed
 (`evaluation/statedStance.ts`).
+
+---
+
+## 2026-10-17 — what follows is reconstructed
+
+The entries from here down to the end of the file were written on 2026-10-17,
+after the fact. They draw on merged PR descriptions (#60–#100), commit messages,
+`docs/v2/phase-3-report.md`, `docs/v2/plan.md`, and the headers of migrations
+016–022. They were not written down at the time each decision was made. Each
+entry names its sources. Where the sources give no reason, or say nothing about
+what was given up, the entry says so; nothing has been filled in.
+
+Many of these are product decisions (wording, layout, payments), not pipeline
+reconciliation. They are here because this file is the project's record of
+what was decided and why.
+
+---
+
+## 2026-10-11 — v2 Phase 2: the query tool reads `core` behind switches that stay off
+
+**What.** The query tool could read the new Supabase `core` schema through
+`compat` views shaped exactly like the mirror (migration 015), and search a
+member's bills with exact pgvector search (`SupabaseActionStore`). Both were
+behind settings (`RECORD_SCHEMA`, `ACTION_STORE`) that defaulted to the old
+mirror and Pinecone paths, so production did not change. The new store kept
+today's Action UIDs and rounded scores to Pinecone's nine significant digits.
+
+**Why.** The v2 plan's rule: nothing a voter sees changes until the new system
+is proven equal to the old one on the eval set (`docs/v2/plan.md`, Goal).
+Gate G2 compared rankings: the same bills came back in 48 of 49 cases. Gate G3
+compared verdicts: 40/49 passed on both stores, with every difference traced
+to a model stage.
+
+**Given up.** The plan's G2 test, "equal to three decimals", could not hold
+against an approximate reference: Pinecone's scores are off by up to 0.0011,
+while pgvector's are exact. The report proposed reading G2 as "within
+Pinecone's measured error" instead.
+
+**Data change.** 90 blank Senate LIS IDs in `core.members` were filled from
+legislators-current (`ingest_runs` #9), with approval.
+
+Sources: #66, `docs/v2/phase-2-report.md`, migration 015.
+
+---
+
+## 2026-10-11 — the whip vote is the senator's own party's
+
+**What.** Enrichment matched `Party Vote Positions` on the roll call alone,
+so whichever party's row came back last won. It now matches on roll call *and*
+the senator's party. An independent matches neither row, gets no whip vote, and
+the party-line checks fail open, as they already did when the vote was missing.
+
+**Why.** Measured against the mirror: Thune got the other party's row on 24 of
+57 cloture actions, and Schumer on 33 of 57. The whip vote feeds G3's
+leader-switch gate, the judge's T5 check, and the evaluator's "Party whip's
+vote" line.
+
+**Given up.** No eval run before merging ($2–6, offered, not asked for). Some
+answers on cloture votes could change; the PR calls that the point of the fix,
+but a change voters could see.
+
+Source: #67.
+
+---
+
+## 2026-10-11 — the answer comes first, and "nothing found" says where the records start
+
+**What.**
+- The result page leads with the answer: what the search did, with three
+  numbers (actions searched, came close, about your question), and two next
+  steps (#60). It became one answer bar over three tabs, Why, Receipts and
+  How we checked, with the chat beside it (#69).
+- The coverage boundary stays on Why, the tab that opens first (#69).
+- A no-results answer (`NOT_DETERMINABLE · NO_MATCHES`) says on the bar:
+  "Our records start in January 2023. If they acted on this before then, it
+  isn't in what we searched." The date comes from the result's own coverage
+  window, never a hard-coded value (#70). The same day,
+  `COVERAGE_CONGRESSES=118,119` was set on Render (#71).
+- The waiting screen shows one card for the question. "Not quite right?
+  Change it" stops the run and puts the statement back to edit. The check
+  keeps running while the reader reads (#68).
+- "We checked whether Schumer **promised** …" described the wrong check, so
+  the line now names the votes and bills ("whether Schumer's votes and bills
+  follow through on a promise to …") (#69).
+
+**Why.** Before #60 the answer sat below the fold. For the boundary: false
+absence is the sharpest risk, so it is never a click away (#69). The
+drug-prices question (trace `5bda0373`) found nothing, and that was correct:
+the 2022 Inflation Reduction Act is before the records start. But "nothing
+found" is easily read as "did nothing" (#70).
+
+**Given up.** A confirm-first step on the waiting screen. #68 records it as the
+owner's choice: most readings are right, and waiting for a "yes" would slow
+every one of them. Inactive tabs are hidden rather than unmounted, so the page
+markup still holds the whole answer for the eval's wording checks (#69).
+
+Sources: #60, #68, #69, #70, #71.
+
+---
+
+## 2026-10-11 — every topic starter is an eval case
+
+**What.** The 25 topic starters under "Need help phrasing it?" became eval
+cases 26–50. Six returned no verdict on the first live run. Four were
+replaced with questions the record can answer, each run live first, and two
+were removed (#62). The "Try" example under How to ask, the 15-week question,
+was swapped for eval case 29 after the stance fix left it "doesn't settle it"
+(#65).
+
+**Why.** The PRs give no reason beyond the titles: replace the starters that
+find nothing. Case 22 (15 weeks) stays, now expecting the honest answer,
+NOT_DETERMINABLE, because the record holds no 15-week bill (#65).
+
+**Given up.** Balance. Immigration's two starters and Environment's two now
+lean one way. The examples that balanced them (Dreamers, oil and gas) find
+nothing in the record (#62).
+
+Sources: #62, #65.
+
+---
+
+## 2026-10-11 — ask which policy before checking a broad statement
+
+**What.** A statement that names a side but not a policy ("He promised not to
+raise my taxes") gets a "Which taxes do you mean?" card with 2–4 options. Each
+option shows the exact text we would check, and nothing is checked until the
+reader picks. It is one small classify-model call (`cleanup/askWhich.ts`)
+behind `ENABLE_QUERY_CLEANUP`. A code check drops any option that:
+- takes the other side;
+- leaves the reader's topic;
+- uses a camp's label;
+- opens with a pronoun or is a question.
+
+If fewer than two options survive, nothing is asked. A failure means the
+statement is checked as typed, and the reader is never asked twice.
+
+**Why.** The classifier filed the taxes statement under different categories
+from run to run, and flipped between "checkable" and "too broad". "Guessing
+which taxes the reader meant would misrepresent their intent, so we ask them."
+This carries out the rule left open on 2026-10-11 above: any rewording must be
+shown to the reader and accepted, never applied silently.
+
+**Given up.** One extra model call per statement while clean-up is on, and a
+step for the reader on broad statements. Like "which way?", the stop gives the
+daily check back.
+
+Source: #72.
+
+---
+
+## 2026-10-11 — the bill's path is built in code; the card's chip says how the bill counts
+
+**What.** Each evidence card has a chip in the corner: Counts toward, Counts
+against, or Not counted. A not-counted chip always says why. "The bill's path"
+(introduced, text versions, the senator's own act, how it ended) is built from
+the record in `scoring/billPath.ts`, "never by a model". The model-written
+per-card line no longer says whether the bill counts, so it cannot contradict
+the chip.
+
+**Why.** The per-card line stopped saying whether the bill counts "so it can't
+contradict the chip". No reason is written down for building the path in code
+rather than by a model.
+
+**Given up.** The prompt change altered the pipeline fingerprint, so stored
+answers were recomputed on first ask.
+
+Source: #73 (#96 later widened the path to the full card).
+
+---
+
+## 2026-10-12 — "Why" on an answer that doesn't settle it: the explainer's paragraph, under a direction guard
+
+**What.** On a not-determinable answer, the Why tab shows the explainer's
+paragraph, then one fixed sentence: "Why there's no verdict." For a reading
+the second check held back, that sentence is written in code, one per kind of
+objection (`JUDGE_REASON_COPY`). It is not taken from the check's critique. A
+new guard refuses the paragraph if it gives a direction ("runs counter to",
+"is consistent with", …). Negations and open questions ("whether it lines up
+with") are allowed.
+
+**Why.** The canned line said nothing about the question, while the
+explainer's paragraph, often the slowest step, was thrown away. The fixed
+sentences are in code "because the critique argues about the accusation we
+chose not to make". The guard exists because the held-back taxes answer (run
+`8c6bcba0`) said "his action runs counter to the position", the very
+accusation the check had withheld.
+
+**Given up.** Not recorded. In the live check, the first version of the guard
+refused two acceptable drafts that put direction as an open question, so
+"whether" and "if" were then treated like a negation.
+
+Source: #74.
+
+---
+
+## 2026-10-12 — a second near-miss pass after the bills are read
+
+**What.** The near-miss review (2026-10-11 above) also runs inside
+`evaluate_effects`, once per run, when the answer is "doesn't settle it"
+because nothing admitted counts (`NO_MATCHES`, `ALL_NEUTRAL`, `GATED`,
+`UNDIRECTABLE_METADATA`). Bills already read keep their readings. It never
+runs after a reading was held back after review.
+
+**Why.** One loosely related bill blocked the first review. On case 51 (run
+`34e21977`) a savings-account bill was admitted and read as neutral, and the
+2025 tax law (H.R.1, 0.483) was never looked at.
+
+**Given up.** Up to five more relevance calls, plus one reading per newly
+admitted bill, on answers that would otherwise not settle it.
+
+Source: #75.
+
+---
+
+## 2026-10-12 — v2 cutover: Supabase `core` is the system of record
+
+**What.** Done with the owner present, in the order `docs/v2/plan.md` sets:
+- the v2 orchestrator writes impact statements in `live` mode;
+- the statement copy from the Sheets is disabled, not deleted;
+- Render reads `RECORD_SCHEMA=compat` and `ACTION_STORE=supabase`;
+- the old orchestrator and Mirror Sync are unpublished, not deleted;
+- the workbooks are view-only.
+
+The eval on the production settings passed 42 of 50. The 8 failures were the
+same cases that failed in both Phase 2 runs, with the same verdicts ($5.00).
+
+**Why.** The v2 plan's goal: one database holds the whole record, so adding a
+member is a flag and a data pull, not a new pipeline run through spreadsheets
+(`plan.md`). Two data errors found on 10 October were stored copies gone
+wrong, hence its rule "derive, don't copy".
+
+**Departure from WF5.** v2 fetches every bill's text and passes it to the
+model inline, where WF5 told the model to browse to it. This fixed three bad
+samples and costs about $0.04 a statement (#76).
+
+**Given up.**
+- The third G4 day. The plan asked for three clean days; the owner accepted
+  two (11 and 12 October).
+- The Sheets stopped updating from that night, so a rollback would serve the
+  record as of 12 October.
+- The daily G4 comparison now reports differences as `core` moves ahead.
+
+Rollback was planned to stay open until 26 October, but see 2026-10-14.
+
+Sources: #76, #77, `docs/v2/phase-3-report.md` (Cutover), `docs/v2/plan.md`.
+
+---
+
+## 2026-10-14 — the mirror schema dropped early; the server reads only `compat` and `core`
+
+**What.** The `mirror` schema was dropped on 2026-10-14, twelve days before
+the two-week window closed. A backup is at `.backups/mirror-2026-10-14/`, local
+only and not in git. The server then lost its `RECORD_SCHEMA` and
+`ACTION_STORE` switches, the `PINECONE_*` settings and the Pinecone store.
+Fixture mode is now inferred from `OPENAI_API_KEY` + `DATABASE_URL`.
+`MirrorEnrichmentSource` keeps its name and `kind: 'mirror'`, because stored
+traces and answer events carry that value.
+
+**Why.** `plan.md` records the drop as "done early, 14 Oct, at the owner's
+request". **Why it was done early is not written down.** The code change
+followed because the server still defaulted to `mirror`, so any run without
+Render's settings (local dev, `npm run eval`) failed on its first record read
+(#82).
+
+**Given up.** Rollback in two settings. Rollback now means restoring the
+mirror from the local backup. Pinecone data and the Render settings were left
+in place, now ignored.
+
+Sources: #82, `docs/v2/plan.md` (Phase 3).
+
+---
+
+## 2026-10-14 — the v2 statement workflow departs from WF5 in four more places
+
+**What.** All four were published to n8n on 14 Oct:
+1. **IDs.** A bill-level statement keeps its existing ID, and a new one gets
+   `BL-<bill id>`. WF5's 6-character hash had collided across congresses
+   (s342-118 and s342-119 were both `183U8V`) (#78).
+2. **Dropped text.** Bare "Omnibus" in the large-bill list matched every bill
+   amending the Omnibus Crime Control Act, so it now matches only "Omnibus
+   Appropriations" and "Omnibus Consolidated". The readable-ratio check no
+   longer counts GPO's ruled lines as noise (#79).
+3. **Fetch again, never write "unavailable".** The bill fetch retries three
+   times and falls back to the GovInfo copy when congress.gov keeps failing.
+   When there is no BILLSTATUS summary, the model gets the bill's own text (#85).
+4. **Budget.** The monthly stop was raised from $25 to $100, approved by the
+   owner on 14 Oct (#80).
+
+**Why.** Each fixes statements that came back empty or guessed:
+- five for Collins and Ossoff (#79);
+- eight in Collins' 118th Congress run (#85).
+
+Without the budget change, October's spend ($21.59) and the senators still to
+run would have stopped all statement writing until 1 November (#80).
+
+**Given up.** Not recorded beyond the cost. Existing IDs were kept so nothing
+already written moved.
+
+Sources: #78, #79, #80, #85.
+
+---
+
+## 2026-10-14 — show the bills we read and did not count, each with its reason
+
+**What.** `QueryResult.not_counted` lists each bill the relevance check read
+and did not admit. Each carries what the senator did, a tier (`related` or
+`unrelated`), the check's own reason (bookkeeping trimmed, nothing reworded)
+and a link. The Receipts tab shows "Related bills we didn't count" (open) and
+"Also looked at, not about this" (folded). Vote labels in those rows name
+cloture and passage from their own slots (#84).
+
+**Why.** Readers saw "found 2" when the senator clearly had more on the
+subject. The owner asked (14 Oct) to show all of it in tiers, with the
+reasoning, "without changing how the verdict is reached and without reading
+deeper (budget)". #84 fixed rows that said "on passage" when the only vote
+was cloture.
+
+**Given up.** Reading deeper than the top 10. The relevance model judges each
+bill on its own, so near-identical bills can land in different tiers.
+
+Sources: #81, #84.
+
+---
+
+## 2026-10-15 — `core.members` keeps members who have left, and adds former senators
+
+**What.**
+- **Migration 017** adds `core.members.left_at`, where NULL means serving.
+  The members workflow reads legislators-historical. For a member already in
+  `core.members` whose last term ended inside the record, it sets `left_at`
+  and `term_end`, and fills a blank LIS ID. It never overwrites an ID (#83).
+- **Former senators are added** when their last term was in the Senate and
+  ended after 2023-01-03. Each gets `in_scope=false`, `live=false`, and the
+  insert never touches an existing row. That is 17 rows: Feinstein, Menendez,
+  Butler, Helmy, Brown, Cardin, Carper, Casey, Stabenow, Tester, Manchin,
+  Sinema, Braun, Romney, Vance, Rubio and Sasse (#86).
+
+**Why.** Votes join to members on `lis_id`. Graham and Mullin had none, and the
+16 departed senators had no row, so about 1,560 stored Senate positions joined
+to no one (410 per migration 017, 1,153 per #86). Nothing marked a member as
+gone.
+
+**Given up.** Scope was the owner's call (14 Oct): Senate only, served in the
+record. The rule as first briefed (both chambers, `>= 2023-01-03`) would have
+added 164 rows, 74 of them people who left on 3 Jan 2023 and never cast a vote
+in the record. Former House members are not added. The `VP` voter ID (one
+tie-break) stays unjoined. Anything counting "current senators" must filter
+`left_at IS NULL`.
+
+Production state: by #88's dry run on 15 Oct, `core.members` held 566 rows,
+539 of them serving. The repo has no separate note of when 017 was applied.
+
+Sources: #83, #86, #88, migration 017.
+
+---
+
+## 2026-10-15 — members run daily, cross-checked against congress.gov
+
+**What.** congress-legislators stays the source of record. The members
+workflow runs on every daily run, not only Mondays. It compares the source with
+congress.gov's current-member list on bioguide ID, chamber, state, district and
+party. An email alert fires when an arrival, departure or disagreement touches
+an in-scope member, or when a disagreement lasts `disagree_days` days (proposed
+N = 3). Each item alerts once. Nothing is looked up at query time.
+
+**Why.** The PR gives no reason beyond adding "a daily official cross-check
+and an alert". The surrounding context is the 2026-10-15 members entry above:
+departures had gone unnoticed.
+
+**Given up.** Not recorded. The PR says nothing was published to n8n or
+written to the database at merge. Each rollout step needs the owner's yes, and
+the repo does not record whether it has been published since.
+
+Sources: #88, `docs/v2/members-crosscheck.md`.
+
+---
+
+## 2026-10-15 — confidence measures how clearly the evidence answers, not how much there is
+
+**What.**
+- **The band.** `bandFor` no longer counts matches or reads search
+  similarity. Each action is classed on its own, and the clearest one sets
+  the band:
+  - High: a final vote on a bill squarely about this, with certainty ≥ 0.8.
+  - Medium: a vote to end debate only, a sponsorship, a broad package, or
+    certainty 0.6–0.8.
+  - Low: indirect evidence, a partial match, certainty < 0.6, or a
+    near-miss-only find.
+
+  `receipt.band_reason` names the reason, and mixed records keep the High cap.
+- **Vote tallies.** Real tallies (`vote_context`) are counted from
+  `core.member_votes` and `core.roll_calls`, for display and explanation only,
+  never for scoring.
+- **The explainer.** It takes WF11's nonpartisan-analyst role and writes a
+  `card_summary`. Every number in the summary must be one the result handed
+  over (`figuresNotGiven`).
+- **No dashes.** Em dashes, en dashes and semicolons are removed from reader
+  copy, and `sanitizeReaderText` runs over every reader-facing field.
+
+**Why.** Feedback on the Collins ACA result (15 Oct): the numbers didn't add
+up, and "Low confidence" stood alone even when the one bill found was the only
+vote ever held on the issue. The tallies come from the record because draft
+wording had S.3385's cloture vote as 51–49; it was 51–48. The owner approved
+the plan, including the change to how confidence works.
+
+**Given up.** Bands moved in the eval on purpose, with no verdict expected to
+change. The prompt change emptied the 24-hour answer-reuse cache.
+
+Sources: #87, commit `132920a`.
+
+---
+
+## 2026-10-15 — the waiting screen narrates each step, with no verdict mid-run
+
+**What.** While a check runs, the waiting screen streams `note` events:
+- stage;
+- a summary line per subtask, with live counts;
+- a line per bill, behind a closed drop-down.
+
+Every line is built in code (`orchestrator/narrate.ts`) from what the pipeline
+decided. A per-bill line says which way the *bill* pushes, never kept or broke.
+
+**Why.** The PR states the contracts, not the motive. The verdict is decided
+after every bill is read, and the judge can still hold it back, so no verdict
+words appear mid-run. Raw model reasoning is written for the pipeline, so it is
+never shown.
+
+**Given up.** Notes are not recorded for replay, so a replayed answer shows no
+narration.
+
+Source: #89.
+
+---
+
+## 2026-10-15 — readers can pay to have a member's record added (off by default)
+
+**What.**
+- **Payment.** A reader can pay once (default $20) through Stripe Checkout to
+  have a not-yet-checked member added. A payment writes one row to
+  `app.member_funding` (migration 018) and nothing else. It does not set
+  `in_scope`.
+- **Operator steps.** An operator runs the usual steps (`plan.md`, "Funded
+  members") and refunds if the member is not live in time.
+- **Off by default.** It stays off unless the migration is run, the Stripe
+  keys and webhook are set, and `ENABLE_FUNDING=true`.
+- **Requests.** Free requests move from `.data/queue.log` to
+  `app.member_requests`.
+- **Directory.** `GET /api/members` lists every serving member, so anyone can
+  be found (#91).
+- **Policy pages.** Terms, Privacy and Refunds were added (#92).
+
+**Why.** Adding a member costs real money: Ossoff about $12.90 and Collins
+about $18.77, mostly impact statements. Funding tests "whether readers want a
+member enough to pay for it". The queue log was lost on every deploy. Stripe's
+reviewers look for terms, privacy and refund pages before approving a live
+account.
+
+**Rules.**
+- Payment buys the work, never a finding: same pipeline, same hand review.
+- Being listed is not coverage: `cached` still comes from `senatorCache`'s own
+  rule.
+- It is called "funding", not "sponsorship", because "sponsorship" already
+  means bill sponsorships here. On 2026-10-16 the reader-facing word changed;
+  see below.
+
+**Given up.** The hand-kept "Being added next" list, which funding replaces.
+
+Sources: #90, #91, #92, migration 018.
+
+---
+
+## 2026-10-15 — record questions: answered from the record with a label, never graded
+
+**What.**
+- **Intent check.** A check on the voter's own text, before any rewrite, sorts
+  input into STATEMENT, RECORD_QUESTION or UNCLEAR (`cleanup/inputKind.ts`).
+  Rules decide first, then one classifier call. Below 0.7, or on failure, the
+  voter is asked.
+- **The label.** A record question ("Did they vote to extend the enhanced ACA
+  tax credits?") takes its own path. It is answered with one of six labels
+  (`VOTED_FOR`, `VOTED_AGAINST`, `MIXED_RECORD`, `SPONSORSHIP_ONLY`,
+  `ONLY_BROAD_VOTES`, `NO_RECORDED_ACTION_FOUND`), and no verdict or band.
+- **Tool sequence.** The path is a fixed sequence with no scope check and no
+  judge. Its explanation has its own wording check
+  (`recordExplanationProblems`).
+- **Migration 021** adds `input_kind` and `answer_label` to `app.app_queries`.
+  It was applied to production on 2026-10-15, at the owner's word, and merged
+  on 2026-10-17.
+- **Entry page.** It now says questions are welcome, not only statements:
+  option A, the owner's choice on 15 Oct.
+
+**Why.** The sources state the rule rather than argue for it: a record
+question is "never graded as the senator's own statement" (#100, migration
+021). A stored record question is never evidence about a senator, same as a
+statement, so the firewall is unchanged. **Why the path has no scope check and
+no judge is not written down.**
+
+**Later refinement (17 Oct, the owner's choice).** When a senator backed a
+bill and their only vote was set aside by the leader-switch rule, the label
+stays `SPONSORSHIP_ONLY`, because the six labels are what 021 accepts. A new
+reason says so: "Backed a bill on this. Their only vote on it was set aside."
+The earlier wording, "no recorded vote", was untrue for Schumer in cases 21,
+23 and 28.
+
+**Given up.** Not recorded.
+
+Sources: #100, commits `31070dd`, `785fb45`, `e562df0`, `e9b2ab2`, `4059666`,
+migration 021.
+
+## 2026-10-16 — funders credited by name, House members fundable, a 7-day promise; the app cannot read payer emails
+
+**What.**
+- **Credit.** A payer may give a name, shown publicly only once the row is set
+  `live`. The operator reviews the name at go-live and can clear it
+  (migration 019).
+- **Go-live email.** A go-live email is promised and recorded once
+  (`notified_at`). Nothing sent it at merge (#93).
+- **House members** can be funded too (#94).
+- **Free requests.** "Request this record" is on every unchecked card, with no
+  email and no account.
+- **Seven days.** The promise drops from 14 days to 7 (`FUNDING_SLA_DAYS`)
+  (#94).
+- **Grants fix (migration 020).** It revokes `receipts_app`'s table-level
+  SELECT on `app.member_funding` and grants back only the seven columns the
+  app uses.
+
+**Why.**
+- Credit: funding "should come with a benefit". The email gives funders a
+  reason to come back (#93).
+- House, free requests and 7 days: the owner's call. "If people want a record
+  we should build it, and if they'll pay for it we should do it, House members
+  included, and faster than 14 days" (#94).
+- Grants fix: checked on 16 Oct, the app role could read every column, payer
+  email included. The `app` schema's default privileges had granted
+  table-level SELECT, and a column grant does not narrow a table grant.
+
+**Given up.** The query tool still reads Senate members only. A funded House
+member needs the Phase 5 House work within 7 days, or the payer is owed a
+refund (#94).
+
+Sources: #93, #94, migrations 019 and 020, commit `c188a08`.
+
+---
+
+## 2026-10-16 — readers "sponsor" a record; the code keeps "funding"
+
+**What.** Reader-facing copy changed from funding to sponsoring:
+- the button reads "Sponsor this record — $20";
+- the credit reads "Sponsored by {name}";
+- the Terms section is "Sponsoring a record".
+
+The pitch sells what the sponsor gets: the record checked within the promised
+days or a full refund, their name on it, and an email when it's ready. Code,
+tables and env vars keep the name "funding". Prices, payments, refunds and the
+database are unchanged.
+
+**Why.** Option A, the owner's choice on 16 Oct. "Pay $20 so it's free for
+everyone" made payers feel they were paying for other people's benefit.
+
+**Given up.** "Free for everyone" as the selling point; a test fails if the
+pitch says it again. The record is still public, and the Terms say so in one
+sentence. The reader-facing word now differs from the internal one, which
+2026-10-15 chose to avoid a clash with bill sponsorships. That clash remains
+avoided in code only.
+
+Sources: #95, `docs/v2/plan.md` ("Funded members").
+
+---
+
+---
+
+## 2026-10-17 — a promise the reader typed is answered as a promise, and stays the reader's claim
+
+**What.** When the reader's own text says "promised", "pledged" or "vowed",
+the query becomes the reader's asserted promise, as the corrections panel's
+"he promised this" switch already did. The headline reads "Evidence they kept
+this promise" or "… broke this promise". Under it: "You said Thune promised
+to …. We didn't check that the promise was made; we checked what Thune did."
+
+A server check rejects explanations that attribute the promise to the senator
+("Thune promised…", "his promise"). Text without those words is unchanged:
+"supports X" stays a position.
+
+The answer bar has one segment per bill. "Not about this" (read, but off the
+question) is now separate from "set aside" (closed by a rule before weighing).
+
+**Why.** From the owner's Thune check (17 Oct): every free-typed statement was
+treated as a Policy Position, so that we never claim a senator made a promise
+we hadn't confirmed. The side effect was that a promise the reader asked about
+came back in position language. "3 set aside" also covered bills that were
+read and found off-topic.
+
+**Given up.** The blanket "free-typed means Policy Position" default
+(2026-09-21, #14) no longer holds for promise wordings. Attribution stays with
+the reader. The hint "Tap a segment to see its bill" was not yet reviewed at
+merge.
+
+Source: #99.
+
+---
+
+## 2026-10-17 — Stripe test and live payments on one server
+
+**What.** One Render server holds both Stripe key pairs. Each request's mode
+is decided by the site the reader is on. A host in `FUNDING_LIVE_HOSTS` is
+live; anything else, including previews, localhost and requests with no
+origin, is test. One webhook tries both signing secrets, and accepts an event
+only if Stripe's `livemode` matches the secret that verified it. Every row is
+labelled `livemode` (migration 022), and each site shows only its own mode.
+Production shows no button until live keys are set.
+
+**Why.** The owner wanted to test sponsorship on preview links without
+resetting the live site afterwards, and without paying for a second server
+($7 a month). "Wrong the safe way round costs nothing": a test checkout moves
+no money and never shows on the live site.
+
+**Given up.** The go-live email still goes to any row the operator sets live,
+test or not. Unlabelled rows default to test on `member_funding`, so they
+never show on the live site.
+
+Sources: #97, migration 022.
+
+---
+
+## 2026-10-17 — migrations, queries and loose specs moved into folders
+
+**What.** `docs/supabase-schema.sql` and every numbered migration moved to
+`docs/migrations/`. `beta-review.sql` moved to `docs/queries/`, and four loose
+specs to `docs/specs/`. Filenames are unchanged. A new `docs/README.md`
+indexes the folders and says new migrations go in `docs/migrations/` with the
+next unused number.
+
+**Why.** The docs root had 33 entries, 22 of them SQL files.
+
+**Given up.** Not recorded. Every reference inside the repo was updated.
+
+Source: #98.
