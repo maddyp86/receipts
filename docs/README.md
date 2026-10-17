@@ -2,7 +2,8 @@
 
 | Path | What it is |
 | --- | --- |
-| `RECONCILIATION.md` | The durable record of what was decided and why. Read it before trusting any spec. |
+| `RECONCILIATION.md` | The durable record of what was decided and why. Read it before trusting any spec. Entries from 2026-10-11 on were reconstructed from PRs on 2026-10-17. |
+| `DECISIONS.md` | One page, newest first: the decisions that most shape the product, each with its tradeoff and a link to the full entry or PR. |
 | `trace-log.md` | The per-run query trace: what each gate was given and what it decided. |
 | `migrations/` | `supabase-schema.sql` (the base schema) and every numbered migration, `supabase-migration-0NN-*.sql`. New migrations go here, with the next unused number. |
 | `queries/` | Read-only SQL run by hand against the live database (e.g. `beta-review.sql`). |
