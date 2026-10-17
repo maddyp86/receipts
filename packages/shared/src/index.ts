@@ -1654,10 +1654,10 @@ export function outcomeHeadline(
       : 'Their record runs counter to this position';
   }
 
+  // The reader's promise (Matt, 17 Oct): promise words, with the attribution
+  // on its own line under the headline (assertedPromiseLine).
   if (provenance === 'asserted') {
-    return bucket === 'KEPT'
-      ? 'You indicated this was a campaign promise. On that basis, their record is consistent with it'
-      : 'You indicated this was a campaign promise. On that basis, their record runs counter to it';
+    return bucket === 'KEPT' ? 'Evidence they kept this promise' : 'Evidence they broke this promise';
   }
 
   // Corpus-verified promise: the strongest claim the product makes, and earned.
@@ -1703,13 +1703,28 @@ export function likelyOutcomeHeadline(
       : 'Their record likely runs counter to this position';
   }
 
+  // "Evidence", not "likely": the confidence line under it says how strong.
   if (provenance === 'asserted') {
-    return bucket === 'KEPT'
-      ? 'You indicated this was a campaign promise. On that basis, their record is likely consistent with it'
-      : 'You indicated this was a campaign promise. On that basis, their record likely runs counter to it';
+    return bucket === 'KEPT' ? 'Evidence they kept this promise' : 'Evidence they broke this promise';
   }
 
   return bucket === 'KEPT' ? 'Likely kept' : 'Likely broken';
+}
+
+/**
+ * Whose promise it is, under the headline of an asserted promise. The reader
+ * said it was a promise; we checked what the senator did, not that the promise
+ * was made. Null for anything else.
+ */
+export function assertedPromiseLine(result: QueryResult): string | null {
+  const { interpretation, senator, scored } = result;
+  if (interpretation.provenance !== 'asserted' || scored.verdict === 'NOT_DETERMINABLE') return null;
+  const surname = surnameOf(senator.name) || 'the senator';
+  const raw = interpretation.raw.trim().replace(/[.!]+$/, '');
+  const said = /^(promised|pledged|vowed)\b/i.test(raw)
+    ? `You said ${surname} ${raw.charAt(0).toLowerCase()}${raw.slice(1)}.`
+    : `You said: “${raw}.”`;
+  return `${said} We didn’t check that the promise was made; we checked what ${surname} did.`;
 }
 
 /** The search, as the three numbers a reader can check: searched, close, about it. */
@@ -1818,9 +1833,9 @@ export function evidenceTallySentence(result: QueryResult): string | null {
   const neutral = total - keeps - breaks;
   const gated = result.gated?.length ?? 0;
 
-  // Promise language only where outcomeHeadline would use it.
-  const promise =
-    interpretation.statement_type !== 'Policy Position' && interpretation.provenance !== 'asserted';
+  // Promise language only where outcomeHeadline uses it: any promise, the
+  // reader's (asserted) included.
+  const promise = interpretation.statement_type !== 'Policy Position';
   const one = (n: number) => n === 1;
   const phrase = {
     keeps: (n: number) =>

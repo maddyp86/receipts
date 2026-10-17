@@ -33,8 +33,11 @@ describe('outcomeHeadline — the label follows the statement type', () => {
     expect(outcomeHeadline('BROKE', 'Campaign Promise', 'corpus')).toBe('Broke');
   });
 
-  it('an asserted premise is attributed to the reader', () => {
-    expect(outcomeHeadline('KEPT', 'Campaign Promise', 'asserted')).toMatch(/^You indicated/);
+  // Matt, 17 Oct: the reader's promise is answered as a promise. The
+  // attribution is its own line under the headline (assertedPromiseLine).
+  it('an asserted premise gets promise words, never "their promise"', () => {
+    expect(outcomeHeadline('KEPT', 'Campaign Promise', 'asserted')).toBe('Evidence they kept this promise');
+    expect(outcomeHeadline('BROKE', 'Campaign Promise', 'asserted')).toBe('Evidence they broke this promise');
   });
 
   it('never assumes a pronoun for the senator', () => {
