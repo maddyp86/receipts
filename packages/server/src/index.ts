@@ -34,7 +34,7 @@ const app = express();
 // A hop COUNT, never `true`: `true` trusts the whole X-Forwarded-For chain,
 // which a client can forge, letting an abuser mint a fresh bucket per request.
 // Verify the number against a real external address before trusting it; see
-// docs/rate-limiting-spec.md.
+// docs/specs/rate-limiting-spec.md.
 app.set('trust proxy', config.rateLimit.trustProxyHops);
 // An allowlist when one is configured; otherwise open, which is only ever
 // correct locally. See the startup warning below.

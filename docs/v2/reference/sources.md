@@ -70,7 +70,7 @@ The query tool's own setting is `text-embedding-3-small` at 1024 dimensions, the
 
 - Schemas today: `mirror` (ten tables copied from Sheets, each with a jsonb `row` plus typed keys) and `app` (queries, traces, usage, feedback).
 - Roles: `receipts_sync` writes pipeline data, `receipts_app` is the query tool, `receipts_trust` is read-only.
-- Migrations live in `docs/supabase-migration-0NN-*.sql`. The latest is 013, so the next is 014.
+- Migrations live in `docs/migrations/supabase-migration-0NN-*.sql`. Take the next unused number.
 - The mirror is filled by n8n workflow `tGcHOxabA29Tjob2` (Tuesday and Friday 06:00 Pacific), which calls `hHgKPuixmqESi1uX` once per table. That child workflow shows the chunked upsert pattern.
 
 ## n8n

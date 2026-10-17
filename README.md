@@ -210,7 +210,7 @@ cross-origin, where it is judged against a `CORS_ORIGIN` that currently points n
 What bounds spend on a public URL: per-IP rate limiting (15 queries / 15 min, 60 / day; `/api/health`
 exempt so the platform's own probe cannot take the service down) and a per-session replay cache that
 absorbs EventSource reconnects, refreshes and double-submits. Neither is protection against a
-determined abuser — see `docs/rate-limiting-spec.md` for what they deliberately do not solve.
+determined abuser — see `docs/specs/rate-limiting-spec.md` for what they deliberately do not solve.
 
 Full detail, the env table, and the verification banner are in [DEPLOY.md](DEPLOY.md).
 
@@ -229,7 +229,7 @@ npm run trace -- <run_id>
 ```
 
 It works with `DATABASE_URL` blank (JSONL files under `.data/traces`), and also lands in Supabase
-once [migration 009](docs/supabase-migration-009-query-trace-log.sql) is applied. Details, the
+once [migration 009](docs/migrations/supabase-migration-009-query-trace-log.sql) is applied. Details, the
 gate map and the reading guide are in [docs/trace-log.md](docs/trace-log.md).
 
 ## Asking about a result

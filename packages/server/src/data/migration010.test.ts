@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 // ===========================================================================
 
 const MIGRATION = fileURLToPath(
-  new URL('../../../../docs/supabase-migration-010-bill-progress-and-versions.sql', import.meta.url),
+  new URL('../../../../docs/migrations/supabase-migration-010-bill-progress-and-versions.sql', import.meta.url),
 );
 const sql = readFileSync(MIGRATION, 'utf8');
 

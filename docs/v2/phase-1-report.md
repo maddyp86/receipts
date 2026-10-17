@@ -4,7 +4,7 @@ Run on 10 October 2026. Schema `core` is created and loaded. Nothing a voter see
 
 ## What exists
 
-- **Migration 014** (`docs/supabase-migration-014-core-schema.sql`), applied to the Receipts project. pgvector is enabled in schema `extensions`. `receipts_app` and `receipts_trust` can only read `core`, `receipts_sync` can read and write it, and `anon` and `authenticated` get nothing. No foreign key leaves `core`.
+- **Migration 014** (`docs/migrations/supabase-migration-014-core-schema.sql`), applied to the Receipts project. pgvector is enabled in schema `extensions`. `receipts_app` and `receipts_trust` can only read `core`, `receipts_sync` can read and write it, and `anon` and `authenticated` get nothing. No foreign key leaves `core`.
   - Checked as `receipts_app`: `match_member_bills` and `member_bill_actions` work, and an insert into `core` is refused.
 - **n8n folder "v2"** in Politician Trustworthy holds seven published workflows. Each one's live version equals its saved version, and each import has `dry_run` true.
 

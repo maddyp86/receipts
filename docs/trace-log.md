@@ -47,7 +47,7 @@ Two sinks, both best effort, both optional:
   production. `TRACE_DIR=off` disables it.
 - **Supabase** — `app.app_query_trace_runs` + `app.app_query_trace_steps`,
   written in one transaction at the end of the run. Requires
-  [migration 009](supabase-migration-009-query-trace-log.sql), run as
+  [migration 009](migrations/supabase-migration-009-query-trace-log.sql), run as
   `postgres` in the SQL editor. Until it is run, the server logs once that the
   tables are missing and carries on writing files. `receipts_app` gets SELECT
   and INSERT only — a trace that can be edited is not a trace.

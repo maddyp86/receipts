@@ -67,7 +67,7 @@ const fixtureMode = fixtureOverride ?? (openaiKey === '' || databaseUrl === '');
 /**
  * The schema the legislative record is read from: views over schema `core` in
  * the shape of the old Sheets mirror, so table names keep their `mirror_`
- * prefix (docs/supabase-migration-015-compat-views.sql). The `mirror` schema
+ * prefix (docs/migrations/supabase-migration-015-compat-views.sql). The `mirror` schema
  * itself was dropped on 2026-10-14 (docs/v2/plan.md); there is no other source.
  */
 export const RECORD_SCHEMA = 'compat';
@@ -326,7 +326,7 @@ export const config = {
    * which is why they are env-overridable. Windows are fixed and named in the
    * variable so a retune cannot silently change the meaning of the number.
    *
-   * See docs/rate-limiting-spec.md for what this deliberately does NOT solve —
+   * See docs/specs/rate-limiting-spec.md for what this deliberately does NOT solve —
    * distributed abuse, shared-IP collateral, and the multi-instance counter
    * split that will not announce itself.
    */

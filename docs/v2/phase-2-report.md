@@ -12,7 +12,7 @@ Run on 11 October 2026. Both new settings keep their defaults, so **production b
 
 An unknown value for any of the three stops the server at startup, so a typo can't silently switch the record reads off.
 
-- **Migration 015** (`docs/supabase-migration-015-compat-views.sql`) is applied.
+- **Migration 015** (`docs/migrations/supabase-migration-015-compat-views.sql`) is applied.
   - It creates schema `compat`: seven views over `core` in the mirror's exact shape. `receipts_app` and `receipts_trust` can only read them.
   - It also makes `core.match_member_bills` inlinable. A search took 460 ms because the function's own `search_path` blocked inlining; it now takes 20 to 45 ms.
 - **`SupabaseActionStore`** turns each `core` row into the record WF6 writes as Pinecone metadata, then calls the Pinecone store's own converter and result builder.

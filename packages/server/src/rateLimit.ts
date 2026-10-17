@@ -8,7 +8,7 @@ import { utcDay, type UsageCounter } from './data/UsageCounter.js';
 // Per-IP rate limiting for the public API.
 //
 // `/api/query` is unauthenticated and spends money at two vendors per call.
-// docs/rate-limiting-spec.md has the cost breakdown and, more usefully, the
+// docs/specs/rate-limiting-spec.md has the cost breakdown and, more usefully, the
 // list of what this does NOT solve — distributed abuse, shared-IP collateral,
 // and the multi-instance counter split.
 //

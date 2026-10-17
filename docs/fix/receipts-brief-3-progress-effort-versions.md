@@ -117,7 +117,7 @@ One commit per task, tests in each. `tsc -b` and `vitest run` green after every 
 
 ### Task 1 — Migration 010: two new mirror tables
 
-Create `docs/supabase-migration-010-bill-progress-and-versions.sql` adding exactly these two tables.
+Create `docs/migrations/supabase-migration-010-bill-progress-and-versions.sql` adding exactly these two tables.
 **The column names and types are fixed**: the n8n Mirror Sync sub-workflow declares the same list and
 introspects the live table before writing, dropping any declared column the table lacks and
 reporting it as schema drift. The two must agree.
