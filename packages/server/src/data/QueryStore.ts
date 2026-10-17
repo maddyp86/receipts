@@ -18,14 +18,14 @@ import type { Interpretation, QueryResult } from '@receipts/shared';
 // answer "what has anyone else asked about this senator", it becomes possible
 // to let that answer influence a verdict — and the influence would look like an
 // ordinary feature in review. Postgres grants stop the trust index reading app
-// data (see docs/supabase-schema-proposal.md); this interface stops the app
+// data (see docs/specs/supabase-schema-proposal.md); this interface stops the app
 // building the query in the first place.
 //
 // NOTE this constrains the REQUEST PATH, not analysis. Querying app_queries
 // directly — for training, for "what do people ask", for prompt evaluation — is
 // the intended use of that table and needs no method here. The rule is only
 // that nothing on the way to a verdict can read it. Usage counts and funnels
-// live in PostHog; see docs/analytics-posthog-proposal.md.
+// live in PostHog; see docs/specs/analytics-posthog-proposal.md.
 // ===========================================================================
 
 /**
@@ -169,7 +169,7 @@ export interface StoredQuery {
    * be joined and queried with SQL. It sits behind the corpus firewall — the
    * scorer holds no privilege on this schema — so storing it does not weaken
    * the guarantee that a user's query can never become evidence about a
-   * senator. See docs/supabase-schema-proposal.md.
+   * senator. See docs/specs/supabase-schema-proposal.md.
    */
   promise_text: string;
   interpretation: Interpretation;

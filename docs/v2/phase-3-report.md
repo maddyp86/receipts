@@ -24,7 +24,7 @@ Every workflow is generated from `docs/v2/pipeline/` by `build.py`. Every write 
 
 ## Data changes made in this phase
 
-- **Migration 016** (`docs/supabase-migration-016-pipeline-ledger.sql`, applied): `core.source_files` (which bucket files were read), `core.impact_drafts`, and on `bill_impacts` the columns `title_only`, `embedded_text_md5` and `content_changed_at`.
+- **Migration 016** (`docs/migrations/supabase-migration-016-pipeline-ledger.sql`, applied): `core.source_files` (which bucket files were read), `core.impact_drafts`, and on `bill_impacts` the columns `title_only`, `embedded_text_md5` and `content_changed_at`.
 - **Seeding**, five orchestrator write runs on 11 October (`ingest_runs` 10–35):
   - all 1,606 Senate vote files and 973 bill files read and recorded in `source_files`;
   - roll calls, member votes, sponsorships, members and statements: **no changes**;

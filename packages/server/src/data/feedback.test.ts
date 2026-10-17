@@ -67,7 +67,7 @@ describe('what is refused, with a reason', () => {
 
 describe('it can never change a verdict', () => {
   const sql = readFileSync(
-    fileURLToPath(new URL('../../../../docs/supabase-migration-012-feedback.sql', import.meta.url)),
+    fileURLToPath(new URL('../../../../docs/migrations/supabase-migration-012-feedback.sql', import.meta.url)),
     'utf8',
   );
 
@@ -150,7 +150,7 @@ describe('the prompts', () => {
 
 describe('migration 013', () => {
   const sql013 = readFileSync(
-    fileURLToPath(new URL('../../../../docs/supabase-migration-013-feedback-prompts.sql', import.meta.url)),
+    fileURLToPath(new URL('../../../../docs/migrations/supabase-migration-013-feedback-prompts.sql', import.meta.url)),
     'utf8',
   );
   const body = sql013.replace(/^\s*--.*$/gm, '');

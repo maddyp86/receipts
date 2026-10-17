@@ -30,7 +30,7 @@ export interface SheetRef {
 // They are env-driven now, with no defaults. An unset id yields an empty `doc`,
 // and any caller must treat that as "not configured" rather than building a
 // URL against ''. This module is currently unused — the Supabase mirror
-// (docs/supabase-schema-proposal.md) supersedes it — so nothing breaks today.
+// (docs/specs/supabase-schema-proposal.md) supersedes it — so nothing breaks today.
 const env = (name: string): string => (process.env[name] ?? '').trim();
 
 const CORPUS = env('SHEETS_DOC_CORPUS');

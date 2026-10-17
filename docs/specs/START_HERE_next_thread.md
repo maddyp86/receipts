@@ -59,7 +59,7 @@ never fires.
 
 `UNIQUE (vote_id)` is still the right fix, and 220 rows / 220 distinct vote_ids
 says the grain is one row per roll call. Migration
-[008](../supabase-migration-008-roll-call-vote-key.sql) is written with a
+[008](../migrations/supabase-migration-008-roll-call-vote-key.sql) is written with a
 diagnostic STEP 1 to confirm the nulls first — this lane has no local database
 credential and could not check.
 

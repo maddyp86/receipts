@@ -185,7 +185,7 @@ export class SupabaseTraceSink implements TraceSink, TraceReader {
         this.schemaMissing = true;
         console.error(
           '[trace] app.app_query_trace_* tables are missing — run ' +
-            'docs/supabase-migration-009-query-trace-log.sql. Traces still go to the file sink.',
+            'docs/migrations/supabase-migration-009-query-trace-log.sql. Traces still go to the file sink.',
         );
         return;
       }

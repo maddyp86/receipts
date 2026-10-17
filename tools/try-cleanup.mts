@@ -18,7 +18,7 @@ import {
 } from '../packages/server/src/cleanup/cleanUpInput.ts';
 
 const DEFAULTS = [
-  // Typed by real readers, 2026-10 (docs/beta-review.sql).
+  // Typed by real readers, 2026-10 (docs/queries/beta-review.sql).
   'He promised to ban assault weapons.',
   'He said he was going to pass bills to ban abortion.',
   'He said he would pass a bill capping insulin at $35 a month.',

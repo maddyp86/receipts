@@ -13,7 +13,7 @@ READ FIRST, in this order
                                            You are doing "Phase 1: foundation".
 2. docs/v2/reference/sources.md            every sheet, tab, column, file path, id
 3. docs/v2/reference/vote-slot-rules.md    how votes are derived, with test results
-4. docs/supabase-schema.sql and docs/supabase-migration-*.sql   what exists today
+4. docs/migrations/supabase-schema.sql and docs/migrations/supabase-migration-*.sql   what exists today
 5. packages/server/src/data/ActionStore.ts and
    packages/server/src/evaluation/enrichment.ts
    what the query tool reads. Do not change them in this phase.
@@ -60,7 +60,7 @@ PHASE 1 TASKS
    Matt's go. Access means: the Supabase project that contains schemas `mirror`
    and `app`, n8n, Google Sheets, GitHub. If your Supabase connection cannot see
    that project, say so and stop.
-2. Write docs/supabase-migration-014-core-schema.sql. Enable pgvector.
+2. Write docs/migrations/supabase-migration-014-core-schema.sql. Enable pgvector.
    receipts_app gets SELECT only on core; receipts_trust SELECT only. No foreign
    key from core to app. If you cannot apply it yourself, hand Matt the file to
    run in the Supabase SQL editor.

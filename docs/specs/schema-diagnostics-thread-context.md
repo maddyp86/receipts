@@ -161,7 +161,7 @@ WITHHELD_LOW_CONFIDENCE`.
 | 4 | `min(Promise Date)` on Evaluable Statements — decides whether coverage goes further back. A number, not a judgement call | pipeline |
 | 5 | `decisionScore.ts` **stale and dormant** — `Compute Decision Score` is 25,077 chars against a port reconciled at 20,803. Called only by its own test. **Re-reconcile before anything wires it in** | app |
 | 6 | `match_direction` is hardcoded `'promise_to_bill'` — make it a named constant so the trace is honest about the tool being one-directional by design | app |
-| 7 | Rate limiting — [spec](../rate-limiting-spec.md) written, not wired. Wanted before the frontend is public | app |
+| 7 | Rate limiting — [spec](rate-limiting-spec.md) written, not wired. Wanted before the frontend is public | app |
 | 8 | PostHog wiring, and the privacy-policy line before the first public query | product |
 
 Not in scope, decided: **WF8 / bill→promise.** The query tool answers "does this
