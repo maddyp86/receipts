@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { answerLabelLine, answerReasonLine, isVoteActionUid } from '@receipts/shared';
 import { answerLabel, readVote, rowsOf, type AnswerInput } from './answerLabel.js';
 
 // ===========================================================================
@@ -76,6 +77,24 @@ describe('answerLabel', () => {
     const a = answerLabel([act({ is_sponsor: true })]);
     expect(a.label).toBe('SPONSORSHIP_ONLY');
     expect(a.rows).toEqual([expect.objectContaining({ stage: 'sponsor', reading: 'for' })]);
+  });
+
+  // Cases 21, 23, 28 (Schumer): his only vote was a procedural Nay as majority
+  // leader, set aside by a rule. "Backed a bill on this, but no recorded vote"
+  // would be untrue, so the reason says the vote was set aside (Matt, 17 Oct).
+  it('sponsorship with its only vote set aside: says so', () => {
+    const a = answerLabel([act({ is_sponsor: true })], 1, 1);
+    expect(a).toMatchObject({ label: 'SPONSORSHIP_ONLY', reason: 'SPONSORSHIP_VOTE_SET_ASIDE' });
+    expect(answerLabelLine(a)).toBe('Backed a bill on this. Their only vote on it was set aside.');
+    expect(answerReasonLine(a, [{ action_uid: 'ACT-s4554-118-S000148', reason: 'As majority leader, the senator voted no on ending debate. More.' }]))
+      .toBe('As majority leader, the senator voted no on ending debate. That vote is shown under Receipts but not counted.');
+  });
+
+  it('sponsorship with nothing set aside, or only a sponsorship set aside: the usual line', () => {
+    expect(answerLabelLine(answerLabel([act({ is_sponsor: true })]))).toBe('Backed a bill on this, but no recorded vote.');
+    expect(answerLabel([act({ is_sponsor: true })], 1, 0).reason).toBe('SPONSORSHIP');
+    expect(isVoteActionUid('ACT-S-sres950-119-C001035')).toBe(false);
+    expect(isVoteActionUid('ACT-s3385-119-C001035')).toBe(true);
   });
 
   it('a vote outranks a sponsorship on the same question', () => {

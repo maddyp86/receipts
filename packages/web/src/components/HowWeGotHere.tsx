@@ -1,6 +1,6 @@
 import {
-  ANSWER_LABEL_COPY,
-  ANSWER_REASON_COPY,
+  answerLabelLine,
+  answerReasonLine,
   confidencePhrase,
   ND_NO_REASON_COPY,
   ND_REASON_COPY,
@@ -116,9 +116,9 @@ export function HowWeGotHere({ result }: { result: QueryResult }) {
     steps.push({
       title: 'The answer',
       body:
-        `${ANSWER_LABEL_COPY[r.label]} ` +
+        `${answerLabelLine(r)} ` +
         `${plural(r.counted.for, 'vote')} read as for it and ${plural(r.counted.against, 'vote')} as against it.` +
-        (ANSWER_REASON_COPY[r.reason] ? ` ${ANSWER_REASON_COPY[r.reason]}` : ''),
+        (answerReasonLine(r, result.gated) ? ` ${answerReasonLine(r, result.gated)}` : ''),
     });
   } else {
   // 5. Direction on the goal — of each BILL, as the evaluator read it.

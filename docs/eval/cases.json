@@ -463,11 +463,12 @@
       "forbidden": [
         "DID_NOTHING_WORDING"
       ],
-      "note": "A 'How to ask' Try example, and the question form of case 3. Refused as RHETORIC on 2026-10-10 (trace d4631308-d8f0-413a-a6b6-8d71d1b9e7a8). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED. KEPT before: a vote for. MIXED allowed: a majority leader often votes Nay on a failed motion to end debate so he can move to reconsider it.",
+      "note": "A 'How to ask' Try example, and the question form of case 3. Refused as RHETORIC on 2026-10-10 (trace d4631308-d8f0-413a-a6b6-8d71d1b9e7a8). Record mode (2026-10-15): a question, so answered with a label. Was verdict KEPT | KEPT_MIXED. KEPT before: a vote for. MIXED allowed: a majority leader often votes Nay on a failed motion to end debate so he can move to reconsider it. SPONSORSHIP_ONLY allowed (17 Oct): his only vote, the Nay to end debate on S.4554 (118th) as majority leader, is set aside by the leader-switch rule, so the answer rests on his sponsorship and the headline says the vote was set aside.",
       "mode": "record",
       "answer": [
         "VOTED_FOR",
-        "MIXED_RECORD"
+        "MIXED_RECORD",
+        "SPONSORSHIP_ONLY"
       ]
     },
     {

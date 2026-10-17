@@ -106,12 +106,36 @@ export const ANSWER_REASON_COPY: Partial<Record<RecordAnswer['reason'], string>>
   TOO_BROAD: 'This question is too broad to check against specific bills. Try naming a specific bill, program or policy.',
   BROAD_ONLY: 'Each of those packages covered much more than this, so none says on its own how they stand on this piece.',
   SPONSORSHIP: 'Putting their name on a bill is weaker evidence than a recorded vote.',
+  SPONSORSHIP_VOTE_SET_ASIDE: 'That vote is shown under Receipts but not counted.',
 };
+
+/**
+ * The answer's headline. SPONSORSHIP_ONLY normally says "no recorded vote",
+ * which is untrue when there was a vote and a rule set it aside (Schumer's
+ * procedural Nay as majority leader, cases 21, 23 and 28): Matt, 17 Oct.
+ */
+export function answerLabelLine(answer: Pick<RecordAnswer, 'label' | 'reason'>): string {
+  if (answer.reason === 'SPONSORSHIP_VOTE_SET_ASIDE') return 'Backed a bill on this. Their only vote on it was set aside.';
+  return ANSWER_LABEL_COPY[answer.label];
+}
+
+/** The line under that headline: why the vote was set aside, from the rule that did it. */
+export function answerReasonLine(answer: Pick<RecordAnswer, 'reason'>, gated: ReadonlyArray<{ action_uid: string; reason: string }> = []): string | null {
+  if (answer.reason === 'SPONSORSHIP_VOTE_SET_ASIDE') {
+    const vote = gated.find((g) => isVoteActionUid(g.action_uid));
+    const why = vote?.reason.split(/(?<=\.)\s/)[0]?.trim();
+    return `${why ? `${why} ` : ''}${ANSWER_REASON_COPY.SPONSORSHIP_VOTE_SET_ASIDE}`;
+  }
+  return ANSWER_REASON_COPY[answer.reason] ?? null;
+}
+
+/** A vote's action id; a sponsorship's is ACT-S-{bill}-{member}. */
+export const isVoteActionUid = (uid: string): boolean => !/^ACT-S-/i.test(uid);
 
 export interface RecordAnswer {
   label: AnswerLabel;
   /** Why the label is what it is; separates "nothing found" from "nothing counted". */
-  reason: 'VOTES' | 'SPONSORSHIP' | 'BROAD_ONLY' | 'NOTHING_COUNTED' | 'NOTHING_FOUND' | 'TOO_BROAD';
+  reason: 'VOTES' | 'SPONSORSHIP' | 'SPONSORSHIP_VOTE_SET_ASIDE' | 'BROAD_ONLY' | 'NOTHING_COUNTED' | 'NOTHING_FOUND' | 'TOO_BROAD';
   rows: RecordRow[];
   counted: { for: number; against: number };
   set_aside: number;

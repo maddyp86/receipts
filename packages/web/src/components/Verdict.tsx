@@ -8,8 +8,8 @@ import {
   XIcon,
 } from 'lucide-react';
 import {
-  ANSWER_LABEL_COPY,
-  ANSWER_REASON_COPY,
+  answerLabelLine,
+  answerReasonLine,
   BAND_LEVEL,
   BAND_REASON_COPY,
   assertedPromiseLine,
@@ -462,7 +462,7 @@ function RecordCard(props: VerdictProps) {
   const answer = result.record!;
   const funnel = searchFunnel(result);
   const boundary = recordBoundarySentence(result);
-  const sub = ANSWER_REASON_COPY[answer.reason];
+  const sub = answerReasonLine(answer, result.gated);
   const summary = result.explanation.card_summary?.trim();
   return (
     <section
@@ -473,7 +473,7 @@ function RecordCard(props: VerdictProps) {
       <div className="px-5 pb-5 pt-5 sm:px-6">
         <p className="text-[15px] text-ink-soft">What the record shows</p>
         <h2 className="verdict-label record-label" style={{ color: 'var(--ink, inherit)' }}>
-          {ANSWER_LABEL_COPY[answer.label].replace(/\.$/, '')}
+          {answerLabelLine(answer).replace(/\.$/, '')}
         </h2>
         {sub ? <p className="verdict-confidence mt-1.5 text-[17px] leading-snug text-ink">{sub}</p> : null}
         <p className="verdict-band mt-2 text-[16px] leading-snug text-ink-soft">

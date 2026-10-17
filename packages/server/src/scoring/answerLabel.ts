@@ -87,7 +87,7 @@ export function rowsOf(a: AnswerInput): RecordRow[] {
  * The label, from every row. Only votes on bills that are not broad packages
  * decide it; sponsorship decides it only when there is no such vote.
  */
-export function answerLabel(actions: AnswerInput[], setAside = 0): RecordAnswer {
+export function answerLabel(actions: AnswerInput[], setAside = 0, votesSetAside = 0): RecordAnswer {
   const rows = actions.flatMap(rowsOf);
   const isVote = (r: RecordRow) => r.stage === 'cloture' || r.stage === 'passage' || r.stage === 'vote';
   const counted = rows.filter((r) => isVote(r) && !r.broad && (r.reading === 'for' || r.reading === 'against'));
@@ -107,8 +107,10 @@ export function answerLabel(actions: AnswerInput[], setAside = 0): RecordAnswer 
     reason = 'VOTES';
   } else if (sponsored.length) {
     // No vote on it, but their name is on a bill that would do it (or undo it).
+    // "but no recorded vote" is untrue when there was one and a rule set it
+    // aside (a leader's procedural Nay): the headline says so instead.
     label = 'SPONSORSHIP_ONLY';
-    reason = 'SPONSORSHIP';
+    reason = votesSetAside ? 'SPONSORSHIP_VOTE_SET_ASIDE' : 'SPONSORSHIP';
   } else if (broadVotes.length) {
     // The only votes were on large packages that included this. Each one is
     // worth showing, and none says on its own how they stand on this piece.

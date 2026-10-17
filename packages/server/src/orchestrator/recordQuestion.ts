@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { ANSWER_LABEL_COPY, type DirectedAction, type Envelope, type RecordAnswer, type StreamEvent } from '@receipts/shared';
+import { ANSWER_LABEL_COPY, answerLabelLine, isVoteActionUid, type DirectedAction, type Envelope, type RecordAnswer, type StreamEvent } from '@receipts/shared';
 import { config } from '../config.js';
 import { anthropicContent, anthropicUsage, traceBegin, traceStep } from '../trace/Trace.js';
 import { answerLabel } from '../scoring/answerLabel.js';
@@ -49,6 +49,7 @@ function answerFor(session: QuerySession): RecordAnswer {
       bill_class: e.bill_class ?? null,
     })),
     session.gated?.length ?? 0,
+    (session.gated ?? []).filter((g) => isVoteActionUid(g.action_uid)).length,
   );
 }
 
@@ -60,7 +61,7 @@ export function recordFacts(session: QuerySession, answer: RecordAnswer): Record
     asked_about: session.interpretation?.restated ?? null,
     senator: session.senator?.name ?? null,
     answer_label: answer.label,
-    answer_line: ANSWER_LABEL_COPY[answer.label],
+    answer_line: answerLabelLine(answer),
     answer_reason: answer.reason,
     bills: [...new Set(answer.rows.map((r) => r.action_uid))].map((uid) => {
       const e = byUid.get(uid);
@@ -109,7 +110,7 @@ export function plainRecordExplanation(session: QuerySession, answer: RecordAnsw
   } else if (answer.reason === 'NOTHING_COUNTED') {
     lines.push(`We found bills on this, but none of them clearly does what you asked about. Each one is listed below with the reason.`);
   } else {
-    lines.push(`${ANSWER_LABEL_COPY[answer.label]} The bills and each vote are listed below.`);
+    lines.push(`${answerLabelLine(answer)} The bills and each vote are listed below.`);
   }
   return lines.join(' ');
 }
