@@ -12,7 +12,6 @@ import { ResultTabs } from './components/ResultTabs.js';
 import { ClarifyState, DemoBanner, ErrorState, HaltState, ResultActions, SuggestedRewording, ThinResultActions, UncachedState } from './components/States.js';
 import {
   AppliedCorrections,
-  AssertedPremiseBadge,
   CorrectionPanel,
   type TaxonomyEntry,
 } from './components/CorrectionPanel.js';
@@ -373,7 +372,6 @@ export default function App() {
                           />
 
                           <div className="legacy">
-                            <AssertedPremiseBadge interpretation={stream.interpretation} />
                             <AppliedCorrections interpretation={stream.interpretation} />
                           </div>
 

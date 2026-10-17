@@ -130,10 +130,10 @@ describe('the statement’s vocabulary', () => {
     expect(s).toMatch(/2 are consistent with it and 1 runs counter to it\./);
   });
 
-  it('an asserted promise: the same position language', () => {
+  // Matt, 17 Oct: the reader's promise is answered as a promise.
+  it('an asserted promise: toward keeping / toward breaking, like any promise', () => {
     const s = evidenceTallySentence(result(mixed(), { statement_type: 'Campaign Promise', provenance: 'asserted' }))!;
-    expect(s).toMatch(/2 are consistent with it and 1 runs counter to it\./);
-    expect(s).not.toMatch(/keeping|breaking/);
+    expect(s).toMatch(/2 point toward keeping it and 1 points toward breaking it\./);
   });
 
   it('a corpus-verified promise: toward keeping / toward breaking', () => {
@@ -263,7 +263,8 @@ describe('the headline', () => {
     ['Campaign Promise', 'corpus', 'BROKE', 'Likely broken'],
     ['Policy Position', 'default', 'KEPT', 'Their record is likely consistent with this position'],
     ['Policy Position', 'default', 'BROKE', 'Their record likely runs counter to this position'],
-    ['Campaign Promise', 'asserted', 'KEPT', 'You indicated this was a campaign promise. On that basis, their record is likely consistent with it'],
+    ['Campaign Promise', 'asserted', 'KEPT', 'Evidence they kept this promise'],
+    ['Campaign Promise', 'asserted', 'BROKE', 'Evidence they broke this promise'],
   ] as const)('%s / %s / %s → %s', (type, prov, verdict, h) => {
     expect(likelyOutcomeHeadline(verdict, type, prov)).toBe(h);
   });
@@ -313,5 +314,58 @@ describe('the order on the card', () => {
     expect(at('Likely consistent')).toBeLessThan(at('you asked about'));
     expect(at('you asked about')).toBeLessThan(at('We found 3 actions'));
     expect(at('We found 3 actions')).toBeLessThan(at('Here’s why. Because.'));
+  });
+});
+
+// ===========================================================================
+// The reader's promise, and the bar (Matt, 17 Oct, Thune / tribal
+// sovereignty): "promised to …" came back as "consistent with the position",
+// and three bills read as not about the question were drawn as "set aside",
+// the same grey as a vote closed by a rule.
+// ===========================================================================
+
+describe('a promise the reader typed', () => {
+  const html = (r: QueryResult) => renderToStaticMarkup(React.createElement(Verdict, { result: r }));
+  const asserted = () => {
+    const r = result(score([row(KEEP), row(KEEP), row(NEUTRAL)], 'Campaign Promise'), { statement_type: 'Campaign Promise', provenance: 'asserted' });
+    r.senator = { ...r.senator, name: 'John Thune' };
+    r.interpretation = { ...r.interpretation, raw: 'promised to protect tribal sovereignty' };
+    return r;
+  };
+
+  it('is headlined as a promise, and says whose promise it is', () => {
+    const page = text(html(asserted()));
+    expect(page).toContain('Evidence they kept this promise');
+    expect(page).toContain('You said Thune promised to protect tribal sovereignty. We didn’t check that the promise was made; we checked what Thune did.');
+    expect(page).not.toMatch(/consistent with this position|We treat this as a position/);
+  });
+
+  it('a position typed as one is unchanged, with no attribution line', () => {
+    const page = text(html(result(score([row(KEEP)]))));
+    expect(page).not.toContain('You said');
+    expect(page).toContain('consistent');
+  });
+});
+
+describe('the bar', () => {
+  const bar = (r: QueryResult) => renderToStaticMarkup(React.createElement(Verdict, { result: r }));
+
+  it('one segment per bill, and "not about this" apart from "set aside"', () => {
+    const r = result(score([row(KEEP), row(KEEP), row(NEUTRAL), row(NEUTRAL), row(NEUTRAL)]), { gated: 1 });
+    const h = bar(r);
+    expect((h.match(/aria-pressed="false"/g) ?? []).length).toBe(6);
+    const legend = text(/<p class="tally-legend[^"]*"[^>]*>([\s\S]*?)<\/p>/.exec(h)![1]!);
+    expect(legend).toContain('2 consistent');
+    expect(legend).toContain('0 counter');
+    expect(legend).toContain('3 not about this');
+    expect(legend).toContain('1 set aside');
+    expect(legend).toContain('Tap a segment to see its bill');
+  });
+
+  it('each segment names its bill and how it was read', () => {
+    const r = result(score([row({ ...KEEP, is_cosponsor: true, vote: 'NA', passage_vote: 'NA' }), row(NEUTRAL)]));
+    const labels = [...bar(r).matchAll(/aria-label="([^"]+)" aria-pressed/g)].map((m) => m[1]);
+    expect(labels[0]).toMatch(/^S\. \d+ · Cosponsored · Counts as consistent$/);
+    expect(labels[1]).toMatch(/^S\. \d+ · Voted Yea · Not about this, so not counted$/);
   });
 });
