@@ -31,10 +31,53 @@ export interface StripeLike {
   webhooks: Pick<Stripe['webhooks'], 'constructEvent'>;
 }
 
+/** One Stripe mode's wiring. A server holds up to two: live and test. */
 export interface FundingDeps {
   store: FundingStore;
   stripe: StripeLike;
   settings: FundingSettings;
+  /** True for the live keys (real money), false for the test keys. */
+  livemode: boolean;
+}
+
+/** The modes this server has keys for. */
+export interface FundingModes {
+  live: FundingDeps | null;
+  test: FundingDeps | null;
+}
+
+/**
+ * Which Stripe mode a request belongs to, from the site the reader is on.
+ * Live only for a host listed as live (the production site); everything else
+ * (Vercel previews, localhost, a request with no origin) is test. Getting
+ * this wrong the safe way round costs nothing: a test checkout moves no money
+ * and its row never shows on the live site.
+ */
+export function modeForOrigin(origin: string | null | undefined, liveHosts: readonly string[]): 'live' | 'test' {
+  if (!origin) return 'test';
+  try {
+    return liveHosts.includes(new URL(origin).host.toLowerCase()) ? 'live' : 'test';
+  } catch {
+    return 'test';
+  }
+}
+
+/**
+ * Where to send a TEST payer back: the preview or local site they came from,
+ * when it looks like one of ours; otherwise the configured site. A live payer
+ * always goes to the configured production site.
+ */
+export function testReturnUrl(origin: string | null | undefined, fallback: string): string {
+  if (!origin) return fallback;
+  try {
+    const u = new URL(origin);
+    const ok =
+      (u.protocol === 'https:' && u.hostname.endsWith('.vercel.app')) ||
+      (u.protocol === 'http:' && (u.hostname === 'localhost' || u.hostname === '127.0.0.1'));
+    return ok ? u.origin : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export type Refusal = { ok: false; status: number; code: 'BAD_INPUT' | 'NOT_FUNDABLE' | 'UPSTREAM_UNAVAILABLE'; message: string };
@@ -50,7 +93,11 @@ export const CREDIT_FIELD = 'credit_name';
  * already funded. Two readers paying in the same minute can still both get
  * through; the operator refunds the second.
  */
-export async function createCheckout(memberId: string, deps: FundingDeps): Promise<{ ok: true; url: string } | Refusal> {
+export async function createCheckout(
+  memberId: string,
+  deps: FundingDeps,
+  returnTo?: string,
+): Promise<{ ok: true; url: string } | Refusal> {
   const id = memberId.trim();
   if (!MEMBER_ID.test(id)) return { ok: false, status: 400, code: 'BAD_INPUT', message: 'memberId is not a member id.' };
 
@@ -58,11 +105,12 @@ export async function createCheckout(memberId: string, deps: FundingDeps): Promi
   if (!member) return { ok: false, status: 404, code: 'NOT_FUNDABLE', message: 'We don’t have that member on file.' };
   if (member.left_at) return { ok: false, status: 409, code: 'NOT_FUNDABLE', message: `${member.full_name} is no longer in office.` };
   if (member.live) return { ok: false, status: 409, code: 'NOT_FUNDABLE', message: `${member.full_name}’s record is already checked.` };
-  if ((await deps.store.open()).some((o) => o.member_id === id)) {
+  if ((await deps.store.open(deps.livemode)).some((o) => o.member_id === id)) {
     return { ok: false, status: 409, code: 'NOT_FUNDABLE', message: `${member.full_name}’s record already has a sponsor.` };
   }
 
-  const { priceCents, currency, slaDays, returnUrl } = deps.settings;
+  const { priceCents, currency, slaDays } = deps.settings;
+  const returnUrl = (returnTo || deps.settings.returnUrl).replace(/\/+$/, '');
   const session = await deps.stripe.checkout.sessions.create({
     mode: 'payment',
     line_items: [
@@ -99,9 +147,11 @@ export async function createCheckout(memberId: string, deps: FundingDeps): Promi
 }
 
 /**
- * The Stripe webhook. Verifies the signature against the RAW body, then
- * records a paid session for a member. Idempotent: Stripe retries, and a
- * repeated event writes nothing.
+ * The Stripe webhook, one address for both modes. Verifies the signature
+ * against the RAW body with each mode's secret, and accepts the event only if
+ * its own livemode matches the secret that verified it. Then records a paid
+ * session for a member, labelled with that mode. Idempotent: Stripe retries,
+ * and a repeated event writes nothing.
  *
  * Returns 500 when the row could not be stored, so Stripe retries rather than
  * the payment going unrecorded.
@@ -109,13 +159,23 @@ export async function createCheckout(memberId: string, deps: FundingDeps): Promi
 export async function handleWebhook(
   rawBody: Buffer | string,
   signature: string | undefined,
-  deps: FundingDeps,
+  modes: FundingModes,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
-  let event: Stripe.Event;
-  try {
-    event = deps.stripe.webhooks.constructEvent(rawBody, signature ?? '', deps.settings.webhookSecret);
-  } catch {
-    return { status: 400, body: { error: 'Signature did not verify.' } };
+  let event: Stripe.Event | null = null;
+  let deps: FundingDeps | null = null;
+  for (const candidate of [modes.live, modes.test]) {
+    if (!candidate) continue;
+    try {
+      event = candidate.stripe.webhooks.constructEvent(rawBody, signature ?? '', candidate.settings.webhookSecret);
+      deps = candidate;
+      break;
+    } catch {
+      /* Not this mode's secret; try the other. */
+    }
+  }
+  if (!event || !deps) return { status: 400, body: { error: 'Signature did not verify.' } };
+  if (event.livemode !== deps.livemode) {
+    return { status: 400, body: { error: 'Event mode does not match the secret that signed it.' } };
   }
 
   const paid =
@@ -138,8 +198,9 @@ export async function handleWebhook(
       email: session.customer_details?.email ?? null,
       display_name: credit ? credit.slice(0, 80) : null,
       refund_due_at: new Date(paidAt.getTime() + deps.settings.slaDays * 86_400_000),
+      livemode: deps.livemode,
     });
-    if (written) console.info(`[funding] ${memberId} funded (session ${session.id})`);
+    if (written) console.info(`[funding] ${memberId} funded, ${deps.livemode ? 'LIVE' : 'test'} (session ${session.id})`);
     return { status: 200, body: { recorded: written } };
   } catch (err) {
     console.error('[funding] could not record a paid session:', session.id, err instanceof Error ? err.message : err);
@@ -151,9 +212,9 @@ export async function handleWebhook(
  * Public funder credits. A read that fails (migration 019 not run yet) is no
  * credits, never a failed page: the credit is a thank-you, not the record.
  */
-export async function fundingCredits(store: FundingStore): Promise<FunderCredit[]> {
+export async function fundingCredits(store: FundingStore, livemode: boolean): Promise<FunderCredit[]> {
   try {
-    return await store.credits();
+    return await store.credits(livemode);
   } catch (err) {
     console.warn('[funding] credits not readable (has migration 019 run?):', err instanceof Error ? err.message : err);
     return [];
@@ -161,11 +222,13 @@ export async function fundingCredits(store: FundingStore): Promise<FunderCredit[
 }
 
 /** For the picker: who is funded, the day each is promised by, and who to credit. */
-export async function fundingStatus(deps: Pick<FundingDeps, 'store' | 'settings'>) {
-  const open = await deps.store.open();
+export async function fundingStatus(deps: Pick<FundingDeps, 'store' | 'settings' | 'livemode'>) {
+  const open = await deps.store.open(deps.livemode);
   return {
     enabled: true,
-    credits: await fundingCredits(deps.store),
+    // Lets a preview say it is taking test payments; the live site never shows it.
+    mode: deps.livemode ? 'live' : 'test',
+    credits: await fundingCredits(deps.store, deps.livemode),
     price_cents: deps.settings.priceCents,
     currency: deps.settings.currency,
     sla_days: deps.settings.slaDays,

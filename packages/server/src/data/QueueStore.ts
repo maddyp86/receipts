@@ -19,6 +19,8 @@ export interface QueueRequest {
   senator_name: string;
   promise_text: string;
   requested_at: string;
+  /** False for a request made on a preview/test site (migration 022). Absent means live. */
+  livemode?: boolean;
 }
 
 export interface QueueStore {
@@ -64,9 +66,15 @@ export class SupabaseQueueStore implements QueueStore {
   async record(request: QueueRequest): Promise<void> {
     await this.file.record(request);
     try {
+      // The livemode column is named only for a test request, so a live one
+      // still stores if migration 022 has not been run yet.
+      const test = request.livemode === false;
       await this.pool.query(
-        `insert into app.member_requests (member_id, member_name, promise_text, requested_at)
-         values ($1, $2, $3, $4)`,
+        test
+          ? `insert into app.member_requests (member_id, member_name, promise_text, requested_at, livemode)
+             values ($1, $2, $3, $4, false)`
+          : `insert into app.member_requests (member_id, member_name, promise_text, requested_at)
+             values ($1, $2, $3, $4)`,
         [request.politician_id, request.senator_name, request.promise_text.slice(0, 2000), request.requested_at],
       );
     } catch (err) {
