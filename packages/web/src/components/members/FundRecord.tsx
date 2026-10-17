@@ -2,12 +2,15 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { apiUrl } from '../../lib/api.js';
 
 // ===========================================================================
-// "Fund this record": a reader pays once to have a not-yet-checked member
-// added, for everyone. Shown only when the server says funding is on.
+// "Sponsor this record": a reader pays once to have a not-yet-checked member's
+// record checked, and is named on it as its sponsor. Shown only when the
+// server says funding is on. ("Funding" is the internal name: "sponsorship"
+// already means bill sponsorships in the pipeline.)
 //
-// The copy carries three promises and must keep all of them: the money pays
-// for the work, never a finding; live by a date or a full refund; and it is
-// not a donation (not tax-deductible).
+// The pitch is what the sponsor gets, never "free for everyone": the record
+// checked within the promised days or a full refund; their name on it as
+// sponsor; an email when it's ready. It must also keep: sponsorship never
+// changes a finding, and it is not a donation (not tax-deductible).
 // ===========================================================================
 
 export interface FundingStatus {
@@ -69,7 +72,7 @@ export function FundRecord({ memberId, name }: { memberId: string; name: string 
   if (funded) {
     return (
       <p className="mt-2 text-[15px] leading-snug text-ink" data-funded="true">
-        Funded by a reader. Live for everyone by {formatDay(funded.live_by)}.
+        Sponsored by a reader. Being checked now, ready by {formatDay(funded.live_by)}.
       </p>
     );
   }
@@ -110,15 +113,15 @@ export function FundRecord({ memberId, name }: { memberId: string; name: string 
         type="button"
         onClick={start}
         disabled={busy}
-        aria-label={`Fund ${name}’s record, ${price}`}
+        aria-label={`Sponsor ${name}’s record, ${price}`}
         className="inline-flex min-h-[44px] items-center justify-center rounded-card border border-ink bg-card px-4 text-[15px] font-semibold text-ink transition-colors duration-150 hover:bg-paper disabled:border-rule disabled:text-ink-soft"
       >
-        {busy ? 'Opening payment…' : `Fund this record — ${price}`}
+        {busy ? 'Opening payment…' : `Sponsor this record — ${price}`}
       </button>
       <p className="text-[14px] leading-snug text-ink-soft">
-        Covers what it costs us to check this record, once. When it’s done it’s free for everyone, and
-        we’ll email you to come and check it. Add a name at checkout and we’ll credit you on the record.
-        Live within {status.sla_days} days or a full refund. Paying never changes what we find. Not a
+        We’ll check {name}’s votes and the bills they’ve backed since 2023 and email you the moment it’s
+        ready: within {status.sla_days} days, or your money back. Your name goes on the record as its
+        sponsor, or leave it blank to stay anonymous. Sponsorship never changes what we find. Not a
         tax-deductible donation.
       </p>
       {error ? (
@@ -210,11 +213,10 @@ export function FundedThanks({ memberName, onClose }: { memberName: string | nul
   const status = useFundingStatus();
   return (
     <div role="status" className="mx-auto mt-4 max-w-[720px] rounded-card border border-rule bg-card px-5 py-4 shadow-soft">
-      <p className="text-[17px] font-semibold text-ink">Thank you, your payment went through.</p>
+      <p className="text-[17px] font-semibold text-ink">Thank you for sponsoring {memberName ? `${memberName}’s record` : 'this record'}.</p>
       <p className="mt-1 text-[15px] leading-relaxed text-ink-soft">
-        We’ll check {memberName ?? 'this member'}’s record and make it free for everyone
-        {status.sla_days ? ` within ${status.sla_days} days` : ''}, and email you when it’s ready to check.
-        If we don’t, you get a full refund. Stripe has emailed your receipt.
+        We’re checking it now and will email you when it’s ready
+        {status.sla_days ? `, within ${status.sla_days} days` : ''}, or you get a full refund.
       </p>
       <button type="button" onClick={onClose} className="mt-2 text-[15px] font-medium text-ink underline underline-offset-2">
         Close
@@ -223,14 +225,14 @@ export function FundedThanks({ memberName, onClose }: { memberName: string | nul
   );
 }
 
-/** "Record funded by …" for a live record whose payer gave a name. Nothing otherwise. */
+/** "Sponsored by …" for a live record whose sponsor gave a name. Nothing otherwise. */
 export function FunderCredit({ memberId, className = '' }: { memberId: string; className?: string }) {
   const names = (useFundingStatus().credits ?? []).filter((c) => c.member_id === memberId).map((c) => c.name);
   if (!names.length) return null;
   return (
     // A span, not a p: it sits inside the cards' own <p> and <button>.
     <span className={`block text-[14px] leading-snug text-ink-soft ${className}`} data-funder-credit="true">
-      Record funded by <span className="font-medium text-ink">{names.join(', ')}</span>
+      Sponsored by <span className="font-medium text-ink">{names.join(', ')}</span>
     </span>
   );
 }

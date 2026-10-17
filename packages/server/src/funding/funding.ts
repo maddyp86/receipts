@@ -59,7 +59,7 @@ export async function createCheckout(memberId: string, deps: FundingDeps): Promi
   if (member.left_at) return { ok: false, status: 409, code: 'NOT_FUNDABLE', message: `${member.full_name} is no longer in office.` };
   if (member.live) return { ok: false, status: 409, code: 'NOT_FUNDABLE', message: `${member.full_name}’s record is already checked.` };
   if ((await deps.store.open()).some((o) => o.member_id === id)) {
-    return { ok: false, status: 409, code: 'NOT_FUNDABLE', message: `Someone has already funded ${member.full_name}’s record.` };
+    return { ok: false, status: 409, code: 'NOT_FUNDABLE', message: `${member.full_name}’s record already has a sponsor.` };
   }
 
   const { priceCents, currency, slaDays, returnUrl } = deps.settings;
@@ -72,10 +72,10 @@ export async function createCheckout(memberId: string, deps: FundingDeps): Promi
           currency,
           unit_amount: priceCents,
           product_data: {
-            name: `Add ${member.full_name} to Receipts`,
+            name: `Sponsor ${member.full_name}’s record on Receipts`,
             description:
-              `Covers the one-time cost of checking ${member.full_name}’s voting record. ` +
-              `Live for everyone within ${slaDays} days, or a full refund. We'll email you when it's live. Not tax-deductible.`,
+              `We check ${member.full_name}’s votes and the bills they’ve backed, and email you when it’s ready: ` +
+              `within ${slaDays} days, or a full refund. Your name appears as the record’s sponsor if you give one. Not tax-deductible.`,
           },
         },
       },
@@ -85,7 +85,7 @@ export async function createCheckout(memberId: string, deps: FundingDeps): Promi
     custom_fields: [
       {
         key: CREDIT_FIELD,
-        label: { type: 'custom', custom: 'Name to show publicly as the funder (optional)' },
+        label: { type: 'custom', custom: 'Name to show as sponsor (optional)' },
         type: 'text',
         optional: true,
         text: { maximum_length: 80 },

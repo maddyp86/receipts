@@ -97,21 +97,23 @@ function Terms() {
         </li>
       </ul>
 
-      <H2>Funding a record</H2>
+      <H2>Sponsoring a record</H2>
       <p>
-        You can pay a one-time fee to have a senator or representative whose record we haven’t checked yet added to Receipts. The payment
-        covers the cost of checking that record once. When it’s done, the record is free for everyone. The payment
-        doesn’t change what we find, and it doesn’t buy you any say over the result. It is a purchase of a service, not
-        a donation, and it is not tax-deductible. Stripe handles the payment. If you give a name at checkout, we show
-        it on the record as its funder once the record is live; we may leave out a name that isn’t fit to publish. We
-        email you when the record is ready. Refunds are covered in the{' '}
+        You can pay a one-time fee to sponsor the record of a senator or representative we haven’t checked yet. We
+        check their votes and the bills they’ve backed, and email you when the record is ready. If you give a name at
+        checkout, it appears on the record as its sponsor once the record is live; we may leave out a name that isn’t
+        fit to publish. Records on Receipts are public, so anyone can read a record you sponsor.
+      </p>
+      <p>
+        Sponsorship doesn’t change what we find, and it doesn’t buy you any say over the result. It is a purchase of a
+        service, not a donation, and it is not tax-deductible. Stripe handles the payment. Refunds are covered in the{' '}
         <Link href="/refunds">refund policy</Link>.
       </p>
 
       <H2>No warranty</H2>
       <p>
         The site is provided as is, without any warranty that it is complete, accurate or always available. To the
-        extent the law allows, Receipts is not liable for any loss that comes from relying on it. If you paid to fund a
+        extent the law allows, Receipts is not liable for any loss that comes from relying on it. If you sponsored a
         record, the most we owe you is a refund of what you paid.
       </p>
 
@@ -161,12 +163,12 @@ function Privacy() {
         address, user agent or tab ID with it. Feedback is read by a person, and it can’t change an answer by itself.
       </p>
 
-      <H2>When you fund a record</H2>
+      <H2>When you sponsor a record</H2>
       <p>
         Stripe takes the payment on its own page. We never see or store your card number. Stripe gives us your email,
         the amount, and the name you asked to be credited with, if you entered one. We use your email to tell you when
         the record is live, to send a refund if one is owed, and to answer questions about your payment. We don’t add
-        you to a mailing list. If you gave a name, it is shown publicly on the record as its funder once the record is
+        you to a mailing list. If you gave a name, it is shown publicly on the record as its sponsor once the record is
         live. Leave it blank and you won’t be named.
       </p>
 
@@ -201,13 +203,14 @@ function Refunds() {
   return (
     <>
       <p>
-        This covers the one-time payment ({price}) to have a member of Congress’s record checked and added to Receipts.
+        This covers the one-time payment ({price}) to sponsor a member of Congress’s record on Receipts.
       </p>
 
       <H2>What you’re paying for</H2>
       <p>
-        We check the member’s votes and sponsored bills, review them by hand, and publish the record so anyone can
-        check it for free. The payment doesn’t affect what the record shows. It is not a donation and is not
+        We check the member’s votes and the bills they’ve backed, review them by hand, publish the record with your
+        name on it as sponsor if you gave one, and email you when it’s ready. Sponsorship doesn’t affect what the record
+        shows. It is not a donation and is not
         tax-deductible.
       </p>
 
@@ -218,7 +221,7 @@ function Refunds() {
           refund you in full without being asked.
         </li>
         <li>
-          <span className="font-semibold text-ink">Someone else already paid for the same member.</span> If two
+          <span className="font-semibold text-ink">Someone else already sponsored the same member.</span> If two
           payments arrive for one record, the later one is refunded in full.
         </li>
         <li>
