@@ -184,13 +184,19 @@ Order: Ossoff (41 of his statements can be reused from the backup), Collins, Sul
 
 #### Funded members
 
-A reader can pay once (default $20) to have a senator who is not checked yet added. The record then goes live for everyone. The code is in `packages/server/src/funding/`, the table is `app.member_funding` (migration 018), and it is off unless `ENABLE_FUNDING` and the Stripe keys are set. A payment writes one row and nothing else. It does not set `in_scope`.
+**Test and live on one server.** A checkout from the production site uses Stripe's live keys; one from a Vercel preview link or localhost uses the test keys. Every row is labelled (`livemode`, migration 022), so test runs on previews never show on the live site and never need cleaning up. To test: open the PR's Vercel preview, sponsor a member with card 4242 4242 4242 4242, and check that the row has `livemode = false`.
+
+Readers see this as **"Sponsor this record"** (option A, agreed 2026-10-16): the pitch is what the sponsor gets, which is the record checked in time, their name on it and an email, never "free for everyone". The code, tables and env vars keep the name "funding", because "sponsorship" already means bill sponsorships here.
+
+A reader can pay once (default $20) to have a member who is not checked yet added, senator or House member. The promise is live within 7 days (`FUNDING_SLA_DAYS`) or a full refund. Anyone can also press "Request this record" for free. The record then goes live for everyone. The code is in `packages/server/src/funding/`, the table is `app.member_funding` (migration 018), and it is off unless `ENABLE_FUNDING` and the Stripe keys are set. A payment writes one row and nothing else. It does not set `in_scope`.
 
 1. Every morning, list open rows as postgres: `select member_id, display_name, paid_at, refund_due_at from app.member_funding where status in ('paid', 'processing') order by refund_due_at;`
 2. A funded member goes ahead of the order above. Set their rows to `processing` and run the checklist.
-3. When you set `live`, set their rows to `live` with `live_at = now()`.
+3. When you set `live`, look at each row's `display_name` (it is shown publicly) and clear it if it isn't fit to publish. Then set the rows to `live` with `live_at = now()`. The go-live email workflow (n8n `v2: Go-live email to funders`, qD0HXugzwbnTmcem, daily 8am, from Gmail account 2) sends the payer "it's live" once and sets `notified_at`. It needs migration 019. Its Dry Run webhook, run in test mode, lists who would be emailed and sends nothing.
 4. A row still not live at `refund_due_at` is refunded in the Stripe dashboard, then set to `refunded` with `refunded_at = now()`.
 5. If two readers paid for the same member in the same minute, refund the second one.
+
+House funding is open, but the query tool reads Senate members only, so a funded House member also needs Phase 5's House work before they can go live.
 
 `app.member_requests` holds the free requests (a reader asked about someone who isn't live), so free and paid demand can be compared.
 

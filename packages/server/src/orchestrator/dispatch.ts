@@ -392,6 +392,12 @@ async function interpretPromise(
     }
   }
 
+  // The reader's own words say it was a promise ("promised to protect tribal
+  // sovereignty"). Matt, 17 Oct: answer it as one. It stays the READER'S
+  // premise (provenance 'asserted'): the card says "You said … promised" and
+  // that we checked what they did, not that the promise was made.
+  if (!userAssertedPremise && READER_PROMISE_WORDING.test(session.promiseText)) userAssertedPremise = true;
+
   const primary_issue = String(input.primary_issue ?? '').trim();
   const sub_issue = String(input.sub_issue ?? '').trim();
   const isEvaluable = input.is_evaluable !== false;
@@ -415,8 +421,8 @@ async function interpretPromise(
 
   const interpretation: Interpretation = {
     raw: session.promiseText,
-    // Free-typed text until a provenance lookup or a user assertion says
-    // otherwise. Never inferred from the wording.
+    // Free-typed text is a position unless the reader asserts a promise, by
+    // the corrections panel or in their own words (READER_PROMISE_WORDING).
     statement_type: userAssertedPremise ? 'Campaign Promise' : 'Policy Position',
     // 'asserted' — the premise is the USER's, not evidence we hold. This value
     // is what every downstream surface keys the attribution off.
@@ -1773,7 +1779,7 @@ async function evaluateEffectsOnce(
     // The bucket above is internal. What the reader is told depends on the
     // statement type, and the explainer has to know which words it may use.
     statement_type: session.interpretation.statement_type,
-    vocabulary: vocabularyFor(session.interpretation.statement_type),
+    vocabulary: vocabularyFor(session.interpretation.statement_type, session.interpretation.provenance),
     band: scored.band,
     mode: scored.mode,
     nd_reason: scored.nd_reason,
@@ -1900,11 +1906,22 @@ export function usesPromiseVerdict(text: string): boolean {
   );
 }
 
+/**
+ * Promise wording in the reader's own text: "promised to …", "pledged",
+ * "vowed". "Did she promise …?" counts too: it asks about a promise.
+ */
+export const READER_PROMISE_WORDING = /\b(promised|promises|promise to|pledged|pledges|pledge to|vowed|vows|vow to)\b/i;
+
 /** The words the explanation must use for this statement type. */
-function vocabularyFor(statementType: string): string {
-  return statementType === 'Policy Position'
-    ? 'This is a stated POSITION, not a campaign promise. Say the record is "consistent with" or ' +
-        '"runs counter to" the position. NEVER write kept, broke or broken — nobody promised anything.'
+function vocabularyFor(statementType: string, provenance?: string): string {
+  if (statementType === 'Policy Position') {
+    return 'This is a stated POSITION, not a campaign promise. Say the record is "consistent with" or ' +
+      '"runs counter to" the position. NEVER write kept, broke or broken — nobody promised anything.';
+  }
+  return provenance === 'asserted'
+    ? 'The reader says this was a promise. Kept / broke vocabulary applies, about the promise as the reader ' +
+        'put it ("the record shows evidence they kept this promise"). We have not confirmed the promise was ' +
+        'made: never state that the senator made it, and never call it their campaign promise.'
     : 'This is a campaign promise. Kept / broke vocabulary applies.';
 }
 
@@ -1944,6 +1961,31 @@ export function affirmsDirection(text: string): boolean {
     lastNegated = true;
   }
   return false;
+}
+
+/**
+ * An asserted promise is the reader's claim (provenance 'asserted'). The
+ * explanation may say the record shows evidence they kept or broke "this
+ * promise", and may report the reader's words ("You said Thune promised …"),
+ * but it must never state as fact that the senator made it: "Thune promised",
+ * "his promise", "their campaign pledge". Exported for tests.
+ */
+export function assertedPromiseProblems(text: string, surname = ''): string[] {
+  const who = ['he', 'she', 'they', 'the senator', ...(surname ? [surname.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')] : [])];
+  const made = new RegExp(`\\b(${who.join('|')})\\s+(had\\s+|has\\s+)?(promised|pledged|vowed)\\b`, 'i');
+  const owned = /\b(his|her|their)\s+(own\s+)?(campaign\s+)?(promise|pledge|vow)s?\b/i;
+  const problems: string[] = [];
+  for (const sentence of text.split(/(?<=[.!?])\s+/)) {
+    // Reporting the reader's own words is attribution, not a claim.
+    if (/\b(you (said|told us|asked|indicated|typed)|the reader)\b/i.test(sentence)) continue;
+    const m = made.exec(sentence) ?? owned.exec(sentence);
+    if (m) {
+      problems.push(
+        `remove "${m[0]}": the reader says this was a promise and we have not confirmed it was made. Write "this promise", or "You said … promised", never that the senator promised it`,
+      );
+    }
+  }
+  return problems;
 }
 
 export function explanationProblems(
@@ -2106,9 +2148,14 @@ async function explainResult(
   }
 
   const record = session.inputKind === 'RECORD_QUESTION';
-  const problems = record
-    ? recordExplanationProblems(why, session.promiseText, true)
-    : explanationProblems(why, session.scored.verdict, session.interpretation?.statement_type ?? 'Campaign Promise');
+  const asserted = session.interpretation?.provenance === 'asserted';
+  const surname = String(session.senator?.name ?? '').split(/\s+/).pop() ?? '';
+  const problems = [
+    ...(record
+      ? recordExplanationProblems(why, session.promiseText, true)
+      : explanationProblems(why, session.scored.verdict, session.interpretation?.statement_type ?? 'Campaign Promise')),
+    ...(asserted ? assertedPromiseProblems(why, surname) : []),
+  ];
   if (problems.length) {
     // GATE: the wording checks. A rejected draft is sent back for another
     // turn, and the UI only ever sees the one that passed — so without this
@@ -2135,6 +2182,7 @@ async function explainResult(
       ...(record
         ? recordExplanationProblems(cardSummary, session.promiseText)
         : explanationProblems(cardSummary, session.scored.verdict, session.interpretation?.statement_type ?? 'Campaign Promise')),
+      ...(asserted ? assertedPromiseProblems(cardSummary, surname) : []),
       ...figuresNotGiven(cardSummary, session.scored.evidence, session.gated?.length ?? 0).map(
         (n) => `the figure ${n} is not in the result; use only the vote counts and figures it gives you`,
       ),

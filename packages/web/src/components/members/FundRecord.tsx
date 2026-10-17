@@ -2,16 +2,21 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { apiUrl } from '../../lib/api.js';
 
 // ===========================================================================
-// "Fund this record": a reader pays once to have a not-yet-checked senator
-// added, for everyone. Shown only when the server says funding is on.
+// "Sponsor this record": a reader pays once to have a not-yet-checked member's
+// record checked, and is named on it as its sponsor. Shown only when the
+// server says funding is on. ("Funding" is the internal name: "sponsorship"
+// already means bill sponsorships in the pipeline.)
 //
-// The copy carries three promises and must keep all of them: the money pays
-// for the work, never a finding; live by a date or a full refund; and it is
-// not a donation (not tax-deductible).
+// The pitch is what the sponsor gets, never "free for everyone": the record
+// checked within the promised days or a full refund; their name on it as
+// sponsor; an email when it's ready. It must also keep: sponsorship never
+// changes a finding, and it is not a donation (not tax-deductible).
 // ===========================================================================
 
 export interface FundingStatus {
   enabled: boolean;
+  /** 'test' on preview links: payments use Stripe test mode and move no money. */
+  mode?: 'live' | 'test';
   price_cents?: number;
   currency?: string;
   sla_days?: number;
@@ -21,12 +26,24 @@ export interface FundingStatus {
 }
 
 const OFF: FundingStatus = { enabled: false };
+
+/**
+ * Which site this is, so the server can pick Stripe's live or test keys. Sent
+ * explicitly because a same-origin GET carries no Origin header.
+ */
+function originHeaders(): Record<string, string> {
+  try {
+    return { 'X-Receipts-Origin': window.location.origin };
+  } catch {
+    return {};
+  }
+}
 const FundingContext = createContext<FundingStatus>(OFF);
 
 export function FundingProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<FundingStatus>(OFF);
   useEffect(() => {
-    fetch(apiUrl('/api/fund/status'))
+    fetch(apiUrl('/api/fund/status'), { headers: originHeaders() })
       .then((r) => r.json())
       // Off still carries credits: a funded record keeps its thank-you.
       .then((d: FundingStatus) => setStatus(d?.enabled ? d : { enabled: false, credits: d?.credits ?? [] }))
@@ -57,21 +74,28 @@ export function formatDay(isoDay: string): string {
 }
 
 /**
- * The button, or the "already funded" line, for one senator who is not
- * checked yet. Renders nothing when funding is off.
+ * What a reader can do about a member who is not checked yet: the "already
+ * funded" line; or fund it (when funding is on) and request it for free.
+ * The free request shows even with funding off, so no card is a dead end.
  */
 export function FundRecord({ memberId, name }: { memberId: string; name: string }) {
   const status = useFundingStatus();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (!status.enabled || !status.price_cents) return null;
-
   const funded = status.funded?.find((f) => f.member_id === memberId);
   if (funded) {
     return (
       <p className="mt-2 text-[15px] leading-snug text-ink" data-funded="true">
-        Funded by a reader. Live for everyone by {formatDay(funded.live_by)}.
+        Sponsored by a reader. Being checked now, ready by {formatDay(funded.live_by)}.
       </p>
+    );
+  }
+
+  if (!status.enabled || !status.price_cents) {
+    return (
+      <div className="mt-3">
+        <RequestRecord memberId={memberId} name={name} />
+      </div>
     );
   }
 
@@ -82,7 +106,7 @@ export function FundRecord({ memberId, name }: { memberId: string; name: string 
     try {
       const r = await fetch(apiUrl('/api/fund/checkout'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...originHeaders() },
         body: JSON.stringify({ memberId }),
       });
       const d = await r.json();
@@ -103,20 +127,100 @@ export function FundRecord({ memberId, name }: { memberId: string; name: string 
         type="button"
         onClick={start}
         disabled={busy}
-        aria-label={`Fund ${name}’s record, ${price}`}
+        aria-label={`Sponsor ${name}’s record, ${price}`}
         className="inline-flex min-h-[44px] items-center justify-center rounded-card border border-ink bg-card px-4 text-[15px] font-semibold text-ink transition-colors duration-150 hover:bg-paper disabled:border-rule disabled:text-ink-soft"
       >
-        {busy ? 'Opening payment…' : `Fund this record — ${price}`}
+        {busy ? 'Opening payment…' : `Sponsor this record — ${price}`}
       </button>
       <p className="text-[14px] leading-snug text-ink-soft">
-        Covers what it costs us to check this record, once. When it’s done it’s free for everyone, and
-        we’ll email you to come and check it. Add a name at checkout and we’ll credit you on the record.
-        Live within {status.sla_days} days or a full refund. Paying never changes what we find. Not a
+        We’ll check {name}’s votes and the bills they’ve backed since 2023 and email you the moment it’s
+        ready: within {status.sla_days} days, or your money back. Your name goes on the record as its
+        sponsor, or leave it blank to stay anonymous. Sponsorship never changes what we find. Not a
         tax-deductible donation.
       </p>
+      {status.mode === 'test' ? (
+        <p className="text-[13px] leading-snug text-ink-soft" data-test-mode="true">
+          Test mode: no real charge. Pay with card 4242 4242 4242 4242, any future date and any CVC.
+        </p>
+      ) : null}
       {error ? (
         <p className="text-[14px] leading-snug text-broken" role="alert">
           {error}
+        </p>
+      ) : null}
+      <RequestRecord memberId={memberId} name={name} secondary />
+    </div>
+  );
+}
+
+const REQUESTED_KEY = 'receipts.requested';
+
+/** Ids this browser has already requested. A convenience only: storage may be missing. */
+function requestedHere(): string[] {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(REQUESTED_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberRequested(memberId: string) {
+  try {
+    window.localStorage.setItem(REQUESTED_KEY, JSON.stringify([...new Set([...requestedHere(), memberId])].slice(-100)));
+  } catch {
+    /* Not remembered; the server still counted it. */
+  }
+}
+
+/**
+ * "Request this record": free, no email, no account. Counted in
+ * app.member_requests beside paid funding, so we can see who people want.
+ */
+export function RequestRecord({ memberId, name, secondary = false }: { memberId: string; name: string; secondary?: boolean }) {
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>(() =>
+    requestedHere().includes(memberId) ? 'done' : 'idle',
+  );
+  if (state === 'done') {
+    return (
+      <p className="text-[14px] leading-snug text-ink" role="status">
+        Request sent. The members people ask about most are checked first.
+      </p>
+    );
+  }
+  const send = async () => {
+    setState('busy');
+    try {
+      const r = await fetch(apiUrl('/api/members/request'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...originHeaders() },
+        body: JSON.stringify({ memberId }),
+      });
+      if (!r.ok) throw new Error(String(r.status));
+      rememberRequested(memberId);
+      setState('done');
+    } catch {
+      setState('error');
+    }
+  };
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        onClick={send}
+        disabled={state === 'busy'}
+        aria-label={`Request ${name}’s record for free`}
+        className={
+          secondary
+            ? 'min-h-[44px] text-[15px] font-medium text-focus underline underline-offset-4 disabled:text-ink-soft'
+            : 'inline-flex min-h-[44px] items-center justify-center rounded-card border border-ink bg-card px-4 text-[15px] font-semibold text-ink transition-colors duration-150 hover:bg-paper disabled:border-rule disabled:text-ink-soft'
+        }
+      >
+        {state === 'busy' ? 'Sending…' : secondary ? 'Or request it for free' : 'Request this record'}
+      </button>
+      {state === 'error' ? (
+        <p className="text-[14px] leading-snug text-broken" role="alert">
+          That didn’t go through. Please try again.
         </p>
       ) : null}
     </div>
@@ -128,11 +232,10 @@ export function FundedThanks({ memberName, onClose }: { memberName: string | nul
   const status = useFundingStatus();
   return (
     <div role="status" className="mx-auto mt-4 max-w-[720px] rounded-card border border-rule bg-card px-5 py-4 shadow-soft">
-      <p className="text-[17px] font-semibold text-ink">Thank you, your payment went through.</p>
+      <p className="text-[17px] font-semibold text-ink">Thank you for sponsoring {memberName ? `${memberName}’s record` : 'this record'}.</p>
       <p className="mt-1 text-[15px] leading-relaxed text-ink-soft">
-        We’ll check {memberName ?? 'this senator'}’s record and make it free for everyone
-        {status.sla_days ? ` within ${status.sla_days} days` : ''}, and email you when it’s ready to check.
-        If we don’t, you get a full refund. Stripe has emailed your receipt.
+        We’re checking it now and will email you when it’s ready
+        {status.sla_days ? `, within ${status.sla_days} days` : ''}, or you get a full refund.
       </p>
       <button type="button" onClick={onClose} className="mt-2 text-[15px] font-medium text-ink underline underline-offset-2">
         Close
@@ -141,14 +244,14 @@ export function FundedThanks({ memberName, onClose }: { memberName: string | nul
   );
 }
 
-/** "Record funded by …" for a live record whose payer gave a name. Nothing otherwise. */
+/** "Sponsored by …" for a live record whose sponsor gave a name. Nothing otherwise. */
 export function FunderCredit({ memberId, className = '' }: { memberId: string; className?: string }) {
   const names = (useFundingStatus().credits ?? []).filter((c) => c.member_id === memberId).map((c) => c.name);
   if (!names.length) return null;
   return (
     // A span, not a p: it sits inside the cards' own <p> and <button>.
     <span className={`block text-[14px] leading-snug text-ink-soft ${className}`} data-funder-credit="true">
-      Record funded by <span className="font-medium text-ink">{names.join(', ')}</span>
+      Sponsored by <span className="font-medium text-ink">{names.join(', ')}</span>
     </span>
   );
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import Stripe from 'stripe';
-import { createCheckout, fundingCredits, fundingStatus, handleWebhook, CREDIT_FIELD, type FundingDeps, type StripeLike } from './funding.js';
+import { createCheckout, fundingCredits, fundingStatus, handleWebhook, modeForOrigin, testReturnUrl, CREDIT_FIELD, type FundingDeps, type StripeLike } from './funding.js';
 import { MemoryFundingStore, type FundableMember } from './FundingStore.js';
 
 // ===========================================================================
@@ -44,6 +44,7 @@ function deps(store = new MemoryFundingStore(MEMBERS)) {
     store,
     stripe,
     settings: { priceCents: 2000, currency: 'usd', slaDays: 14, returnUrl: 'https://receipts.example', webhookSecret: SECRET },
+    livemode: false,
   };
   return { d, store, created };
 }
@@ -52,6 +53,7 @@ function paidEvent(overrides: Partial<Record<string, unknown>> = {}, type = 'che
   return JSON.stringify({
     id: 'evt_1',
     object: 'event',
+    livemode: false,
     type,
     created: Date.UTC(2026, 9, 15) / 1000,
     data: {
@@ -82,12 +84,11 @@ describe('createCheckout', () => {
     expect(created[0]!.line_items![0]!.price_data!.unit_amount).toBe(2000);
     expect(created[0]!.success_url).toBe('https://receipts.example/?funded=S001198&session_id={CHECKOUT_SESSION_ID}');
     // The promise and the not-a-donation line travel onto Stripe's own page.
-    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/14 days, or a full refund\..*Not tax-deductible/);
+    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/within 14 days, or a full refund\..*sponsor.*Not tax-deductible/);
   });
 
   it.each([
     ['O000174', 409, /already checked/],
-    ['L000599', 409, /senators only/],
     ['G000359', 409, /no longer in office/],
     ['X000000', 404, /on file/],
     ['not-an-id', 400, /not a member id/],
@@ -102,14 +103,24 @@ describe('createCheckout', () => {
     expect(created).toHaveLength(0);
   });
 
-  it('refuses a member someone has already funded', async () => {
+  it('refuses a member who already has a sponsor', async () => {
     const { d, store, created } = deps();
-    await handleWebhook(paidEvent(), sign(paidEvent()), d);
+    await handleWebhook(paidEvent(), sign(paidEvent()), { live: null, test: d });
     expect(store.rows).toHaveLength(1);
     const out = await createCheckout('S001198', d);
     expect(out.ok).toBe(false);
-    if (!out.ok) expect(out.message).toMatch(/already funded/);
+    if (!out.ok) expect(out.message).toMatch(/already has a sponsor/);
     expect(created).toHaveLength(0);
+  });
+});
+
+describe('createCheckout for the House', () => {
+  it('opens a session for a House member who is not live', async () => {
+    const { d, created } = deps();
+    const out = await createCheckout('L000599', d);
+    expect(out.ok).toBe(true);
+    expect(created[0]!.metadata).toEqual({ member_id: 'L000599' });
+    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/Michael Lawler’s votes/);
   });
 });
 
@@ -117,7 +128,7 @@ describe('handleWebhook', () => {
   it('records a paid session once, with the promised date and the trimmed credit name', async () => {
     const { d, store } = deps();
     const body = paidEvent();
-    const out = await handleWebhook(Buffer.from(body), sign(body), d);
+    const out = await handleWebhook(Buffer.from(body), sign(body), { live: null, test: d });
     expect(out).toEqual({ status: 200, body: { recorded: true } });
     expect(store.rows).toEqual([
       {
@@ -128,6 +139,7 @@ describe('handleWebhook', () => {
         email: 'reader@example.com',
         display_name: 'A reader in Anchorage',
         refund_due_at: new Date(Date.UTC(2026, 9, 29)),
+        livemode: false,
       },
     ]);
   });
@@ -135,8 +147,8 @@ describe('handleWebhook', () => {
   it('writes nothing more when Stripe retries the same event', async () => {
     const { d, store } = deps();
     const body = paidEvent();
-    await handleWebhook(body, sign(body), d);
-    const again = await handleWebhook(body, sign(body), d);
+    await handleWebhook(body, sign(body), { live: null, test: d });
+    const again = await handleWebhook(body, sign(body), { live: null, test: d });
     expect(again).toEqual({ status: 200, body: { recorded: false } });
     expect(store.rows).toHaveLength(1);
   });
@@ -144,26 +156,26 @@ describe('handleWebhook', () => {
   it('refuses a body that is unsigned, signed with another secret, or altered after signing', async () => {
     const { d, store } = deps();
     const body = paidEvent();
-    expect((await handleWebhook(body, undefined, d)).status).toBe(400);
-    expect((await handleWebhook(body, sign(body, 'whsec_someone_else'), d)).status).toBe(400);
+    expect((await handleWebhook(body, undefined, { live: null, test: d })).status).toBe(400);
+    expect((await handleWebhook(body, sign(body, 'whsec_someone_else'), { live: null, test: d })).status).toBe(400);
     const altered = body.replace('S001198', 'C001035');
-    expect((await handleWebhook(altered, sign(body), d)).status).toBe(400);
+    expect((await handleWebhook(altered, sign(body), { live: null, test: d })).status).toBe(400);
     expect(store.rows).toHaveLength(0);
   });
 
   it('ignores an unpaid session and an event for something else', async () => {
     const { d, store } = deps();
     const unpaid = paidEvent({ payment_status: 'unpaid' });
-    expect((await handleWebhook(unpaid, sign(unpaid), d)).body).toEqual({ ignored: 'checkout.session.completed' });
+    expect((await handleWebhook(unpaid, sign(unpaid), { live: null, test: d })).body).toEqual({ ignored: 'checkout.session.completed' });
     const noMember = paidEvent({ metadata: {} });
-    expect((await handleWebhook(noMember, sign(noMember), d)).body).toEqual({ ignored: 'no member_id' });
+    expect((await handleWebhook(noMember, sign(noMember), { live: null, test: d })).body).toEqual({ ignored: 'no member_id' });
     expect(store.rows).toHaveLength(0);
   });
 
   it('records a delayed payment when it succeeds', async () => {
     const { d, store } = deps();
     const body = paidEvent({ payment_status: 'unpaid' }, 'checkout.session.async_payment_succeeded');
-    expect((await handleWebhook(body, sign(body), d)).status).toBe(200);
+    expect((await handleWebhook(body, sign(body), { live: null, test: d })).status).toBe(200);
     expect(store.rows).toHaveLength(1);
   });
 
@@ -174,7 +186,7 @@ describe('handleWebhook', () => {
     };
     const { d } = deps(store);
     const body = paidEvent();
-    expect((await handleWebhook(body, sign(body), d)).status).toBe(500);
+    expect((await handleWebhook(body, sign(body), { live: null, test: d })).status).toBe(500);
   });
 });
 
@@ -182,9 +194,10 @@ describe('fundingStatus', () => {
   it('lists funded members with the day they are promised by', async () => {
     const { d } = deps();
     const body = paidEvent();
-    await handleWebhook(body, sign(body), d);
+    await handleWebhook(body, sign(body), { live: null, test: d });
     expect(await fundingStatus(d)).toEqual({
       enabled: true,
+      mode: 'test',
       credits: [],
       price_cents: 2000,
       currency: 'usd',
@@ -198,7 +211,7 @@ describe('funder credits', () => {
   it('lists only names an operator has set live', async () => {
     const { d, store } = deps();
     const body = paidEvent();
-    await handleWebhook(body, sign(body), d);
+    await handleWebhook(body, sign(body), { live: null, test: d });
     // Paid but not live: a name given at checkout is not shown yet.
     expect((await fundingStatus(d)).credits).toEqual([]);
     store.live.push({ member_id: 'S001198', name: 'A reader in Anchorage' });
@@ -210,16 +223,111 @@ describe('funder credits', () => {
     store.credits = async () => {
       throw new Error('permission denied for table member_funding');
     };
-    expect(await fundingCredits(store)).toEqual([]);
+    expect(await fundingCredits(store, false)).toEqual([]);
     expect((await fundingStatus(deps(store).d)).credits).toEqual([]);
   });
 
-  it('asks at checkout for a PUBLIC name, and says we will email', async () => {
+  it('asks at checkout for a sponsor name, and says we will email', async () => {
     const { d, created } = deps();
     await createCheckout('S001198', d);
     const field = created[0]!.custom_fields![0]!;
-    expect(field.label.custom).toMatch(/publicly/);
+    expect(field.label.custom).toMatch(/sponsor/);
     expect(field.optional).toBe(true);
-    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/email you when it's live/);
+    expect(created[0]!.line_items![0]!.price_data!.product_data!.description).toMatch(/email you when it’s ready/);
   });
 });
+
+// ===========================================================================
+// Test and live on one server. The live site must never show a test
+// sponsorship, and a test signature must never record a live one.
+// ===========================================================================
+
+const LIVE_SECRET = 'whsec_live_secret';
+
+function twoModes() {
+  const store = new MemoryFundingStore(MEMBERS);
+  const test = deps(store).d;
+  const live: FundingDeps = { ...test, livemode: true, settings: { ...test.settings, webhookSecret: LIVE_SECRET } };
+  return { store, test, live, modes: { live, test } };
+}
+
+const withMode = (body: string, livemode: boolean) => body.replace('"livemode":false', `"livemode":${livemode}`);
+
+describe('which mode a request is in', () => {
+  const LIVE = ['receipts-eight-tau.vercel.app'];
+  it('only a listed production host is live', () => {
+    expect(modeForOrigin('https://receipts-eight-tau.vercel.app', LIVE)).toBe('live');
+    expect(modeForOrigin('https://receipts-git-feat-x-litsaber.vercel.app', LIVE)).toBe('test');
+    expect(modeForOrigin('http://localhost:5173', LIVE)).toBe('test');
+  });
+  it('no origin, or a malformed one, is test (the harmless side)', () => {
+    expect(modeForOrigin(null, LIVE)).toBe('test');
+    expect(modeForOrigin('not a url', LIVE)).toBe('test');
+    expect(modeForOrigin('https://receipts-eight-tau.vercel.app', [])).toBe('test');
+  });
+  it('a test payer goes back to the preview they came from, never to an arbitrary site', () => {
+    const fallback = 'https://receipts-eight-tau.vercel.app';
+    expect(testReturnUrl('https://receipts-git-feat-x-litsaber.vercel.app', fallback)).toBe('https://receipts-git-feat-x-litsaber.vercel.app');
+    expect(testReturnUrl('http://localhost:5173', fallback)).toBe('http://localhost:5173');
+    expect(testReturnUrl('https://evil.example', fallback)).toBe(fallback);
+    expect(testReturnUrl('http://receipts.vercel.app', fallback)).toBe(fallback);
+  });
+});
+
+describe('the webhook with both modes', () => {
+  it('labels a test payment test and a live payment live', async () => {
+    const { store, modes } = twoModes();
+    const t = paidEvent();
+    expect((await handleWebhook(t, sign(t), modes)).status).toBe(200);
+    const l = withMode(paidEvent({ id: 'cs_live_1' }), true);
+    expect((await handleWebhook(l, sign(l, LIVE_SECRET), modes)).status).toBe(200);
+    expect(store.rows.map((r) => [r.stripe_session_id, r.livemode])).toEqual([['cs_test_1', false], ['cs_live_1', true]]);
+  });
+
+  it('refuses an event whose mode does not match the secret that signed it', async () => {
+    const { store, modes } = twoModes();
+    const liveClaim = withMode(paidEvent(), true);
+    expect((await handleWebhook(liveClaim, sign(liveClaim), modes)).status).toBe(400);
+    expect(store.rows).toHaveLength(0);
+  });
+
+  it('with only test keys, a live-signed event does not verify', async () => {
+    const { store, test } = twoModes();
+    const l = withMode(paidEvent(), true);
+    expect((await handleWebhook(l, sign(l, LIVE_SECRET), { live: null, test })).status).toBe(400);
+    expect(store.rows).toHaveLength(0);
+  });
+});
+
+describe('each site sees only its own mode', () => {
+  it('a test sponsorship shows on previews, never on the live site', async () => {
+    const { modes, test, live } = twoModes();
+    const t = paidEvent();
+    await handleWebhook(t, sign(t), modes);
+    expect((await fundingStatus(test)).funded.map((f) => f.member_id)).toEqual(['S001198']);
+    expect((await fundingStatus(live)).funded).toEqual([]);
+    expect((await fundingStatus(live)).mode).toBe('live');
+  });
+
+  it('a test sponsorship does not block a real one for the same member', async () => {
+    const { modes, live, test } = twoModes();
+    const t = paidEvent();
+    await handleWebhook(t, sign(t), modes);
+    expect((await createCheckout('S001198', test)).ok).toBe(false);
+    expect((await createCheckout('S001198', live)).ok).toBe(true);
+  });
+
+  it('credits follow the mode too', async () => {
+    const { store, live, test } = twoModes();
+    store.live.push({ member_id: 'S001198', name: 'Tester' }, { member_id: 'S001198', name: 'Real Sponsor', livemode: true });
+    expect((await fundingStatus(live)).credits).toEqual([{ member_id: 'S001198', name: 'Real Sponsor' }]);
+    expect((await fundingStatus(test)).credits).toEqual([{ member_id: 'S001198', name: 'Tester' }]);
+  });
+
+  it('a test checkout returns to the preview it came from', async () => {
+    const { d, created } = deps();
+    await createCheckout('S001198', d, 'https://receipts-git-x-litsaber.vercel.app');
+    expect(created[0]!.success_url).toMatch(/^https:\/\/receipts-git-x-litsaber\.vercel\.app\/\?funded=S001198/);
+  });
+});
+

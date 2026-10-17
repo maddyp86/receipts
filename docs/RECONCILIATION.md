@@ -922,7 +922,7 @@ that PR: its `insert` names an explicit column list that predates scope, gates
 and the disclosure fields, so **the application computes all of it and the
 database silently drops it**. An unlisted field is not an error.
 
-`docs/supabase-migration-003-v7-fields.sql` closes the database half:
+`docs/migrations/supabase-migration-003-v7-fields.sql` closes the database half:
 
 - **8 scope columns on `app_queries`.** The pipeline stores these per statement
   on `Evaluable Statements`; the query tool has no statements table because the
@@ -1923,7 +1923,7 @@ banner asserts something false and money is spent. Not reached by any deploy
 today (Render infers both modes from keys); flagged because it is the copy
 defect class that matters most here.
 
-**Only Matthew can do:** run `docs/supabase-migration-009-query-trace-log.sql`
+**Only Matthew can do:** run `docs/migrations/supabase-migration-009-query-trace-log.sql`
 as `postgres`.
 
 ## 2026-09-20 — the explanation prompt diverges from WF11 `Build Prompt`, deliberately

@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Migration 002 — the query trace: matches, non-matches, and alignments
 --
--- Run in the Supabase SQL editor as `postgres`, AFTER docs/supabase-schema.sql.
+-- Run in the Supabase SQL editor as `postgres`, AFTER docs/migrations/supabase-schema.sql.
 -- Idempotent: safe to re-run. Purely additive — no existing table is altered.
 --
 -- WHY. app_queries stored the frozen result and nothing else, so a run that

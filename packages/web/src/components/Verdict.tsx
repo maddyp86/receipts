@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -12,6 +12,8 @@ import {
   ANSWER_REASON_COPY,
   BAND_LEVEL,
   BAND_REASON_COPY,
+  assertedPromiseLine,
+  billCitation,
   confidencePhrase,
   ND_NO_REASON_COPY,
   ND_REASON_COPY,
@@ -27,6 +29,7 @@ import {
   searchFunnel,
   searchSummarySentence,
   verdictWord,
+  type DirectedAction,
   type QueryResult,
 } from '@receipts/shared';
 import { EvidenceCard } from './EvidenceCard.js';
@@ -72,8 +75,9 @@ export const EVIDENCE_ANCHOR = 'the-bills';
 
 /** Promise wording only where the headline uses it — the rule `evidenceTallySentence` applies. */
 function usesPromiseVocabulary(result: QueryResult): boolean {
-  const { statement_type, provenance } = result.interpretation;
-  return statement_type !== 'Policy Position' && provenance !== 'asserted';
+  // Any promise, the reader's (asserted) included: the card says whose it is
+  // (assertedPromiseLine).
+  return result.interpretation.statement_type !== 'Policy Position';
 }
 
 /**
@@ -268,57 +272,113 @@ function feedbackContext({ result, traceId, feedbackAvailable, feedbackPrompts }
 
 /**
  * How the bills about the question count, as a bar with its legend. Not a
- * score: one block per bill, so a reader sees the weight of the evidence at a
- * glance. Bills set aside (read as neither way, or closed by a rule before
- * weighing) are drawn hatched, so the bar adds up to the "about your
- * question" count beside it.
+ * score: one segment per bill, in the legend's order, so a reader sees the
+ * weight of the evidence at a glance and the bar adds up to the "about your
+ * question" count beside it. Tapping a segment (or hovering, on a desktop)
+ * says which bill it is and how it was read.
+ *
+ * Two greys, because they are two different things (Matt, 17 Oct): a bill
+ * read and found not to be about this ("not about this", solid) and one we
+ * closed by a rule before weighing it ("set aside", hatched).
  */
-function TallyBar({ result, promise }: { result: QueryResult; promise: boolean }) {
-  const { keeps, breaks, setAside } = counts(result);
-  const words = promise
-    ? { keeps: 'toward keeping it', breaks: 'toward breaking it' }
-    : { keeps: 'consistent', breaks: 'counter' };
-  const segments = [
-    { key: 'keeps', n: keeps, cls: 'bg-kept' },
-    { key: 'breaks', n: breaks, cls: 'bg-broken' },
-    { key: 'aside', n: setAside, cls: 'tally-aside bg-rule' },
-  ].filter((x) => x.n > 0);
-  const legend = [
-    `${keeps} ${words.keeps}`,
-    `${breaks} ${words.breaks}`,
-    ...(setAside ? [`${setAside} set aside`] : []),
-  ];
-  return (
-    <div className="tally">
-      <div className="mt-3 flex h-2.5 gap-1" role="img" aria-label={legend.join(', ')}>
-        {segments.map((x) =>
-          Array.from({ length: x.n }).map((_, i) => (
-            <span
-              key={`${x.key}-${i}`}
-              className={`h-full flex-1 rounded-full ${x.cls}`}
-              style={x.key === 'aside' ? { backgroundImage: 'repeating-linear-gradient(135deg, transparent 0 3px, rgba(255,255,255,.65) 3px 6px)' } : undefined}
-            />
-          )),
-        )}
-      </div>
-      <p className="tally-legend mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-soft" aria-hidden="true">
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-kept" />{legend[0]}</span>
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-broken" />{legend[1]}</span>
-        {setAside ? (
-          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-rule" />{legend[2]}</span>
-        ) : null}
-      </p>
-    </div>
-  );
+const HATCH = { backgroundImage: 'repeating-linear-gradient(135deg, transparent 0 3px, rgba(255,255,255,.65) 3px 6px)' };
+
+type Segment = { key: string; kind: 'keeps' | 'breaks' | 'neutral' | 'aside'; label: string; title: string };
+
+function whatTheyDid(e: DirectedAction): string {
+  if (e.is_sponsor) return 'Sponsored';
+  if (e.is_cosponsor) return 'Cosponsored';
+  const v = [e.passage_vote, e.cloture_vote, e.vote].find((x) => x && x !== 'NA');
+  return v ? `Voted ${v}` : 'Acted on it';
 }
 
-/** Counted (a direction), and set aside (read as neither way, or gated before weighing). */
-function counts(result: QueryResult) {
+function tallySegments(result: QueryResult, promise: boolean): Segment[] {
+  const meaning = {
+    keeps: promise ? 'Counts toward keeping it' : 'Counts as consistent',
+    breaks: promise ? 'Counts toward breaking it' : 'Counts as running counter',
+    neutral: 'Not about this, so not counted',
+  };
+  const cite = (id: string) => billCitation(id) ?? id;
   const ev = result.scored.evidence;
-  const keeps = ev.filter((e) => e.direction === 'keeps').length;
-  const breaks = ev.filter((e) => e.direction === 'breaks').length;
-  const setAside = ev.filter((e) => e.direction === 'neutral').length + (result.gated?.length ?? 0);
-  return { keeps, breaks, counted: keeps + breaks, setAside };
+  const of = (d: DirectedAction['direction'], kind: Segment['kind']) =>
+    ev
+      .filter((e) => e.direction === d)
+      .map((e) => ({
+        key: e.action_uid,
+        kind,
+        label: `${cite(e.bill_id)} · ${whatTheyDid(e)} · ${meaning[kind as keyof typeof meaning]}`,
+        title: e.title,
+      }));
+  return [
+    ...of('keeps', 'keeps'),
+    ...of('breaks', 'breaks'),
+    ...of('neutral', 'neutral'),
+    ...(result.gated ?? []).map((g) => ({
+      key: g.action_uid,
+      kind: 'aside' as const,
+      label: `${cite(g.bill_id)} · Set aside: ${g.reason.split(/(?<=\.)\s/)[0]}`,
+      title: g.title,
+    })),
+  ];
+}
+
+const SEGMENT_STYLE: Record<Segment['kind'], { cls: string; style?: CSSProperties }> = {
+  keeps: { cls: 'bg-kept' },
+  breaks: { cls: 'bg-broken' },
+  neutral: { cls: 'bg-rule' },
+  aside: { cls: 'tally-aside bg-rule', style: HATCH },
+};
+
+function TallyBar({ result, promise }: { result: QueryResult; promise: boolean }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const segments = tallySegments(result, promise);
+  const n = (k: Segment['kind']) => segments.filter((x) => x.kind === k).length;
+  const words = promise ? { keeps: 'toward keeping it', breaks: 'toward breaking it' } : { keeps: 'consistent', breaks: 'counter' };
+  const legend: Array<{ kind: Segment['kind']; text: string }> = [
+    { kind: 'keeps', text: `${n('keeps')} ${words.keeps}` },
+    { kind: 'breaks', text: `${n('breaks')} ${words.breaks}` },
+    ...(n('neutral') ? [{ kind: 'neutral' as const, text: `${n('neutral')} not about this` }] : []),
+    ...(n('aside') ? [{ kind: 'aside' as const, text: `${n('aside')} set aside` }] : []),
+  ];
+  const shown = segments.find((x) => x.key === open);
+  return (
+    <div className="tally">
+      <div className="mt-3 flex gap-1" role="group" aria-label={`${legend.map((l) => l.text).join(', ')}. Choose a segment to see its bill.`}>
+        {segments.map((x) => (
+          <button
+            key={x.key}
+            type="button"
+            title={`${x.label}. ${x.title}`}
+            aria-label={x.label}
+            aria-pressed={open === x.key}
+            onClick={() => setOpen(open === x.key ? null : x.key)}
+            className="group flex h-6 flex-1 items-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          >
+            <span
+              className={`h-2.5 w-full rounded-full ${SEGMENT_STYLE[x.kind].cls} ${open === x.key ? 'ring-2 ring-ink ring-offset-1' : 'group-hover:opacity-80'}`}
+              style={SEGMENT_STYLE[x.kind].style}
+            />
+          </button>
+        ))}
+      </div>
+      <p className="tally-legend mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-soft" aria-hidden="true">
+        {legend.map((l) => (
+          <span key={l.kind} className="inline-flex items-center gap-1.5">
+            <span className={`h-2.5 w-2.5 rounded-full ${SEGMENT_STYLE[l.kind].cls}`} style={SEGMENT_STYLE[l.kind].style} />
+            {l.text}
+          </span>
+        ))}
+        <span className="text-ink-faint">Tap a segment to see its bill</span>
+      </p>
+      {shown ? (
+        <p className="tally-detail mt-2 rounded-card border border-rule bg-card px-3 py-2 text-[14px] leading-snug text-ink" aria-live="polite">
+          <span className="font-medium">{shown.label}</span>
+          <br />
+          <span className="text-ink-soft">{shown.title}</span>
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 /** The verdict card: headline, the count, the reason, and what the answer rests on. */
@@ -474,6 +534,12 @@ export function VerdictCard(props: VerdictProps) {
         {/* Styled from styles.css by its class alone: the tests read the
             headline out of the markup by this exact tag. */}
         <h2 className="verdict-label">{headlineParts(result)[0]}</h2>
+        {/* The reader's promise, said to be theirs, before anything leans on it. */}
+        {assertedPromiseLine(result) ? (
+          <p className="asserted-premise mt-1.5 text-[17px] leading-snug text-ink" data-share-include="true">
+            {assertedPromiseLine(result)}
+          </p>
+        ) : null}
         {headlineParts(result)[1] ? (
           <p className="verdict-confidence mt-1.5 text-[17px] leading-snug text-ink">{headlineParts(result)[1]}</p>
         ) : null}

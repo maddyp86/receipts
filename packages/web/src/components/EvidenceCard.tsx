@@ -345,28 +345,52 @@ function shortDate(iso: string | null): string | null {
   });
 }
 
-/** The bill's path, left to right. The senator's own act is the filled dot. */
+/**
+ * The bill's path, left to right. The senator's own act is the filled dot.
+ * Dots are evenly spaced across the full width: the first step sits flush
+ * left, the last flush right, and each middle step is centred on its dot.
+ * The grid has two columns per gap, so a middle step spans the two columns
+ * either side of its dot.
+ */
 function BillPath({ steps, surname }: { steps: PathStep[]; surname: string }) {
+  const gaps = Math.max(steps.length - 1, 1);
   return (
     <section aria-label="The bill’s path" className="bill-path mt-4">
       <h4 className="text-[14px] font-medium text-ink-soft">The bill’s path</h4>
-      <ol className="mt-2 flex overflow-x-auto pb-1">
-        {steps.map((st, i) => (
-          <li key={`${st.label}-${i}`} className="relative min-w-[118px] flex-1 pr-3 pt-5 text-[13px] leading-snug text-ink-soft" data-senator={st.senator ? 'true' : undefined}>
-            {i < steps.length - 1 ? <span className="absolute left-[7px] right-0 top-[9px] h-0.5 bg-rule" aria-hidden="true" /> : null}
-            <span
-              className={`absolute left-0 top-[3px] h-[14px] w-[14px] rounded-full border-2 ${
-                st.senator ? 'border-ink bg-ink' : st.outcome ? 'border-ink-soft bg-card' : 'border-rule bg-card'
-              }`}
-              aria-hidden="true"
-            />
-            <span className="block font-medium text-ink">{st.label}</span>
-            {shortDate(st.date) ? <span className="block">{shortDate(st.date)}</span> : null}
-            {st.senator ? <span className="block font-semibold text-ink">{surname}: {st.senator.act}</span> : null}
-            {st.note ? <span className="block">{st.note}</span> : null}
-          </li>
-        ))}
-      </ol>
+      <div className="mt-2 overflow-x-auto pb-1">
+        <ol
+          className="relative grid"
+          style={{ gridTemplateColumns: `repeat(${gaps * 2}, minmax(0, 1fr))`, minWidth: `${steps.length * 88}px` }}
+        >
+          {steps.length > 1 ? <span className="absolute left-[7px] right-[7px] top-[9px] h-0.5 bg-rule" aria-hidden="true" /> : null}
+          {steps.map((st, i) => {
+            const first = i === 0;
+            const last = i === steps.length - 1 && !first;
+            const place = first ? 'text-left' : last ? 'text-right' : 'px-2 text-center';
+            const dot = first ? 'left-0' : last ? 'right-0' : 'left-1/2 -translate-x-1/2';
+            const gridColumn = first ? '1 / span 1' : last ? `${gaps * 2} / span 1` : `${i * 2} / span 2`;
+            return (
+              <li
+                key={`${st.label}-${i}`}
+                className={`relative pt-5 text-[13px] leading-snug text-ink-soft ${place}`}
+                style={{ gridColumn, gridRow: 1 }}
+                data-senator={st.senator ? 'true' : undefined}
+              >
+                <span
+                  className={`absolute top-[3px] h-[14px] w-[14px] rounded-full border-2 ${dot} ${
+                    st.senator ? 'border-ink bg-ink' : st.outcome ? 'border-ink-soft bg-card' : 'border-rule bg-card'
+                  }`}
+                  aria-hidden="true"
+                />
+                <span className="block font-medium text-ink">{st.label}</span>
+                {shortDate(st.date) ? <span className="block">{shortDate(st.date)}</span> : null}
+                {st.senator ? <span className="block font-semibold text-ink">{surname}: {st.senator.act}</span> : null}
+                {st.note ? <span className="block">{st.note}</span> : null}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
     </section>
   );
 }
@@ -551,23 +575,11 @@ export function EvidenceCard({
           ) : null}
         </div>
 
-        <div className="mt-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <button
-            type="button"
-            aria-expanded={open}
-            aria-controls={panelId}
-            onClick={() => setOpen((v) => !v)}
-            className="inline-flex min-h-[44px] flex-1 items-center justify-between gap-2 rounded-lg border border-rule bg-paper px-3.5 text-[16px] font-medium text-ink transition-colors duration-150 hover:border-ink sm:mr-4"
-          >
-            What this bill does
-            <ChevronDownIcon
-              className={`h-4 w-4 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-              aria-hidden="true"
-            />
-          </button>
+        {/* Link first, then the drop-down: the panel opens from the bottom of the card. */}
+        <div className="mt-4 flex flex-col gap-2">
           {action.source_url ? (
             <a
-              className="source inline-flex min-h-[44px] items-center gap-1.5 text-[16px] font-medium text-focus underline underline-offset-4"
+              className="source inline-flex self-start min-h-[44px] items-center gap-1.5 text-[16px] font-medium text-focus underline underline-offset-4"
               href={action.source_url}
               target="_blank"
               rel="noreferrer noopener"
@@ -578,6 +590,19 @@ export function EvidenceCard({
           ) : (
             <p className="text-[15px] font-medium text-ink">No source link available for this action.</p>
           )}
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={panelId}
+            onClick={() => setOpen((v) => !v)}
+            className="inline-flex min-h-[44px] w-full items-center justify-between gap-2 rounded-lg border border-rule bg-paper px-3.5 text-[16px] font-medium text-ink transition-colors duration-150 hover:border-ink"
+          >
+            What this bill does
+            <ChevronDownIcon
+              className={`h-4 w-4 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
+          </button>
         </div>
       </div>
 

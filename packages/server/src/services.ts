@@ -3,7 +3,7 @@ import { MemoryUsageCounter, SupabaseUsageCounter, type UsageCounter } from './d
 import { config } from './config.js';
 import Stripe from 'stripe';
 import { SupabaseFundingStore } from './funding/FundingStore.js';
-import type { FundingDeps } from './funding/funding.js';
+import type { FundingDeps, FundingModes } from './funding/funding.js';
 import type { ActionStore } from './data/ActionStore.js';
 import { FixtureActionStore } from './data/FixtureActionStore.js';
 import { SupabaseActionStore } from './data/SupabaseActionStore.js';
@@ -86,24 +86,30 @@ export function describeTraceSinks(): string {
   return `trace: ${parts.join(' + ')} · read back at /api/trace/:run_id`;
 }
 
-/**
- * Funding a member's record (funding/funding.ts). Null unless
- * ENABLE_FUNDING is on AND both Stripe values and DATABASE_URL are set;
- * the routes then answer "not available" and the button is not shown.
- */
 /** Read for funder credits whenever there is a database, so they outlast funding being switched off. */
 export const fundingStore = config.database.url ? new SupabaseFundingStore(config.database.url) : null;
 
-export const fundingDeps: FundingDeps | null = config.funding.enabled && fundingStore
-  ? {
-      store: fundingStore,
-      stripe: new Stripe(config.funding.stripeSecretKey),
-      settings: {
-        priceCents: config.funding.priceCents,
-        currency: config.funding.currency,
-        slaDays: config.funding.slaDays,
-        returnUrl: config.funding.returnUrl,
-        webhookSecret: config.funding.stripeWebhookSecret,
-      },
-    }
-  : null;
+function fundingMode(livemode: boolean): FundingDeps | null {
+  const keys = livemode ? config.funding.live : config.funding.test;
+  if (!config.funding.enabled || !fundingStore || !keys) return null;
+  return {
+    store: fundingStore,
+    stripe: new Stripe(keys.secretKey),
+    livemode,
+    settings: {
+      priceCents: config.funding.priceCents,
+      currency: config.funding.currency,
+      slaDays: config.funding.slaDays,
+      returnUrl: config.funding.returnUrl,
+      webhookSecret: keys.webhookSecret,
+    },
+  };
+}
+
+/**
+ * Sponsoring a member's record (funding/funding.ts), in up to two Stripe
+ * modes. A mode is null unless ENABLE_FUNDING is on, DATABASE_URL is set and
+ * that mode has both keys; requests from a site in that mode then see no
+ * button. Which mode a request is in: modeForOrigin.
+ */
+export const fundingModes: FundingModes = { live: fundingMode(true), test: fundingMode(false) };

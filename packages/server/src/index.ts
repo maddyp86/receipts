@@ -4,6 +4,7 @@ import type { StreamEvent } from '@receipts/shared';
 import { config, describeCredentials, describeMode, describeModels } from './config.js';
 import { senatorCache } from './data/SenatorCache.js';
 import { memberDirectory } from './data/MemberDirectory.js';
+import { queueStore } from './data/QueueStore.js';
 import { runQuery } from './orchestrator/loop.js';
 import { queryStore } from './services.js';
 import { describeTraceSinks, traceReader, traceSinks } from './services.js';
@@ -16,8 +17,8 @@ import { TAXONOMY_IS_COMPLETE } from './embeddings/taxonomy.js';
 import { feedbackLimiter, globalDailyCap, queryBurstLimiter, queryDailyLimiter, readOnlyLimiter, refundDailyCheck } from './rateLimit.js';
 import { feedbackStore, usageCounter } from './services.js';
 import { validateFeedback } from './data/FeedbackStore.js';
-import { fundingDeps, fundingStore } from './services.js';
-import { createCheckout, fundingCredits, fundingStatus, handleWebhook } from './funding/funding.js';
+import { fundingModes, fundingStore } from './services.js';
+import { createCheckout, fundingCredits, fundingStatus, handleWebhook, modeForOrigin, testReturnUrl } from './funding/funding.js';
 
 /** After the per-IP limiters: a request they refuse never spends the shared budget. */
 const globalCap = globalDailyCap(usageCounter, config.rateLimit.globalQueryPerDay);
@@ -33,7 +34,7 @@ const app = express();
 // A hop COUNT, never `true`: `true` trusts the whole X-Forwarded-For chain,
 // which a client can forge, letting an abuser mint a fresh bucket per request.
 // Verify the number against a real external address before trusting it; see
-// docs/rate-limiting-spec.md.
+// docs/specs/rate-limiting-spec.md.
 app.set('trust proxy', config.rateLimit.trustProxyHops);
 // An allowlist when one is configured; otherwise open, which is only ever
 // correct locally. See the startup warning below.
@@ -53,14 +54,39 @@ app.use(
 // Stripe's webhook, BEFORE the JSON parser: the signature is over the raw
 // bytes, and a re-serialised body never verifies. Before the read limiter too:
 // a retry storm from Stripe must not be answered with a 429 and lost.
+// One address for both Stripe modes: each mode's secret is tried, and the
+// event's own livemode must match the one that verified it.
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
-  if (!fundingDeps) {
+  if (!fundingModes.live && !fundingModes.test) {
     res.status(404).json({ error: 'Funding is not enabled.' });
     return;
   }
-  const out = await handleWebhook(req.body as Buffer, req.header('stripe-signature'), fundingDeps);
+  const out = await handleWebhook(req.body as Buffer, req.header('stripe-signature'), fundingModes);
   res.status(out.status).json(out.body);
 });
+
+/**
+ * The site the reader is on, for choosing a Stripe mode. Origin on a POST;
+ * the web app's own X-Receipts-Origin header, or the Referer, on a GET (a
+ * same-origin GET carries no Origin). Vercel's rewrite passes all three.
+ */
+function readerOrigin(req: express.Request): string | null {
+  const direct = req.header('origin') || req.header('x-receipts-origin');
+  if (direct) return direct;
+  const referer = req.header('referer');
+  if (!referer) return null;
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return null;
+  }
+}
+
+function fundingFor(req: express.Request) {
+  const origin = readerOrigin(req);
+  const mode = modeForOrigin(origin, config.funding.liveHosts);
+  return { origin, livemode: mode === 'live', deps: fundingModes[mode] };
+}
 
 app.use(express.json());
 
@@ -171,6 +197,29 @@ app.get('/api/senators', async (_req, res) => {
  * the picker's own rule, so listing someone never makes them checkable.
  * Empty without a database (demo, fixtures); the web then uses its roster.
  */
+/**
+ * A free request: "please check this member". Same signal as asking a
+ * question about an unchecked member (app.member_requests), sent from the
+ * card's button with no question attached (promise_text is empty).
+ */
+app.post('/api/members/request', feedbackLimiter, async (req, res) => {
+  const id = String((req.body ?? {}).memberId ?? '').trim();
+  const member = /^[A-Z]\d{6}$/.test(id) ? ((await memberDirectory.get(id)) ?? (await senatorCache.resolve(id))) : undefined;
+  if (!member) {
+    res.status(404).json({ error: { code: 'BAD_INPUT', message: 'We don’t have that member on file.', recoverable: false } });
+    return;
+  }
+  await queueStore.record({
+    politician_id: id,
+    senator_name: member.name,
+    promise_text: '',
+    requested_at: new Date().toISOString(),
+    // A request from a preview is a test, not demand.
+    livemode: fundingFor(req).livemode,
+  });
+  res.status(201).json({ ok: true });
+});
+
 app.get('/api/members', async (_req, res) => {
   const covered = new Set((await senatorCache.list()).map((s) => s.politician_id));
   res.json({ members: await memberDirectory.list(covered) });
@@ -257,14 +306,15 @@ app.post('/api/feedback', feedbackLimiter, async (req, res) => {
  * Funding a not-yet-checked senator's record (funding/funding.ts).
  * Status is cheap and always answers; checkout answers only when enabled.
  */
-app.get('/api/fund/status', async (_req, res) => {
-  if (!fundingDeps) {
+app.get('/api/fund/status', async (req, res) => {
+  const { deps, livemode } = fundingFor(req);
+  if (!deps) {
     // Credits stay up after funding is switched off: they were promised.
-    res.json({ enabled: false, credits: fundingStore ? await fundingCredits(fundingStore) : [] });
+    res.json({ enabled: false, credits: fundingStore ? await fundingCredits(fundingStore, livemode) : [] });
     return;
   }
   try {
-    res.json(await fundingStatus(fundingDeps));
+    res.json(await fundingStatus(deps));
   } catch (err) {
     // No label is better than a wrong one: say it is off rather than fail the picker.
     console.error('[funding] status:', err instanceof Error ? err.message : err);
@@ -273,12 +323,15 @@ app.get('/api/fund/status', async (_req, res) => {
 });
 
 app.post('/api/fund/checkout', feedbackLimiter, async (req, res) => {
-  if (!fundingDeps) {
+  const { deps, livemode, origin } = fundingFor(req);
+  if (!deps) {
     res.status(404).json({ error: { code: 'BAD_INPUT', message: 'Funding a record is not available.', recoverable: false } });
     return;
   }
   try {
-    const out = await createCheckout(String((req.body ?? {}).memberId ?? ''), fundingDeps);
+    // A live payer returns to the production site; a test payer to the preview they came from.
+    const returnTo = livemode ? undefined : testReturnUrl(origin, config.funding.returnUrl);
+    const out = await createCheckout(String((req.body ?? {}).memberId ?? ''), deps, returnTo);
     if (out.ok) {
       res.json({ url: out.url });
       return;
@@ -406,9 +459,11 @@ app.listen(config.port, () => {
         : 'IN MEMORY — resets on every restart; set DATABASE_URL to persist it'),
   );
   console.info(
-    fundingDeps
-      ? `  funding: ON · $${(config.funding.priceCents / 100).toFixed(2)} ${config.funding.currency} · live in ${config.funding.slaDays} days or refunded · returns to ${config.funding.returnUrl || '(no FUNDING_RETURN_URL or CORS_ORIGIN!)'}`
-      : '  funding: off (needs ENABLE_FUNDING, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET and DATABASE_URL)',
+    fundingModes.live || fundingModes.test
+      ? `  funding: live ${fundingModes.live ? 'ON' : 'off'} on [${config.funding.liveHosts.join(', ') || 'no live host!'}] · ` +
+          `test ${fundingModes.test ? 'ON' : 'off'} everywhere else · $${(config.funding.priceCents / 100).toFixed(2)} ${config.funding.currency} · ` +
+          `${config.funding.slaDays} days or refunded`
+      : '  funding: off (needs ENABLE_FUNDING, DATABASE_URL and a STRIPE_LIVE_* or STRIPE_TEST_* key pair)',
   );
   if (config.demoMode) {
     console.info('  DEMO MODE — interpretation and explanation are canned, and the UI says so.');

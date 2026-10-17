@@ -75,6 +75,11 @@ export class MemberDirectory {
     return (await this.current()).map((m) => ({ ...m, cached: coveredIds.has(m.politician_id) }));
   }
 
+  /** One serving member by id, or undefined. */
+  async get(memberId: string): Promise<Omit<DirectoryMember, 'cached'> | undefined> {
+    return (await this.current()).find((m) => m.politician_id === memberId);
+  }
+
   private async current(): Promise<Omit<DirectoryMember, 'cached'>[]> {
     if (!this.load) return [];
     if (!this.all || this.now() - this.loadedAt >= this.ttlMs) {
