@@ -52,6 +52,9 @@ export type TraceStage =
   /** "Which policy?" (cleanup/askWhich.ts): the model call, then the code's decision on it. */
   | 'WHICH_MODEL'
   | 'WHICH'
+  | 'INPUT_KIND_MODEL'
+  | 'INPUT_KIND'
+  | 'RECORD_ANSWER'
   | 'CLARIFY'
   | 'SCOPE_MODEL'
   | 'SCOPE_CLASSIFY'

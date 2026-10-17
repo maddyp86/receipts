@@ -335,8 +335,8 @@ export function HaltState({
           // The fallback, when no rewording was offered (input help off, or
           // nothing on the reader's topic could be suggested).
           <p>
-            Try it as a statement that takes a side, for example “supports expanding background checks” or “opposes
-            cuts to Social Security.”
+            Try asking about a specific policy, like “Did they vote to expand background checks?”, or say what they
+            stand for, like “opposes cuts to Social Security”.
           </p>
         )
       ) : null}
@@ -429,7 +429,7 @@ export function ClarifyState({
 }: {
   clarify: QueryClarify;
   /** Check the statement the reader picked. */
-  onPick: (statement: string) => void;
+  onPick: (statement: string, kind?: ClarifyOption['kind']) => void;
   onReset: () => void;
 }) {
   // "Which taxes?": several readings, each showing the exact statement it
@@ -446,14 +446,16 @@ export function ClarifyState({
         <div className="grid gap-3 pt-1">
           {clarify.options.map((o) => (
             <button
-              key={o.statement}
+              key={`${o.label}|${o.statement}`}
               type="button"
-              onClick={() => onPick(o.statement)}
+              onClick={() => onPick(o.statement, o.kind)}
               className="flex min-h-[64px] items-center justify-between gap-3 rounded-card border border-rule bg-card px-4 py-3 text-left shadow-soft transition-colors duration-150 hover:border-ink"
             >
               <span>
                 <span className="block text-[17px] font-medium text-ink">{o.label}</span>
-                <span className="mt-0.5 block text-[14px] leading-snug text-ink-soft">We’d check: “{o.statement}”</span>
+                {o.kind ? null : (
+                  <span className="mt-0.5 block text-[14px] leading-snug text-ink-soft">We’d check: “{o.statement}”</span>
+                )}
               </span>
               <ArrowRightIcon className="h-5 w-5 shrink-0 text-ink-soft" aria-hidden="true" />
             </button>

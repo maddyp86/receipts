@@ -41,7 +41,105 @@ export type StatementType = 'Campaign Promise' | 'Policy Position';
 export type ProvenanceSource =
   | 'default'    // free text, no evidence he said it — Policy Position
   | 'corpus'     // matched a tracked statement; type came from that row
-  | 'asserted';  // the user ticked "he promised this"; premise is theirs
+  | 'asserted'   // the user ticked "he promised this"; premise is theirs
+  | 'voter_question'; // the voter asked what the senator did; nothing is attributed to the senator
+
+/**
+ * What the voter typed, one level above `statement_type`.
+ *
+ * STATEMENT: a claim, promise or position attributed to the senator. Both of
+ * today's statement types (Campaign Promise, Policy Position) are this, and
+ * their path is unchanged.
+ * RECORD_QUESTION: a question about what the senator did or supports ("Did
+ * they vote to…", "Has she sponsored…", "Does he support…"). Answered from
+ * the record with a label, never graded as the senator's own words.
+ */
+export type InputKind = 'STATEMENT' | 'RECORD_QUESTION';
+
+/** How the voter's input kind was decided, for the trace. */
+export interface InputKindDecision {
+  kind: InputKind | 'UNCLEAR';
+  /** Which rule or the model decided: "rule:question_opener", "model", … */
+  decided_by: string;
+  /** The model's confidence, when the model decided. */
+  confidence?: number;
+  reason: string;
+}
+
+/** The answer to a record question. Deterministic; see scoring/answerLabel.ts. */
+export type AnswerLabel =
+  | 'VOTED_FOR'
+  | 'VOTED_AGAINST'
+  | 'MIXED_RECORD'
+  | 'SPONSORSHIP_ONLY'
+  | 'ONLY_BROAD_VOTES'
+  | 'NO_RECORDED_ACTION_FOUND';
+
+/** One vote or sponsorship read against what the question asked. */
+export type RecordReading = 'for' | 'against' | 'no_vote' | 'not_counted';
+
+export interface RecordRow {
+  action_uid: string;
+  bill_id: string;
+  /** Which act: the vote to end debate, the final vote, an untyped vote, or a sponsorship. */
+  stage: 'cloture' | 'passage' | 'vote' | 'sponsor' | 'cosponsor';
+  vote: 'YEA' | 'NAY' | 'NOT_VOTING' | null;
+  bill_effect: BillEffect;
+  reading: RecordReading;
+  /** A large package that covered much more than this. Never decides the label. */
+  broad: boolean;
+}
+
+/** The voter-facing answer lines (approved 15 Oct). */
+export const ANSWER_LABEL_COPY: Record<AnswerLabel, string> = {
+  VOTED_FOR: 'Voted for this.',
+  VOTED_AGAINST: 'Voted against this.',
+  MIXED_RECORD: 'Mixed record: voted both for and against.',
+  SPONSORSHIP_ONLY: 'Backed a bill on this, but no recorded vote.',
+  ONLY_BROAD_VOTES: 'Only voted on larger packages that included this.',
+  NO_RECORDED_ACTION_FOUND: 'No recorded vote or bill on this found.',
+};
+
+/** A second line under the label, where the label alone could mislead. */
+export const ANSWER_REASON_COPY: Partial<Record<RecordAnswer['reason'], string>> = {
+  NOTHING_COUNTED: 'We found bills on this, but none of them clearly does what you asked about. Each one is listed under Receipts with the reason.',
+  TOO_BROAD: 'This question is too broad to check against specific bills. Try naming a specific bill, program or policy.',
+  BROAD_ONLY: 'Each of those packages covered much more than this, so none says on its own how they stand on this piece.',
+  SPONSORSHIP: 'Putting their name on a bill is weaker evidence than a recorded vote.',
+  SPONSORSHIP_VOTE_SET_ASIDE: 'That vote is shown under Receipts but not counted.',
+};
+
+/**
+ * The answer's headline. SPONSORSHIP_ONLY normally says "no recorded vote",
+ * which is untrue when there was a vote and a rule set it aside (Schumer's
+ * procedural Nay as majority leader, cases 21, 23 and 28): Matt, 17 Oct.
+ */
+export function answerLabelLine(answer: Pick<RecordAnswer, 'label' | 'reason'>): string {
+  if (answer.reason === 'SPONSORSHIP_VOTE_SET_ASIDE') return 'Backed a bill on this. Their only vote on it was set aside.';
+  return ANSWER_LABEL_COPY[answer.label];
+}
+
+/** The line under that headline: why the vote was set aside, from the rule that did it. */
+export function answerReasonLine(answer: Pick<RecordAnswer, 'reason'>, gated: ReadonlyArray<{ action_uid: string; reason: string }> = []): string | null {
+  if (answer.reason === 'SPONSORSHIP_VOTE_SET_ASIDE') {
+    const vote = gated.find((g) => isVoteActionUid(g.action_uid));
+    const why = vote?.reason.split(/(?<=\.)\s/)[0]?.trim();
+    return `${why ? `${why} ` : ''}${ANSWER_REASON_COPY.SPONSORSHIP_VOTE_SET_ASIDE}`;
+  }
+  return ANSWER_REASON_COPY[answer.reason] ?? null;
+}
+
+/** A vote's action id; a sponsorship's is ACT-S-{bill}-{member}. */
+export const isVoteActionUid = (uid: string): boolean => !/^ACT-S-/i.test(uid);
+
+export interface RecordAnswer {
+  label: AnswerLabel;
+  /** Why the label is what it is; separates "nothing found" from "nothing counted". */
+  reason: 'VOTES' | 'SPONSORSHIP' | 'SPONSORSHIP_VOTE_SET_ASIDE' | 'BROAD_ONLY' | 'NOTHING_COUNTED' | 'NOTHING_FOUND' | 'TOO_BROAD';
+  rows: RecordRow[];
+  counted: { for: number; against: number };
+  set_aside: number;
+}
 
 /**
  * Everything the alignment table can return, including outcomes that are not
@@ -326,6 +424,11 @@ export interface Interpretation {
    */
   statement_type: StatementType;
   provenance: ProvenanceSource;
+  /**
+   * STATEMENT or RECORD_QUESTION. Absent on results stored before it existed,
+   * which were all statements.
+   */
+  input_kind?: InputKind;
   /** One-line neutral paraphrase shown back to the user. */
   restated: string;
   /** Fields the user corrected on this run, for the delta display. */
@@ -1339,6 +1442,12 @@ export interface QueryResult {
    */
   not_counted?: NotCountedAction[];
   /**
+   * The answer to a record question. Present only when
+   * `interpretation.input_kind` is RECORD_QUESTION; the page then shows this
+   * label and the bills, never a verdict or a confidence band.
+   */
+  record?: RecordAnswer;
+  /**
    * Set when this answer is a stored one, returned because the same senator
    * and question were asked again (answer reuse). The reader is told when it
    * was produced. Absent on a fresh answer.
@@ -1507,6 +1616,8 @@ export interface ClarifyOption {
   label: string;
   /** The statement to check if the reader picks it. */
   statement: string;
+  /** KIND_REQUIRED: which the reader means, sent back with the re-run so it is never asked again. */
+  kind?: InputKind;
 }
 
 /**
@@ -1519,10 +1630,11 @@ export interface QueryClarify {
   /**
    * SIDE_REQUIRED: a subject with no side ("which way?").
    * POLICY_REQUIRED: a side on a whole area several policies could mean
-   * ("which taxes?"). Either way nothing was checked, and each option is
-   * checked only if the reader picks it.
+   * ("which taxes?"). KIND_REQUIRED: we could not tell whether the reader is
+   * asking what the senator did or checking something they said. Either way
+   * nothing was checked, and each option is checked only if the reader picks it.
    */
-  reason: 'SIDE_REQUIRED' | 'POLICY_REQUIRED';
+  reason: 'SIDE_REQUIRED' | 'POLICY_REQUIRED' | 'KIND_REQUIRED';
   /** SIDE_REQUIRED: the neutral proposition both options are built from. POLICY_REQUIRED: the area, in the reader's words. */
   proposition: string;
   /** The question to the reader, e.g. "Which taxes do you mean?". */

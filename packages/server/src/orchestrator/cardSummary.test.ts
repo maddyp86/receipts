@@ -39,6 +39,13 @@ describe('figuresNotGiven', () => {
     expect(figuresNotGiven('About 52% voted Yea, a 3-vote margin.', [s3385])).toEqual(['52']);
   });
 
+  // Traces 174120ca and 7bf678bd: good drafts sent back for "through 2028"
+  // (the bill summary) and "July 24" (a date given).
+  it('accepts what the bill summary says and the day of a vote', () => {
+    const withSummary = { ...s3385, summary: 'The bill extends the enhanced credit through 2028, for incomes above 400% of the poverty line.' } as DirectedAction;
+    expect(figuresNotGiven('It would extend the credit through 2028, above 400% of the poverty line. The vote was on December 11.', [withSummary])).toEqual([]);
+  });
+
   it('allows small counts of bills', () => {
     expect(figuresNotGiven('We found 2 bills and set 1 aside.', [s3385], 1)).toEqual([]);
   });

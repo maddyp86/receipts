@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import type { GatedAction, QueryResult, ScoredResult } from '@receipts/shared';
+import type { GatedAction, QueryResult, RecordAnswer, ScoredResult } from '@receipts/shared';
 import { scoreMatches, type ScorableMatch } from '../scoring/score.js';
 import { checkCase, didNothingSentences, verdictTokens, type EvalCase } from './checks.js';
 import { classificationOf, whereIsBill } from './diagnose.js';
@@ -40,16 +40,35 @@ const base = (over: Partial<EvalCase>): EvalCase =>
   ({ id: 't', senator: 'X000001', statement: 'x', verdict: ['KEPT'], must_have: [], ...over });
 
 describe('the cases file', () => {
-  it('parses, and every case names a senator, a statement and an allowed verdict', () => {
+  it('parses, and every case names a senator, a statement and an allowed verdict or answer', () => {
     const file = fileURLToPath(new URL('../../../../docs/eval/cases.json', import.meta.url));
     const { cases } = JSON.parse(readFileSync(file, 'utf8')) as { cases: EvalCase[] };
-    expect(cases).toHaveLength(50);
+    expect(cases).toHaveLength(53);
     for (const c of cases) {
       expect(c.senator).toMatch(/^[A-Z]\d{6}$/);
       expect(c.statement.length).toBeGreaterThan(5);
-      expect(c.verdict.length).toBeGreaterThan(0);
+      if (c.mode === 'record') expect(c.answer?.length, c.id).toBeGreaterThan(0);
+      else expect(c.verdict.length, c.id).toBeGreaterThan(0);
     }
+    // Every question in the set is checked as one (29 converted, 3 added).
+    expect(cases.filter((c) => c.mode === 'record')).toHaveLength(32);
     expect(new Set(cases.map((c) => c.id)).size).toBe(cases.length);
+  });
+});
+
+describe('1. the answer label, for a record question', () => {
+  const answered = (label: RecordAnswer['label']) =>
+    result(score([row('a-1')]), { record: { label, reason: 'VOTES', rows: [], counted: { for: 1, against: 0 }, set_aside: 0 } });
+
+  it('passes on an allowed label and fails on another', () => {
+    const c = base({ mode: 'record', answer: ['VOTED_FOR'], verdict: [] });
+    expect(checkCase(c, answered('VOTED_FOR'), '').verdict.pass).toBe(true);
+    expect(checkCase(c, answered('VOTED_AGAINST'), '').verdict.pass).toBe(false);
+  });
+
+  it('fails a question answered as a statement, and a statement answered as a question', () => {
+    expect(checkCase(base({ mode: 'record', answer: ['VOTED_FOR'], verdict: [] }), result(score([row('a-1')])), '').verdict.detail[0]).toMatch(/no answer label/);
+    expect(checkCase(base({ verdict: ['KEPT'] }), answered('VOTED_FOR'), '').verdict.pass).toBe(false);
   });
 });
 

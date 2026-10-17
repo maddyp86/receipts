@@ -301,7 +301,7 @@ export class CleanupUnavailableError extends Error {
 }
 
 /** One small model call on the reader's text, recorded as `stage`. The member is never sent. */
-export function liveFetcher(system: string, version: string, stage: 'CLEANUP_MODEL' | 'SUGGEST_MODEL' | 'WHICH_MODEL', what: string): CleanupFetcher {
+export function liveFetcher(system: string, version: string, stage: 'CLEANUP_MODEL' | 'SUGGEST_MODEL' | 'WHICH_MODEL' | 'INPUT_KIND_MODEL', what: string): CleanupFetcher {
   return async (text) => {
     if (!config.anthropic.apiKey) throw new CleanupUnavailableError();
 

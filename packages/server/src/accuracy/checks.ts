@@ -1,4 +1,4 @@
-import { evidenceTallySentence, surnameOf, type Direction, type QueryResult } from '@receipts/shared';
+import { evidenceTallySentence, surnameOf, type AnswerLabel, type Direction, type QueryResult } from '@receipts/shared';
 
 // ===========================================================================
 // THE ACCURACY SET — the checks, pure.
@@ -44,6 +44,15 @@ export interface EvalCase {
    * substring). The harness then checks that statement, as the app does.
    */
   pick?: string;
+  /**
+   * 'record' for a question about the record ("Did they vote to…?"): it is
+   * answered with a label, not a verdict, so `answer` is checked in place of
+   * `verdict`. Absent means a statement.
+   */
+  mode?: 'statement' | 'record';
+  /** A record case: the answer label must be one of these. */
+  answer?: AnswerLabel[];
+  /** A statement case: the verdict must be one of these. Unused for a record case. */
   verdict: VerdictToken[];
   /** When the answer is NOT_DETERMINABLE, its reason must be one of these. */
   nd_reasons?: string[];
@@ -105,6 +114,7 @@ const publishedAfterReview = (r: QueryResult) =>
 
 /** The verdict as the report prints it. */
 export function verdictLabel(r: QueryResult): string {
+  if (r.record) return `RECORD · ${r.record.label} · ${r.record.reason}`;
   const s = r.scored;
   if (s.verdict === 'NOT_DETERMINABLE') {
     return `NOT_DETERMINABLE · ${s.nd_reason ?? 'no reason'}${r.judge ? ` · judge ${r.judge.disposition}` : ''}`;
@@ -156,11 +166,20 @@ export function checkCase(c: EvalCase, r: QueryResult, readerText: string): Case
     return 'not in evidence';
   };
 
-  // 1. VERDICT, plus band and count when the case sets them.
+  // 1. VERDICT (or, for a record question, the answer label), plus band and
+  // count when the case sets them. A record case answered as a statement
+  // fails here: that is the bug the mode exists for.
   const tokens = verdictTokens(r);
-  const verdictOk = c.verdict.some((v) => tokens.includes(v)) &&
-    (!c.nd_reasons || r.scored.verdict !== 'NOT_DETERMINABLE' || c.nd_reasons.includes(r.scored.nd_reason ?? ''));
-  const verdictDetail = [`got ${verdictLabel(r)}; allowed ${c.verdict.join(' | ')}`];
+  const record = c.mode === 'record';
+  const verdictOk = record
+    ? Boolean(r.record && (c.answer ?? []).includes(r.record.label))
+    : !r.record && c.verdict.some((v) => tokens.includes(v)) &&
+      (!c.nd_reasons || r.scored.verdict !== 'NOT_DETERMINABLE' || c.nd_reasons.includes(r.scored.nd_reason ?? ''));
+  const verdictDetail = [
+    record
+      ? `got ${r.record ? r.record.label : `no answer label (${verdictLabel(r)})`}; allowed ${(c.answer ?? []).join(' | ')}`
+      : `got ${verdictLabel(r)}; allowed ${c.verdict.join(' | ')}`,
+  ];
   const flags: string[] = [];
   let bandOk = true;
   if (c.band && r.scored.band !== c.band) {

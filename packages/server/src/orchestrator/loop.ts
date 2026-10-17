@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { clarifyFor, sanitizeReaderText, whichPolicyFor } from '@receipts/shared';
-import type { GatedAction, QueryResult, RewrittenEvent, StepId, StreamEvent, ToolError } from '@receipts/shared';
+import type { GatedAction, InputKind, InputKindDecision, QueryResult, RewrittenEvent, StepId, StreamEvent, ToolError } from '@receipts/shared';
 import { config } from '../config.js';
 import { dispatchTool, newSession, type QuerySession } from './dispatch.js';
 import { queryStore, traceSinks } from '../services.js';
@@ -19,6 +19,8 @@ import { derivePartialSubtype, describeExclusions } from '../evaluation/evidence
 import { classifyScope, haltForScope } from '../scope/classifyScope.js';
 import { cleanUpInput, needsCleanUp, suggestRewording } from '../cleanup/cleanUpInput.js';
 import { askWhichPolicy } from '../cleanup/askWhich.js';
+import { classifyInputKind } from '../cleanup/inputKind.js';
+import { runRecordQuestion } from './recordQuestion.js';
 import { asReaderQuestion } from '../scope/readerQuestion.js';
 import { describeCoverage } from '../scoring/coverage.js';
 import { buildNotCounted } from './notCounted.js';
@@ -244,6 +246,9 @@ export function finish(session: QuerySession, emit: Emit): boolean {
           exclusions: session.relevance ? describeExclusions(session.relevance.dropped) : [],
         }
       : undefined,
+    // A record question's answer: the label and every vote read against what
+    // was asked. The page shows this instead of a verdict.
+    ...(session.record ? { record: session.record } : {}),
     // The bills behind those exclusion counts, each with the check's reason.
     // Built here, after the near-miss second pass has had its say, so a bill
     // that pass admitted is evidence and not also "not counted". Attached only
@@ -274,8 +279,9 @@ export function finish(session: QuerySession, emit: Emit): boolean {
   traceStep({
     stage: 'RESULT',
     kind: 'control',
-    label:
-      `${result.scored.verdict}` +
+    label: result.record
+      ? `${result.record.label} · ${result.record.reason} (record question: no verdict shown or stored)`
+      : `${result.scored.verdict}` +
       (result.scored.band ? ` · ${result.scored.band}` : '') +
       (result.scored.nd_reason ? ` · ${result.scored.nd_reason}` : '') +
       (result.judge ? ` · judge ${result.judge.disposition}` : ''),
@@ -692,6 +698,9 @@ function buildMatches(session: QuerySession): StoredMatch[] {
 
 /** The admitted matches that went through fulfillment — the KEPT/BROKE half. */
 export function buildAlignments(session: QuerySession): StoredAlignment[] {
+  // A record question grades nothing, so it stores no kept/broke alignment:
+  // its answer is the label on the query row.
+  if (session.inputKind === 'RECORD_QUESTION') return [];
   const evidence = session.scored?.evidence ?? [];
   const fulfillment = session.fulfillment ?? {};
   const modelEffects = session.orchestratorEffects ?? {};
@@ -1180,6 +1189,8 @@ export async function runQuery(
     sessionKey?: string;
     /** The reader picked this statement from our options: check it as it stands, without asking again. */
     chosen?: boolean;
+    /** The reader told us which they meant, after we asked: never classified again. */
+    inputKind?: InputKind;
   } = {},
 ): Promise<void> {
   // ---- PER-SESSION REPLAY CACHE ------------------------------------------
@@ -1244,9 +1255,61 @@ export async function runQuery(
   // It has a short trace run of its own: the model call needs a trace to
   // record into, and the run below is created for the statement, not for what
   // was typed. The two are linked both ways (`cleanup_run_id`, `rewritten_from`).
+  // ---- WHAT THE VOTER TYPED (cleanup/inputKind.ts) --------------------------
+  //
+  // A question about what the senator did, or something the senator said? On
+  // the voter's own text, before any rewrite: a question must never be turned
+  // into a statement and graded as the senator's words (run 3bf66a32). Rules
+  // decide almost everything for free; the model only when they cannot, and
+  // when it is unsure too, the voter is asked. Its steps join the run that
+  // answers, like "which policy?".
+  let kindSteps: TraceStep[] = [];
+  let kindDecision: InputKindDecision = meta.inputKind
+    ? { kind: meta.inputKind, decided_by: 'reader', reason: 'the reader chose it when asked' }
+    : { kind: 'STATEMENT', decided_by: 'off', reason: 'record questions are switched off' };
+  if (config.features.recordQuestions && !meta.inputKind) {
+    const kindTrace = new QueryTrace(traceSinks, { politicianId, promiseText, meta: { ...traceMeta, input_kind: true } });
+    kindTrace.record({
+      stage: 'REQUEST', kind: 'control',
+      label: `input kind · "${promiseText.slice(0, 80)}${promiseText.length > 80 ? '…' : ''}"`,
+      input: { politician_id: politicianId, promise_text: promiseText, ...traceMeta },
+    });
+    kindDecision = await withTrace(kindTrace, () => classifyInputKind(promiseText));
+    kindTrace.record({
+      stage: 'INPUT_KIND', kind: 'deterministic',
+      label: `${kindDecision.kind} · decided by ${kindDecision.decided_by}${kindDecision.confidence !== undefined ? ` @ ${kindDecision.confidence}` : ''} · ${kindDecision.reason}`,
+      input: { text: promiseText },
+      output: kindDecision,
+    });
+    if (kindDecision.kind === 'UNCLEAR') {
+      // Ask, rather than guess which the voter meant. Nothing is checked.
+      const clarify = {
+        reason: 'KIND_REQUIRED' as const,
+        proposition: promiseText,
+        original: promiseText,
+        title: 'Are you asking what they did, or checking something they said?',
+        message: 'Pick one and we will check it.',
+        options: [
+          { label: 'What did they do?', statement: promiseText, kind: 'RECORD_QUESTION' as const },
+          { label: 'Check something they said', statement: promiseText, kind: 'STATEMENT' as const },
+        ],
+      };
+      const events: StreamEvent[] = [{ type: 'trace', run_id: kindTrace.runId }, { type: 'clarify', clarify }, { type: 'done' }];
+      kindTrace.record({ stage: 'CLARIFY', kind: 'control', label: 'asked whether this is a question or a statement — nothing was checked', output: clarify });
+      for (const event of events) emit(event);
+      resultCache.set(key, events);
+      await kindTrace.close('clarify');
+      return;
+    }
+    // Not closed, so never written on its own.
+    kindSteps = kindTrace.steps.filter((st) => st.stage !== 'REQUEST');
+  }
+  const isRecordQuestion = kindDecision.kind === 'RECORD_QUESTION';
+
   let rewritten: RewrittenEvent | null = null;
   let cleanupRunId: string | null = null;
-  if (config.features.queryCleanup && needsCleanUp(promiseText)) {
+  // Never for a record question: the rewrite turns a question into a statement.
+  if (config.features.queryCleanup && !isRecordQuestion && needsCleanUp(promiseText)) {
     const cleanupTrace = new QueryTrace(traceSinks, { politicianId, promiseText, meta: { ...traceMeta, cleanup: true } });
     cleanupRunId = cleanupTrace.runId;
     cleanupTrace.record({
@@ -1324,6 +1387,7 @@ export async function runQuery(
     // Not closed, so never written on its own.
     whichSteps = whichTrace.steps.filter((st) => st.stage !== 'REQUEST');
   }
+  whichSteps = [...kindSteps, ...whichSteps];
 
   // ---- ANSWER REUSE (data/AnswerCache.ts) -----------------------------------
   //
@@ -1333,7 +1397,7 @@ export async function runQuery(
   // version would serve an answer the data no longer supports. No version, no
   // reuse.
   const reuseKey = config.answerReuse.enabled
-    ? answerKey({ politicianId, promiseText, corrections, statementDate: meta.statementDate })
+    ? answerKey({ politicianId, promiseText, corrections, statementDate: meta.statementDate, inputKind: kindDecision.kind === 'RECORD_QUESTION' ? 'RECORD_QUESTION' : 'STATEMENT' })
     : null;
   let fingerprint: string | null = null;
   if (reuseKey) {
@@ -1357,6 +1421,7 @@ export async function runQuery(
   }
 
   const session = newSession(politicianId, promiseText, corrections, meta.statementDate);
+  if (isRecordQuestion) session.inputKind = 'RECORD_QUESTION';
   // Narration goes straight to the browser and is NOT recorded for replay: it
   // describes work being done, and a replayed answer did none.
   session.narrate = (note) => emit({ type: 'note', ...note });
@@ -1395,6 +1460,8 @@ export async function runQuery(
       corrections: corrections ?? null,
       statement_date: meta.statementDate ?? null,
       user_agent: meta.userAgent ?? null,
+      input_kind: kindDecision.kind,
+      input_kind_decided_by: kindDecision.decided_by,
       ...traceMeta,
     },
   });
@@ -1410,6 +1477,13 @@ export async function runQuery(
     }
 
     try {
+      // A record question has no statement to scope or score: its own fixed
+      // pipeline, which never calls the scope classifier.
+      if (isRecordQuestion) {
+        await runRecordQuestion(session, record, { runTool, finish });
+        return;
+      }
+
       // Before anything else — and before any model call that costs money.
       if (await classifyStatementScope(session, record)) return;
 
@@ -1437,7 +1511,7 @@ export async function runQuery(
           (e.type === 'halt' && e.halt.reason === 'NON_TESTABLE_SPEECH_ACT') ||
           (e.type === 'result' && e.result.scored.nd_reason === 'NOT_EVALUABLE'),
       );
-      if (config.features.queryCleanup && refused) {
+      if (config.features.queryCleanup && refused && !isRecordQuestion) {
         const suggestion = await suggestRewording(promiseText);
         if (suggestion.action === 'SUGGEST') record({ type: 'suggest', options: suggestion.options });
       }

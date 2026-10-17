@@ -113,11 +113,13 @@ describe('where it shows', () => {
 });
 
 describe('the question box', () => {
-  it('shows specific example statements, naming no senator', () => {
+  it('shows a specific question and specific statements, naming no senator', () => {
     const page = entry(false);
+    expect(page).toContain('What do you want to check about');
+    expect(page).toContain('Ask what they did');
+    expect(page).not.toContain('say it as a statement');
     expect(page).toContain('Be specific: name the policy, program or bill.');
-    expect(page).toContain('“promised to protect clean air standards from rollback”');
-    expect(page).toContain('“promised to require photo ID to vote” or “promised to classify fentanyl-related drugs as Schedule I”.');
+    expect(page).toContain('“Did they vote for the Laken Riley Act?”, “promised to protect clean air standards from rollback” or “supports expanding background checks”.');
     expect(page).not.toMatch(/Schumer|Thune/);
   });
 });

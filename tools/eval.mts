@@ -28,7 +28,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { evidenceTallySentence, type QueryResult, type StreamEvent } from '@receipts/shared';
+import { evidenceTallySentence, type InputKind, type QueryResult, type StreamEvent } from '@receipts/shared';
 
 (globalThis as { React?: unknown }).React = React;
 
@@ -130,8 +130,20 @@ for (const c of selected) {
   // Asked which policy (or which way)? Pick the case's option and check it, as
   // a reader clicking that button would: the picked statement, as it stands.
   let picked: string | null = null;
-  const asked = (events.find((e) => e.type === 'clarify') as { clarify?: { title?: string; options: Array<{ label: string; statement: string }> } } | undefined)?.clarify;
-  if (asked && c.pick) {
+  const asked = (events.find((e) => e.type === 'clarify') as { clarify?: { reason?: string; title?: string; options: Array<{ label: string; statement: string; kind?: InputKind }> } } | undefined)?.clarify;
+  // Asked whether it is a question or a statement? Answer as the case's mode
+  // says, as a reader would, and check that run.
+  if (asked?.reason === 'KIND_REQUIRED') {
+    const kind: InputKind = c.mode === 'record' ? 'RECORD_QUESTION' : 'STATEMENT';
+    const option = asked.options.find((o) => o.kind === kind);
+    picked = `${asked.title ?? 'asked'} → ${option?.label ?? 'no option'}`;
+    events.length = 0;
+    try {
+      await runQuery(c.senator, option?.statement ?? c.statement, (e) => events.push(e), undefined, { inputKind: kind });
+    } catch (err) {
+      events.push({ type: 'error', error: { code: 'INTERNAL', message: String(err), recoverable: false } } as StreamEvent);
+    }
+  } else if (asked && c.pick) {
     const option = asked.options.find((o) => o.label.toLowerCase().includes(c.pick!.toLowerCase()));
     if (option) {
       picked = `${asked.title ?? 'asked'} → ${option.label}`;
@@ -172,8 +184,8 @@ for (const c of selected) {
       : other?.type === 'halt'
         ? `HALT · ${(other as { halt: { reason: string; scope?: { speech_act?: string } } }).halt.reason} · ${(other as { halt: { scope?: { speech_act?: string } } }).halt.scope?.speech_act ?? '?'}`
         : `NO RESULT (${other ? other.type : 'nothing'})`,
-    band: result?.scored.band ?? '—',
-    count_line: result ? (evidenceTallySentence(result) ?? '—') : '—',
+    band: result && !result.record ? (result.scored.band ?? '—') : '—',
+    count_line: result && !result.record ? (evidenceTallySentence(result) ?? '—') : result?.record ? `${result.record.counted.for} for · ${result.record.counted.against} against · ${result.record.set_aside} set aside` : '—',
     classification,
     checked_as: (events.find((e) => e.type === 'rewritten') as { statement?: string } | undefined)?.statement ?? null,
     suggested: (events.find((e) => e.type === 'suggest') as { options?: Array<{ statement: string }> } | undefined)?.options?.map((o) => o.statement) ?? null,

@@ -31,16 +31,17 @@ export interface Topic {
 }
 
 /**
- * Helper text for the question box: what a checkable statement looks like.
+ * Helper text for the question box: what a checkable question or statement
+ * looks like (a question about the record, a promise, a position).
  * Specific on purpose — a broad one ("I support our veterans") is too broad to
  * hold against bills — and naming no senator, since the list grows. The old
  * placeholder, "lower prescription drug prices", pointed at a law from before
  * the record starts.
  */
 export const SPECIFIC_EXAMPLES = [
+  'Did they vote for the Laken Riley Act?',
   'promised to protect clean air standards from rollback',
-  'promised to require photo ID to vote',
-  'promised to classify fentanyl-related drugs as Schedule I',
+  'supports expanding background checks',
 ];
 
 export const topics: Topic[] = [
