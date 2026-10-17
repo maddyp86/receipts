@@ -67,6 +67,21 @@ describe('answerLabel', () => {
     expect(a.rows.find((r) => r.bill_id === 'cr')).toMatchObject({ broad: true, reading: 'against' });
   });
 
+  // Case 38: Schumer's Nay on H.R. 1 (the 2025 reconciliation law) alone
+  // answered "Voted against" expanding the child tax credit. Classed
+  // TARGETED by the gates; a broad package here.
+  it('a reconciliation law is a broad package and never decides alone', () => {
+    const hr1 = act({ bill_id: 'hr1-119', passage_vote: 'Nay', title: 'An act to provide for reconciliation pursuant to title II of H. Con. Res. 14.' });
+    const both = answerLabel([hr1, act({ bill_id: 's1393-119', is_cosponsor: true })], 1, 1);
+    expect(both).toMatchObject({ label: 'SPONSORSHIP_ONLY', reason: 'SPONSORSHIP_BROAD_VOTES' });
+    // Never "no recorded vote" or "only vote … set aside": the H.R. 1 Nay is a recorded vote.
+    expect(answerLabelLine(both)).toBe('Backed a bill on this. Their only votes on it were on larger packages.');
+    expect(answerLabelLine(both, [{ action_uid: 'ACT-hr7024-118-S000148' }])).toBe('Backed a bill on this. Their votes on it were on larger packages or set aside.');
+    expect(answerReasonLine(both, [{ action_uid: 'ACT-hr7024-118-S000148', reason: 'As majority leader, the senator voted no on ending debate. More.' }]))
+      .toBe('Each of those packages covered much more than this, so none says on its own how they stand on this piece. Another vote was set aside. As majority leader, the senator voted no on ending debate. That vote is shown under Receipts but not counted.');
+    expect(answerLabel([hr1])).toMatchObject({ label: 'ONLY_BROAD_VOTES' });
+  });
+
   it('only votes on broad packages: ONLY_BROAD_VOTES', () => {
     const a = answerLabel([act({ bill_class: 'BROAD_VEHICLE', cloture_vote: 'Nay', passage_vote: 'Nay' })]);
     expect(a.label).toBe('ONLY_BROAD_VOTES');

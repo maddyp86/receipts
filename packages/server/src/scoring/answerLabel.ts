@@ -24,7 +24,20 @@ export interface AnswerInput {
   is_cosponsor?: boolean | string | null;
   /** TARGETED, REVERSAL or BROAD_VEHICLE, from the pre-evaluator gates. */
   bill_class?: string | null;
+  /** The bill's title, to recognise a reconciliation law. */
+  title?: string | null;
 }
+
+/**
+ * A budget reconciliation law ("to provide for reconciliation pursuant to
+ * title II of H. Con. Res. 14": H.R. 1 and S. 2, 119th) spans many subjects,
+ * like an omnibus, so in a record answer it never decides the label alone:
+ * Schumer's Nay on H.R. 1 alone answered "Voted against" expanding the child
+ * tax credit (eval case 38, 17 Oct). Here only, not in the pre-evaluator
+ * gates: classing it BROAD_VEHICLE there makes the evaluator stop reading
+ * H.R. 1 as making the 2017 tax cuts permanent, a correct answer lost.
+ */
+export const RECONCILIATION_RE = /provide for reconciliation/i;
 
 const isTrue = (v: unknown) => v === true || /^(true|yes|1)$/i.test(String(v ?? ''));
 
@@ -62,7 +75,7 @@ export function rowsOf(a: AnswerInput): RecordRow[] {
   const effect = String(a.bill_effect ?? 'ERROR') as BillEffect;
   // A broad package (a stopgap funding bill, an omnibus) covered much more
   // than this provision. Shown, and never decides the label on its own.
-  const broad = String(a.bill_class ?? '').toUpperCase() === 'BROAD_VEHICLE';
+  const broad = String(a.bill_class ?? '').toUpperCase() === 'BROAD_VEHICLE' || RECONCILIATION_RE.test(String(a.title ?? ''));
   const base = { action_uid: a.action_uid, bill_id: a.bill_id, bill_effect: effect, broad };
   const out: RecordRow[] = [];
   const cloture = voteOf(a.cloture_vote);
@@ -110,7 +123,9 @@ export function answerLabel(actions: AnswerInput[], setAside = 0, votesSetAside 
     // "but no recorded vote" is untrue when there was one and a rule set it
     // aside (a leader's procedural Nay): the headline says so instead.
     label = 'SPONSORSHIP_ONLY';
-    reason = votesSetAside ? 'SPONSORSHIP_VOTE_SET_ASIDE' : 'SPONSORSHIP';
+    // "no recorded vote" must be true: a vote on a larger package, or one set
+    // aside by a rule, is still a recorded vote, and the headline says which.
+    reason = broadVotes.length ? 'SPONSORSHIP_BROAD_VOTES' : votesSetAside ? 'SPONSORSHIP_VOTE_SET_ASIDE' : 'SPONSORSHIP';
   } else if (broadVotes.length) {
     // The only votes were on large packages that included this. Each one is
     // worth showing, and none says on its own how they stand on this piece.

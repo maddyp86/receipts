@@ -473,7 +473,7 @@ function RecordCard(props: VerdictProps) {
       <div className="px-5 pb-5 pt-5 sm:px-6">
         <p className="text-[15px] text-ink-soft">What the record shows</p>
         <h2 className="verdict-label record-label" style={{ color: 'var(--ink, inherit)' }}>
-          {answerLabelLine(answer).replace(/\.$/, '')}
+          {answerLabelLine(answer, result.gated).replace(/\.$/, '')}
         </h2>
         {sub ? <p className="verdict-confidence mt-1.5 text-[17px] leading-snug text-ink">{sub}</p> : null}
         <p className="verdict-band mt-2 text-[16px] leading-snug text-ink-soft">
