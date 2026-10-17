@@ -47,6 +47,7 @@ function answerFor(session: QuerySession): RecordAnswer {
       is_sponsor: e.is_sponsor,
       is_cosponsor: e.is_cosponsor,
       bill_class: e.bill_class ?? null,
+      title: e.title ?? null,
     })),
     session.gated?.length ?? 0,
     (session.gated ?? []).filter((g) => isVoteActionUid(g.action_uid)).length,
@@ -61,7 +62,7 @@ export function recordFacts(session: QuerySession, answer: RecordAnswer): Record
     asked_about: session.interpretation?.restated ?? null,
     senator: session.senator?.name ?? null,
     answer_label: answer.label,
-    answer_line: answerLabelLine(answer),
+    answer_line: answerLabelLine(answer, session.gated ?? []),
     answer_reason: answer.reason,
     bills: [...new Set(answer.rows.map((r) => r.action_uid))].map((uid) => {
       const e = byUid.get(uid);
@@ -110,7 +111,7 @@ export function plainRecordExplanation(session: QuerySession, answer: RecordAnsw
   } else if (answer.reason === 'NOTHING_COUNTED') {
     lines.push(`We found bills on this, but none of them clearly does what you asked about. Each one is listed below with the reason.`);
   } else {
-    lines.push(`${answerLabelLine(answer)} The bills and each vote are listed below.`);
+    lines.push(`${answerLabelLine(answer, session.gated ?? [])} The bills and each vote are listed below.`);
   }
   return lines.join(' ');
 }

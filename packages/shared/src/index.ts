@@ -114,17 +114,29 @@ export const ANSWER_REASON_COPY: Partial<Record<RecordAnswer['reason'], string>>
  * which is untrue when there was a vote and a rule set it aside (Schumer's
  * procedural Nay as majority leader, cases 21, 23 and 28): Matt, 17 Oct.
  */
-export function answerLabelLine(answer: Pick<RecordAnswer, 'label' | 'reason'>): string {
+export function answerLabelLine(
+  answer: Pick<RecordAnswer, 'label' | 'reason'>,
+  gated: ReadonlyArray<{ action_uid: string }> = [],
+): string {
   if (answer.reason === 'SPONSORSHIP_VOTE_SET_ASIDE') return 'Backed a bill on this. Their only vote on it was set aside.';
+  if (answer.reason === 'SPONSORSHIP_BROAD_VOTES') {
+    return gated.some((g) => isVoteActionUid(g.action_uid))
+      ? 'Backed a bill on this. Their votes on it were on larger packages or set aside.'
+      : 'Backed a bill on this. Their only votes on it were on larger packages.';
+  }
   return ANSWER_LABEL_COPY[answer.label];
 }
 
 /** The line under that headline: why the vote was set aside, from the rule that did it. */
 export function answerReasonLine(answer: Pick<RecordAnswer, 'reason'>, gated: ReadonlyArray<{ action_uid: string; reason: string }> = []): string | null {
+  const vote = gated.find((g) => isVoteActionUid(g.action_uid));
+  const why = vote?.reason.split(/(?<=\.)\s/)[0]?.trim();
   if (answer.reason === 'SPONSORSHIP_VOTE_SET_ASIDE') {
-    const vote = gated.find((g) => isVoteActionUid(g.action_uid));
-    const why = vote?.reason.split(/(?<=\.)\s/)[0]?.trim();
     return `${why ? `${why} ` : ''}${ANSWER_REASON_COPY.SPONSORSHIP_VOTE_SET_ASIDE}`;
+  }
+  if (answer.reason === 'SPONSORSHIP_BROAD_VOTES') {
+    // The packages' line, and a vote set aside as well when there was one.
+    return `${ANSWER_REASON_COPY.BROAD_ONLY}${vote ? ` Another vote was set aside. ${why ? `${why} ` : ''}${ANSWER_REASON_COPY.SPONSORSHIP_VOTE_SET_ASIDE}` : ''}`;
   }
   return ANSWER_REASON_COPY[answer.reason] ?? null;
 }
@@ -135,7 +147,7 @@ export const isVoteActionUid = (uid: string): boolean => !/^ACT-S-/i.test(uid);
 export interface RecordAnswer {
   label: AnswerLabel;
   /** Why the label is what it is; separates "nothing found" from "nothing counted". */
-  reason: 'VOTES' | 'SPONSORSHIP' | 'SPONSORSHIP_VOTE_SET_ASIDE' | 'BROAD_ONLY' | 'NOTHING_COUNTED' | 'NOTHING_FOUND' | 'TOO_BROAD';
+  reason: 'VOTES' | 'SPONSORSHIP' | 'SPONSORSHIP_VOTE_SET_ASIDE' | 'SPONSORSHIP_BROAD_VOTES' | 'BROAD_ONLY' | 'NOTHING_COUNTED' | 'NOTHING_FOUND' | 'TOO_BROAD';
   rows: RecordRow[];
   counted: { for: number; against: number };
   set_aside: number;

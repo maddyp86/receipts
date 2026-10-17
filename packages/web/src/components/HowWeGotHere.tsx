@@ -116,7 +116,7 @@ export function HowWeGotHere({ result }: { result: QueryResult }) {
     steps.push({
       title: 'The answer',
       body:
-        `${answerLabelLine(r)} ` +
+        `${answerLabelLine(r, result.gated)} ` +
         `${plural(r.counted.for, 'vote')} read as for it and ${plural(r.counted.against, 'vote')} as against it.` +
         (answerReasonLine(r, result.gated) ? ` ${answerReasonLine(r, result.gated)}` : ''),
     });
