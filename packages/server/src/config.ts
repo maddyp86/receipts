@@ -72,6 +72,42 @@ const fixtureMode = fixtureOverride ?? (openaiKey === '' || databaseUrl === '');
  */
 export const RECORD_SCHEMA = 'compat';
 
+/** The production site, for live payments and for deciding which hosts are live. */
+function fundingReturnUrl(): string {
+  return (str(process.env.FUNDING_RETURN_URL) || str(process.env.CORS_ORIGIN).split(',')[0]?.trim() || '').replace(/\/+$/, '');
+}
+
+function liveHosts(): string[] {
+  const listed = str(process.env.FUNDING_LIVE_HOSTS)
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+  if (listed.length) return listed;
+  try {
+    const url = fundingReturnUrl();
+    return url ? [new URL(url).host.toLowerCase()] : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * One Stripe mode's keys, or null when that mode is not configured.
+ * STRIPE_LIVE_* / STRIPE_TEST_* win; the legacy pair fills whichever mode its
+ * secret key's prefix names.
+ */
+function stripePair(mode: 'live' | 'test'): { secretKey: string; webhookSecret: string } | null {
+  // Spelled out, not built from `mode`: config.env.test.ts reads names from this file.
+  let secretKey = str(mode === 'live' ? process.env.STRIPE_LIVE_SECRET_KEY : process.env.STRIPE_TEST_SECRET_KEY);
+  let webhookSecret = str(mode === 'live' ? process.env.STRIPE_LIVE_WEBHOOK_SECRET : process.env.STRIPE_TEST_WEBHOOK_SECRET);
+  const legacyKey = str(process.env.STRIPE_SECRET_KEY);
+  if (!secretKey && legacyKey.startsWith(`sk_${mode}_`)) {
+    secretKey = legacyKey;
+    webhookSecret ||= str(process.env.STRIPE_WEBHOOK_SECRET);
+  }
+  return secretKey && webhookSecret ? { secretKey, webhookSecret } : null;
+}
+
 export const config = {
   // API_PORT first, then the conventional PORT, then a default.
   //
@@ -423,30 +459,34 @@ export const config = {
   },
 
   /**
-   * Readers fund a not-yet-checked senator's record (funding/funding.ts).
+   * Readers sponsor a not-yet-checked member's record (funding/funding.ts).
    *
-   * OFF by default, and off whatever the flag says until both Stripe values
-   * and DATABASE_URL are set: a button that takes money with nowhere to record
-   * it is worse than no button. Migration 018 must have been run.
+   * TWO STRIPE MODES ON ONE SERVER. A checkout from a production host
+   * (FUNDING_LIVE_HOSTS) uses the live keys; from anywhere else (Vercel
+   * preview links, localhost) the test keys. Each row is labelled, so the
+   * live site shows only real sponsorships (migration 022). A mode with no
+   * keys is simply off: no button there.
+   *
+   * OFF unless ENABLE_FUNDING is on and DATABASE_URL is set. Legacy
+   * STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET still work: the key's own prefix
+   * (sk_live_ / sk_test_) says which mode they fill.
    */
   funding: {
-    enabled:
-      (boolOverride(process.env.ENABLE_FUNDING) ?? false) &&
-      str(process.env.STRIPE_SECRET_KEY) !== '' &&
-      str(process.env.STRIPE_WEBHOOK_SECRET) !== '' &&
-      databaseUrl !== '',
-    stripeSecretKey: str(process.env.STRIPE_SECRET_KEY),
-    stripeWebhookSecret: str(process.env.STRIPE_WEBHOOK_SECRET),
+    enabled: (boolOverride(process.env.ENABLE_FUNDING) ?? false) && databaseUrl !== '',
+    live: stripePair('live'),
+    test: stripePair('test'),
+    /** Hosts that take real payments. Blank: the host of FUNDING_RETURN_URL. */
+    liveHosts: liveHosts(),
     /** Covers a Collins-sized member (~$18.77) plus Stripe's fee. */
     priceCents: Math.round(num(process.env.FUNDING_PRICE_CENTS, 2000)),
     currency: str(process.env.FUNDING_CURRENCY).toLowerCase() || 'usd',
     /** Live within this many days, or refunded. */
     slaDays: Math.round(num(process.env.FUNDING_SLA_DAYS, 7)),
     /**
-     * Where Stripe sends the reader back. Blank falls back to the first
-     * CORS_ORIGIN; a config value, never the request's Origin header.
+     * Where Stripe sends a LIVE payer back. Blank falls back to the first
+     * CORS_ORIGIN. A test payer goes back to the preview they came from.
      */
-    returnUrl: (str(process.env.FUNDING_RETURN_URL) || str(process.env.CORS_ORIGIN).split(',')[0]?.trim() || '').replace(/\/+$/, ''),
+    returnUrl: fundingReturnUrl(),
   },
 } as const;
 

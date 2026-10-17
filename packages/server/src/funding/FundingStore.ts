@@ -28,6 +28,8 @@ export interface FundingRow {
   email: string | null;
   display_name: string | null;
   refund_due_at: Date;
+  /** Stripe's own event.livemode: a real payment (true) or a test one (migration 022). */
+  livemode: boolean;
 }
 
 /** One open (paid, not yet live or refunded) funding row, as the label needs it. */
@@ -38,15 +40,15 @@ export interface OpenFunding {
 
 export interface FundingStore {
   member(memberId: string): Promise<FundableMember | null>;
-  /** Paid and not yet live or refunded, one per member (the earliest). */
-  open(): Promise<OpenFunding[]>;
+  /** Paid and not yet live or refunded, one per member (the earliest), in one Stripe mode. */
+  open(livemode: boolean): Promise<OpenFunding[]>;
   /** Idempotent on stripe_session_id: true when this call wrote the row. */
   record(row: FundingRow): Promise<boolean>;
   /**
    * Names to credit publicly: only rows the operator has set 'live' (and so
    * looked at), with a name the payer chose to give. Migration 019.
    */
-  credits(): Promise<FunderCredit[]>;
+  credits(livemode: boolean): Promise<FunderCredit[]>;
 }
 
 export interface FunderCredit {
@@ -77,22 +79,24 @@ export class SupabaseFundingStore implements FundingStore {
     return rows[0] ?? null;
   }
 
-  async open(): Promise<OpenFunding[]> {
+  async open(livemode: boolean): Promise<OpenFunding[]> {
     const { rows } = await this.pool.query<OpenFunding>(
       `select member_id, min(refund_due_at) as refund_due_at
          from app.member_funding
-        where status in ('paid', 'processing')
+        where status in ('paid', 'processing') and livemode = $1
         group by member_id`,
+      [livemode],
     );
     return rows;
   }
 
-  async credits(): Promise<FunderCredit[]> {
+  async credits(livemode: boolean): Promise<FunderCredit[]> {
     const { rows } = await this.pool.query<FunderCredit>(
       `select member_id, display_name as name
          from app.member_funding
-        where status = 'live' and display_name is not null and btrim(display_name) <> ''
+        where status = 'live' and livemode = $1 and display_name is not null and btrim(display_name) <> ''
         order by live_at nulls last, paid_at`,
+      [livemode],
     );
     return rows;
   }
@@ -100,10 +104,10 @@ export class SupabaseFundingStore implements FundingStore {
   async record(r: FundingRow): Promise<boolean> {
     const { rowCount } = await this.pool.query(
       `insert into app.member_funding
-         (member_id, stripe_session_id, amount_cents, currency, email, display_name, refund_due_at)
-       values ($1, $2, $3, $4, $5, $6, $7)
+         (member_id, stripe_session_id, amount_cents, currency, email, display_name, refund_due_at, livemode)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
        on conflict (stripe_session_id) do nothing`,
-      [r.member_id, r.stripe_session_id, r.amount_cents, r.currency, r.email, r.display_name, r.refund_due_at],
+      [r.member_id, r.stripe_session_id, r.amount_cents, r.currency, r.email, r.display_name, r.refund_due_at, r.livemode],
     );
     return (rowCount ?? 0) > 0;
   }
@@ -112,25 +116,25 @@ export class SupabaseFundingStore implements FundingStore {
 /** In memory, for tests. */
 export class MemoryFundingStore implements FundingStore {
   readonly rows: FundingRow[] = [];
-  /** Stands in for rows an operator has set 'live'. */
-  readonly live: FunderCredit[] = [];
+  /** Stands in for rows an operator has set 'live'. No livemode means a test row. */
+  readonly live: (FunderCredit & { livemode?: boolean })[] = [];
   constructor(private readonly members: FundableMember[] = []) {}
 
   async member(memberId: string): Promise<FundableMember | null> {
     return this.members.find((m) => m.member_id === memberId) ?? null;
   }
 
-  async open(): Promise<OpenFunding[]> {
+  async open(livemode: boolean): Promise<OpenFunding[]> {
     const byMember = new Map<string, Date>();
-    for (const r of this.rows) {
+    for (const r of this.rows.filter((x) => x.livemode === livemode)) {
       const cur = byMember.get(r.member_id);
       if (!cur || r.refund_due_at < cur) byMember.set(r.member_id, r.refund_due_at);
     }
     return [...byMember].map(([member_id, refund_due_at]) => ({ member_id, refund_due_at }));
   }
 
-  async credits(): Promise<FunderCredit[]> {
-    return [...this.live];
+  async credits(livemode: boolean): Promise<FunderCredit[]> {
+    return this.live.filter((c) => (c.livemode ?? false) === livemode).map(({ member_id, name }) => ({ member_id, name }));
   }
 
   async record(r: FundingRow): Promise<boolean> {

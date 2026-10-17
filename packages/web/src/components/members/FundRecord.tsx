@@ -15,6 +15,8 @@ import { apiUrl } from '../../lib/api.js';
 
 export interface FundingStatus {
   enabled: boolean;
+  /** 'test' on preview links: payments use Stripe test mode and move no money. */
+  mode?: 'live' | 'test';
   price_cents?: number;
   currency?: string;
   sla_days?: number;
@@ -24,12 +26,24 @@ export interface FundingStatus {
 }
 
 const OFF: FundingStatus = { enabled: false };
+
+/**
+ * Which site this is, so the server can pick Stripe's live or test keys. Sent
+ * explicitly because a same-origin GET carries no Origin header.
+ */
+function originHeaders(): Record<string, string> {
+  try {
+    return { 'X-Receipts-Origin': window.location.origin };
+  } catch {
+    return {};
+  }
+}
 const FundingContext = createContext<FundingStatus>(OFF);
 
 export function FundingProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<FundingStatus>(OFF);
   useEffect(() => {
-    fetch(apiUrl('/api/fund/status'))
+    fetch(apiUrl('/api/fund/status'), { headers: originHeaders() })
       .then((r) => r.json())
       // Off still carries credits: a funded record keeps its thank-you.
       .then((d: FundingStatus) => setStatus(d?.enabled ? d : { enabled: false, credits: d?.credits ?? [] }))
@@ -92,7 +106,7 @@ export function FundRecord({ memberId, name }: { memberId: string; name: string 
     try {
       const r = await fetch(apiUrl('/api/fund/checkout'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...originHeaders() },
         body: JSON.stringify({ memberId }),
       });
       const d = await r.json();
@@ -124,6 +138,11 @@ export function FundRecord({ memberId, name }: { memberId: string; name: string 
         sponsor, or leave it blank to stay anonymous. Sponsorship never changes what we find. Not a
         tax-deductible donation.
       </p>
+      {status.mode === 'test' ? (
+        <p className="text-[13px] leading-snug text-ink-soft" data-test-mode="true">
+          Test mode: no real charge. Pay with card 4242 4242 4242 4242, any future date and any CVC.
+        </p>
+      ) : null}
       {error ? (
         <p className="text-[14px] leading-snug text-broken" role="alert">
           {error}
@@ -174,7 +193,7 @@ export function RequestRecord({ memberId, name, secondary = false }: { memberId:
     try {
       const r = await fetch(apiUrl('/api/members/request'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...originHeaders() },
         body: JSON.stringify({ memberId }),
       });
       if (!r.ok) throw new Error(String(r.status));
