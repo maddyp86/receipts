@@ -198,7 +198,7 @@ export function FollowUp({ traceId, available, senatorName }: Props) {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-4 left-1/2 z-30 inline-flex min-h-[48px] -translate-x-1/2 items-center gap-2 rounded-full bg-ink px-5 text-[16px] font-medium text-paper shadow-soft lg:hidden"
+          className="fixed bottom-4 inset-x-4 z-30 mx-auto inline-flex min-h-[52px] max-w-md items-center justify-center gap-2 whitespace-nowrap rounded-full bg-brand px-6 text-[16px] font-semibold text-white shadow-soft transition-colors duration-150 hover:bg-brand-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand lg:hidden"
         >
           <MessageCircleQuestionIcon className="h-5 w-5" aria-hidden="true" />
           Ask about this result
