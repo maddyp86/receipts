@@ -12,6 +12,9 @@ export default {
         ink: { DEFAULT: '#1C1B19', soft: '#56514A', faint: '#857E74' },
         rule: '#E6E1D9',
         focus: '#2F4858',
+        // Brand blue, for the few things that should stand out (trust, not alarm).
+        // White text on it is 6.7:1; the hover shade is darker still.
+        brand: { DEFAULT: '#1D4ED8', hover: '#1E40AF' },
         kept: { DEFAULT: '#1F6B45', wash: '#EEF5F0' },
         broken: { DEFAULT: '#9A3324', wash: '#F9EFED' },
         cantsay: { DEFAULT: '#6A6259', wash: '#F3F1EC' },
