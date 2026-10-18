@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   ArrowLeftIcon,
   ArrowLeftRightIcon,
@@ -346,38 +346,46 @@ function shortDate(iso: string | null): string | null {
 }
 
 /**
- * The bill's path, left to right. The senator's own act is the filled dot.
- * Dots are evenly spaced across the full width: the first step sits flush
- * left, the last flush right, and each middle step is centred on its dot.
- * The grid has two columns per gap, so a middle step spans the two columns
- * either side of its dot.
+ * The bill's path. On a phone it runs top to bottom: dots down the left
+ * edge, text to their right. From `sm` up it runs left to right, with dots
+ * evenly spaced across the full width: the first step flush left, the last
+ * flush right, and each middle step centred on its dot. That grid has two
+ * columns per gap, so a middle step spans the two columns either side of
+ * its dot. The grid sizes come in as CSS variables so they apply at `sm` only.
+ * The senator's own act is the filled dot.
  */
 function BillPath({ steps, surname }: { steps: PathStep[]; surname: string }) {
   const gaps = Math.max(steps.length - 1, 1);
+  const vars = {
+    '--path-cols': `repeat(${gaps * 2}, minmax(0, 1fr))`,
+    '--path-min': `${steps.length * 88}px`,
+  } as CSSProperties;
   return (
     <section aria-label="The bill’s path" className="bill-path mt-4">
       <h4 className="text-[14px] font-medium text-ink-soft">The bill’s path</h4>
-      <div className="mt-2 overflow-x-auto pb-1">
-        <ol
-          className="relative grid"
-          style={{ gridTemplateColumns: `repeat(${gaps * 2}, minmax(0, 1fr))`, minWidth: `${steps.length * 88}px` }}
-        >
-          {steps.length > 1 ? <span className="absolute left-[7px] right-[7px] top-[9px] h-0.5 bg-rule" aria-hidden="true" /> : null}
+      <div className="mt-2 pb-1 sm:overflow-x-auto">
+        <ol className="relative grid sm:[grid-template-columns:var(--path-cols)] sm:[min-width:var(--path-min)]" style={vars}>
+          {steps.length > 1 ? (
+            <span className="absolute left-[7px] right-[7px] top-[9px] hidden h-0.5 bg-rule sm:block" aria-hidden="true" />
+          ) : null}
           {steps.map((st, i) => {
             const first = i === 0;
-            const last = i === steps.length - 1 && !first;
-            const place = first ? 'text-left' : last ? 'text-right' : 'px-2 text-center';
-            const dot = first ? 'left-0' : last ? 'right-0' : 'left-1/2 -translate-x-1/2';
+            const final = i === steps.length - 1;
+            const last = final && !first;
+            const place = first ? 'sm:text-left' : last ? 'sm:text-right' : 'sm:px-2 sm:text-center';
+            const dot = first ? 'sm:left-0' : last ? 'sm:left-auto sm:right-0' : 'sm:left-1/2 sm:-translate-x-1/2';
             const gridColumn = first ? '1 / span 1' : last ? `${gaps * 2} / span 1` : `${i * 2} / span 2`;
             return (
               <li
                 key={`${st.label}-${i}`}
-                className={`relative pt-5 text-[13px] leading-snug text-ink-soft ${place}`}
-                style={{ gridColumn, gridRow: 1 }}
+                className={`relative pl-6 text-left text-[13px] leading-snug text-ink-soft sm:row-start-1 sm:pb-0 sm:pl-0 sm:pt-5 sm:[grid-column:var(--path-col)] ${final ? '' : 'pb-4'} ${place}`}
+                style={{ '--path-col': gridColumn } as CSSProperties}
                 data-senator={st.senator ? 'true' : undefined}
               >
+                {/* Phone only: the line down to the next step's dot. */}
+                {final ? null : <span className="absolute -bottom-[3px] left-[6px] top-[3px] w-0.5 bg-rule sm:hidden" aria-hidden="true" />}
                 <span
-                  className={`absolute top-[3px] h-[14px] w-[14px] rounded-full border-2 ${dot} ${
+                  className={`absolute left-0 top-[3px] h-[14px] w-[14px] rounded-full border-2 ${dot} ${
                     st.senator ? 'border-ink bg-ink' : st.outcome ? 'border-ink-soft bg-card' : 'border-rule bg-card'
                   }`}
                   aria-hidden="true"
