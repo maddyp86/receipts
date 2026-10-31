@@ -254,9 +254,31 @@ ${stakeholders}
 - Reverses Existing Policy: ${or(c.reverses_existing_policy, 'false')}
 - Target Name: ${or(c.target_name, 'N/A')}
 - Target Source: ${or(c.target_source, 'N/A')}
-- Target Effect: ${or(c.target_effect, 'N/A')}
+- Target Effect: ${or(c.target_effect, 'N/A')}${reversalSelfCheck(c)}
 
 Return the JSON specified in the system message.`;
+}
+
+/**
+ * A check the evaluator runs on a reversal before trusting Target Effect.
+ * About one reversal row in ten had the BILL's own effect written into the
+ * target field (s2556-119: "Expanded eligibility for premium tax credits by
+ * removing the 400% income cap" given as what the OBBBA health subtitle did,
+ * when that is what the repeal does). Read as written, repealing an expansion
+ * is a cut, and the co-sponsor of an expansion was scored against it (Ossoff,
+ * trace 9b534012, 31 Oct). The system prompt already sends conflicting inputs
+ * to NEUTRAL; this names the conflict it was missing. Only on a reversal with
+ * a target effect, so no other message changes.
+ */
+export function reversalSelfCheck(c: FulfillmentCandidate): string {
+  if (String(c.reverses_existing_policy ?? '').toLowerCase() !== 'true') return '';
+  const effect = String(c.target_effect ?? '').trim();
+  if (!effect || effect === 'N/A') return '';
+  return (
+    '\n- Check before using Target Effect: removing the target must leave things as the Intended Effects above describe. ' +
+    'If Target Effect describes the same change the Intended Effects make (it credits the target with what this bill does), ' +
+    'the inputs conflict: NEUTRAL, flag "IMPACT_CONFLICT".'
+  );
 }
 
 /** Byte-mirror of the request WF10A posts, with the model read from config. */
