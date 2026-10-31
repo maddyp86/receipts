@@ -421,30 +421,66 @@ function readResult(props: VerdictProps) {
  * (its three numbers), which way the bills count, and what to do next. The
  * explanation, the receipts and how we checked sit in tabs below it.
  */
-/** For / against / not counted / set aside, one block per vote or sponsorship row. */
+type RecordRow = NonNullable<QueryResult['record']>['rows'][number];
+
+/** "1 vote and 2 co-sponsorships": what kind of action each row was. */
+function actionKinds(rows: RecordRow[]): string {
+  const n = { vote: 0, sponsorship: 0, 'co-sponsorship': 0 };
+  for (const r of rows) n[r.stage === 'sponsor' ? 'sponsorship' : r.stage === 'cosponsor' ? 'co-sponsorship' : 'vote'] += 1;
+  const parts = Object.entries(n)
+    .filter(([, c]) => c > 0)
+    .map(([k, c]) => `${c} ${k}${c === 1 ? '' : 's'}`);
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0] ?? '';
+}
+
+/**
+ * The bar's meaning in one sentence, since "3 for · 1 against" alone left
+ * readers asking for or against what (Matt, 31 Oct). "For" is an action that
+ * pushes toward what they asked about; "against" is one that works against it.
+ */
+export function recordTallySentence(rows: RecordRow[]): string | null {
+  const fors = rows.filter((r) => r.reading === 'for').length;
+  const againsts = rows.filter((r) => r.reading === 'against').length;
+  if (!fors && !againsts) return null;
+  const total = rows.length;
+  if (total === 1) return `The one action about your question ${fors ? 'pushes toward what you asked about' : 'works against what you asked about'}.`;
+  const lead = `Of the ${total} action${total === 1 ? '' : 's'} about your question, `;
+  const toward = fors ? `${fors} push${fors === 1 ? 'es' : ''} toward what you asked about` : 'none push toward what you asked about';
+  const against = againsts ? `${againsts} work${againsts === 1 ? 's' : ''} against it` : 'none work against it';
+  return `${lead}${toward} and ${against}.`;
+}
+
+/** Toward / against / not counted / set aside, one block per vote or sponsorship row. */
 function RecordBar({ answer, setAside }: { answer: NonNullable<QueryResult['record']>; setAside: number }) {
-  const fors = answer.rows.filter((r) => r.reading === 'for').length;
-  const againsts = answer.rows.filter((r) => r.reading === 'against').length;
+  const forRows = answer.rows.filter((r) => r.reading === 'for');
+  const againstRows = answer.rows.filter((r) => r.reading === 'against');
+  const fors = forRows.length;
+  const againsts = againstRows.length;
   const not = answer.rows.length - fors - againsts;
   const segments = [
     { key: 'for', n: fors, cls: 'bg-kept' },
     { key: 'against', n: againsts, cls: 'bg-broken' },
     { key: 'not', n: not + setAside, cls: 'bg-rule' },
   ].filter((x) => x.n > 0);
-  const legend = [`${fors} for`, `${againsts} against`, ...(not ? [`${not} not counted`] : []), ...(setAside ? [`${setAside} set aside`] : [])];
   if (!segments.length) return null;
+  const sentence = recordTallySentence(answer.rows);
+  const legend = [
+    { cls: 'bg-kept', text: `Toward it: ${fors ? actionKinds(forRows) : 'none'}` },
+    { cls: 'bg-broken', text: `Against it: ${againsts ? actionKinds(againstRows) : 'none'}` },
+    ...(not ? [{ cls: 'bg-rule', text: `${not} not counted` }] : []),
+    ...(setAside ? [{ cls: 'bg-rule', text: `${setAside} set aside` }] : []),
+  ];
   return (
-    <div className="tally">
-      <div className="mt-3 flex h-2.5 gap-1" role="img" aria-label={legend.join(', ')}>
+    <div className="tally mt-3">
+      {sentence ? <p className="tally-sentence text-[15px] leading-snug text-ink">{sentence}</p> : null}
+      <div className="mt-2 flex h-2.5 gap-1" role="img" aria-label={sentence ?? legend.map((l) => l.text).join(', ')}>
         {segments.map((x) =>
           Array.from({ length: x.n }).map((_, i) => <span key={`${x.key}-${i}`} className={`h-full flex-1 rounded-full ${x.cls}`} />),
         )}
       </div>
       <p className="tally-legend mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-soft" aria-hidden="true">
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-kept" />{legend[0]}</span>
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-broken" />{legend[1]}</span>
-        {legend.slice(2).map((l) => (
-          <span key={l} className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-rule" />{l}</span>
+        {legend.map((l) => (
+          <span key={l.text} className="inline-flex items-center gap-1.5"><span className={`h-2.5 w-2.5 rounded-full ${l.cls}`} />{l.text}</span>
         ))}
       </p>
     </div>
