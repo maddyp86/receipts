@@ -2088,6 +2088,45 @@ export function figuresNotGiven(text: string, evidence: DirectedAction[], gated 
   return out;
 }
 
+const PARTY_OF: Record<string, string> = { democrat: 'D', republican: 'R', independent: 'I' };
+
+/**
+ * Party counts said with the wrong side of the vote. figuresNotGiven only
+ * asks whether each number appears somewhere in the result, so "48
+ * Republicans and 4 Republicans voting Yea" passed it: 48 and 4 are both real
+ * (48 Republicans voted Nay, 4 Yea), just on the wrong side (Ossoff, trace
+ * 9b534012, 31 Oct). Each clause that names a side ("voting Yea", "Nay",
+ * "against it") has every "<n> <party>" in it checked against the by-party
+ * tally of some vote in the result. A clause naming both sides, or none, or
+ * not voting, is left alone: there is no one side to check it against.
+ */
+export function partyCountsWrong(text: string, evidence: DirectedAction[]): string[] {
+  const tallies = evidence.flatMap((e) => (e.vote_context ?? []).map((t) => t.by_party)).filter((b) => b && Object.keys(b).length);
+  if (!tallies.length) return [];
+  const out: string[] = [];
+  for (const clause of text.split(/[,;.:()]|\bwhile\b|\bwhereas\b|\bbut\b/i)) {
+    const c = clause.toLowerCase();
+    if (/not voting|did not vote|didn't vote|absent|abstain/.test(c)) continue;
+    const yea = /\b(yeas?|ayes?|in favou?r|for it)\b/.test(c);
+    const nay = /\b(nays?|against it|opposed)\b/.test(c);
+    if (yea === nay) continue;
+    const side = yea ? 'yea' : 'nay';
+    for (const m of c.matchAll(/\b(\d+)\s+(democrat|republican|independent)s?\b/g)) {
+      const n = Number(m[1]);
+      const party = PARTY_OF[m[2]!]!;
+      const right = tallies.some((b) => b[party]?.[side] === n);
+      const said = `${m[1]} ${m[2]}${n === 1 ? '' : 's'} voting ${side === 'yea' ? 'Yea' : 'Nay'}`;
+      if (!right && !out.includes(said)) out.push(said);
+    }
+  }
+  return out;
+}
+
+const partyCountProblems = (text: string, evidence: DirectedAction[]): string[] =>
+  partyCountsWrong(text, evidence).map(
+    (s) => `"${s}" does not match the vote: give each party's count on the side the by-party tally puts it`,
+  );
+
 /**
  * Words that grade a statement. A record question has no statement to grade,
  * and any of these would put the voter's question in the senator's mouth.
@@ -2155,6 +2194,7 @@ async function explainResult(
       ? recordExplanationProblems(why, session.promiseText, true)
       : explanationProblems(why, session.scored.verdict, session.interpretation?.statement_type ?? 'Campaign Promise')),
     ...(asserted ? assertedPromiseProblems(why, surname) : []),
+    ...partyCountProblems(why, session.scored.evidence),
   ];
   if (problems.length) {
     // GATE: the wording checks. A rejected draft is sent back for another
@@ -2186,6 +2226,7 @@ async function explainResult(
       ...figuresNotGiven(cardSummary, session.scored.evidence, session.gated?.length ?? 0).map(
         (n) => `the figure ${n} is not in the result; use only the vote counts and figures it gives you`,
       ),
+      ...partyCountProblems(cardSummary, session.scored.evidence),
     ];
     if (cardProblems.length) {
       traceStep({
