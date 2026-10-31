@@ -42,12 +42,11 @@ export function Hero({ members, onStart, onBrowse, busy }: Props) {
   return (
     <header>
       <p className="font-serif text-[22px] leading-none text-ink">Receipts</p>
-      <h1 className="mt-6 max-w-[18ch] font-serif text-[38px] leading-[1.05] text-ink sm:text-[50px]">
-        They said it. Did they vote for it?
+      <h1 className="mt-6 text-balance font-serif text-[38px] leading-[1.05] text-ink sm:text-[50px]">
+        Hold Congress to its word.
       </h1>
       <p className="mt-4 max-w-[44ch] text-[18px] leading-snug text-ink-soft sm:text-[20px]">
-        Ask about any position or promise from a U.S. senator. We check it against their actual votes and bills since
-        2023, and show you the receipts.
+        See whether the people who represent you vote the way they talk, from campaign promises to the bills they back.
       </p>
 
       <ul className="mt-6 space-y-2.5">
@@ -100,7 +99,7 @@ export function Hero({ members, onStart, onBrowse, busy }: Props) {
         onClick={onBrowse}
         className="mt-6 inline-flex min-h-[48px] items-center gap-2 rounded-md text-[17px] font-semibold text-focus underline underline-offset-4"
       >
-        Or pick your own senator and question
+        Or pick your own lawmaker and question
         <ArrowDownIcon className="h-4 w-4" aria-hidden="true" />
       </button>
     </header>
