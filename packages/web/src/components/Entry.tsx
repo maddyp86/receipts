@@ -3,7 +3,9 @@ import { ArrowRightIcon, FileTextIcon, InfoIcon } from 'lucide-react';
 import type { Senator } from '@receipts/shared';
 import type { Member } from '../data/roster.js';
 import { BetaNotice } from './entry/BetaNotice.js';
+import { Hero } from './entry/Hero.js';
 import { HowItWorks } from './entry/HowItWorks.js';
+import type { Starter } from '../data/topics.js';
 import { PromiseInput, type StatementKind } from './entry/PromiseInput.js';
 import { MemberPicker } from './members/MemberPicker.js';
 import { SelectedMember } from './members/SelectedMember.js';
@@ -33,6 +35,8 @@ interface Props {
   onSelect: (politicianId: string) => void;
   onPromiseChange: (text: string) => void;
   onSubmit: () => void;
+  /** A one-tap starter from the hero: runs that question about that member now. */
+  onStart?: (starter: Starter) => void;
   /** The beta scope note. It points at "Something look wrong?", so only where that exists. */
   showScopeNote?: boolean;
   /** The reader may assert "this was a campaign promise" (server flag). */
@@ -49,6 +53,7 @@ export function Entry({
   onSelect,
   onPromiseChange,
   onSubmit,
+  onStart,
   showScopeNote = false,
   kindEnabled = false,
   kind = 'position',
@@ -88,15 +93,15 @@ export function Entry({
         handleSubmit();
       }}
     >
-      <header>
-        <h1 className="font-serif text-[36px] leading-none text-ink sm:text-[44px]">Receipts</h1>
-        <p className="mt-3 max-w-[38ch] text-[19px] leading-snug text-ink-soft sm:text-[21px]">
-          See if what a member of Congress says matches what they do, checked against their real votes and bills.
-        </p>
-        <BetaNotice full={showScopeNote} />
-      </header>
+      <Hero
+        members={members}
+        busy={busy}
+        onStart={onStart}
+        onBrowse={() => pickerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+      />
+      <BetaNotice full={showScopeNote} />
 
-      <div className="mt-6 border-y border-rule py-4">
+      <div className="mt-10 border-y border-rule py-4">
         <HowItWorks done={stepsDone} />
       </div>
 
@@ -132,7 +137,12 @@ export function Entry({
         />
       </section>
 
-      <div className="sticky bottom-0 z-10 -mx-5 mt-10 border-t border-rule bg-paper/95 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-16 sm:backdrop-blur-none">
+      {/* Pinned to the bottom of a phone screen only once someone is picked:
+          before that it would sit over the landing hero, saying "pick who to
+          check first" to a visitor who has not yet read what this is. */}
+      <div
+        className={`${member ? 'sticky bottom-0 z-10 -mx-5 border-t border-rule bg-paper/95 px-5 backdrop-blur' : ''} mt-10 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-16 sm:backdrop-blur-none`}
+      >
         <button
           type="submit"
           aria-disabled={blockedReason || busy ? 'true' : undefined}

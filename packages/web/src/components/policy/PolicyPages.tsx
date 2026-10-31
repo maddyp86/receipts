@@ -27,7 +27,7 @@ export const POLICY_PATHS = {
 
 export type PolicyKind = (typeof POLICY_PATHS)[keyof typeof POLICY_PATHS];
 
-const UPDATED = 'October 15, 2026';
+const UPDATED = 'October 31, 2026';
 const DEFAULT_PRICE_CENTS = 2000;
 const DEFAULT_SLA_DAYS = 7;
 
@@ -129,7 +129,10 @@ function Terms() {
 function Privacy() {
   return (
     <>
-      <p>Receipts has no accounts, no ads, no analytics and no tracking cookies. This page lists what we do keep.</p>
+      <p>
+        Receipts has no accounts, no ads, no third-party analytics and no tracking cookies. This page lists what we do
+        keep.
+      </p>
 
       <H2>When you ask a question</H2>
       <ul className="list-disc space-y-2 pl-6">
@@ -149,7 +152,9 @@ function Privacy() {
         </li>
         <li>
           Your browser keeps a random ID for the current tab, used only so a repeated question can be answered from a
-          short-lived cache. It is deleted when you close the tab and isn’t tied to who you are.
+          short-lived cache, and to count the steps of a visit: that the page was opened, a question was asked, an
+          answer was shown and a follow-up question was asked. Those counts carry no question text. The ID is deleted
+          when you close the tab and isn’t tied to who you are.
         </li>
         <li>
           Your IP address is used to apply the daily question limit. The app doesn’t store it, but our hosting

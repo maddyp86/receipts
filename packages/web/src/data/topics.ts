@@ -44,6 +44,33 @@ export const SPECIFIC_EXAMPLES = [
   'supports expanding background checks',
 ];
 
+/**
+ * One-tap first questions on the landing hero: a question AND the member it
+ * was checked against, so a first-time reader's first answer is a real one,
+ * not "nothing found". Each pair is an eval case (the id says which); change
+ * one only with its case. One Republican, one Democrat, one swing vote, so
+ * the row does not lean.
+ */
+export interface Starter {
+  politicianId: string;
+  text: string;
+  evalCase: string;
+}
+
+export const STARTERS: readonly Starter[] = [
+  { politicianId: 'T000250', text: 'Did they vote for the Laken Riley Act?', evalCase: '35-thune-topic-laken-riley-act' },
+  {
+    politicianId: 'S000148',
+    text: 'Did they vote to protect clean air standards from rollback?',
+    evalCase: '42-schumer-topic-protect-clean-air-standards-from-rollbac',
+  },
+  {
+    politicianId: 'C001035',
+    text: 'Did they vote to extend the enhanced Affordable Care Act tax credits?',
+    evalCase: '52-collins-aca-tax-credits',
+  },
+];
+
 export const topics: Topic[] = [
   {
     id: 'health',

@@ -2462,3 +2462,36 @@ export function sanitizeReaderText(text: string | null | undefined): string | nu
     .replace(/,\s*,/g, ',')
     .replace(/:\s*,/g, ':');
 }
+
+// ---------------------------------------------------------------------------
+// Funnel events — anonymous step counts, no text (migration 025)
+// ---------------------------------------------------------------------------
+
+/**
+ * The steps of the first-visit funnel: landed, started, saw an answer, asked
+ * a follow-up. Counted against the per-tab session id and nothing else.
+ * `followup_asked` is recorded by the server inside /api/followup, never sent
+ * by the page, so a dropped request cannot lose the activation event.
+ */
+export const FUNNEL_EVENTS = ['landing_view', 'starter_used', 'query_submitted', 'result_shown', 'followup_asked'] as const;
+export type FunnelEvent = (typeof FUNNEL_EVENTS)[number];
+/** The events the page may send. */
+export const CLIENT_FUNNEL_EVENTS: readonly FunnelEvent[] = ['landing_view', 'starter_used', 'query_submitted', 'result_shown'];
+
+/**
+ * Every property an event may carry, with what it may hold. Ids from closed
+ * sets, enums and small counts only: there is deliberately no field a
+ * question's text could ride in on.
+ */
+export interface FunnelProps {
+  politician_id?: string;
+  /** How the query started: a hero starter, or typed into the box. */
+  source?: 'starter' | 'typed';
+  /** The nth query in this tab. */
+  nth?: number;
+  /** What came back: a verdict, a record label, or the reason there was none. */
+  outcome?: string;
+  // No run id, deliberately: a run id leads to the stored question, and the
+  // corpus firewall (DECISIONS 2026-08-22) says queries cannot be joined to
+  // analytics. The funnel needs steps, not which answer.
+}

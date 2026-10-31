@@ -120,6 +120,9 @@ describe('the question box', () => {
     expect(page).not.toContain('say it as a statement');
     expect(page).toContain('Be specific: name the policy, program or bill.');
     expect(page).toContain('“Did they vote for the Laken Riley Act?”, “promised to protect clean air standards from rollback” or “supports expanding background checks”.');
-    expect(page).not.toMatch(/Schumer|Thune/);
+    // The hero's example answer names Thune, on purpose and labeled as an
+    // example; the question box's own help text below it must not.
+    const box = page.slice(page.indexOf('What do you want to check about'));
+    expect(box).not.toMatch(/Schumer|Thune/);
   });
 });

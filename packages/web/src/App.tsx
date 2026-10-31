@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ArrowLeftIcon, RotateCcwIcon } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { track } from './lib/track.js';
+import type { Starter } from './data/topics.js';
+import { ArrowLeftIcon, MessageCircleQuestionIcon, RotateCcwIcon } from 'lucide-react';
 import { surnameOf, type Corrections, type DirectoryMember, type InputKind, type Senator } from '@receipts/shared';
 import { useReceiptStream } from './lib/useReceiptStream.js';
 import { apiUrl } from './lib/api.js';
@@ -16,6 +18,7 @@ import {
   type TaxonomyEntry,
 } from './components/CorrectionPanel.js';
 import { FollowUp } from './components/FollowUp.js';
+import { suggestFollowups } from './lib/followupSuggestions.js';
 import { GlossaryProvider } from './components/glossary/GlossaryContext.js';
 import { SelectedMember } from './components/members/SelectedMember.js';
 import { FundedThanks, FundingProvider } from './components/members/FundRecord.js';
@@ -61,6 +64,8 @@ export default function App() {
   const [kind, setKind] = useState<StatementKind>('position');
 
   const stream = useReceiptStream();
+  /** Bumped to open the follow-up chat from the prompt under the answer. */
+  const [followupOpen, setFollowupOpen] = useState(0);
 
   /** Back from Stripe Checkout: ?funded=<member id>. Read once, then cleared from the address bar. */
   const [fundedId, setFundedId] = useState<string | null>(() => {
@@ -127,10 +132,37 @@ export default function App() {
   const baseCorrections = (): Corrections | undefined =>
     modes.override && kind === 'promise' ? { assert_campaign_promise: true } : undefined;
 
+  /** How many queries this tab has started, for the funnel's "second question" count. */
+  const queryCount = useRef(0);
+  /** Where the current query came from, carried onto its result event. */
+  const querySource = useRef<'starter' | 'typed'>('typed');
+  const countQuery = (politicianId: string, source: 'starter' | 'typed') => {
+    queryCount.current += 1;
+    querySource.current = source;
+    track('query_submitted', { politician_id: politicianId, source, nth: queryCount.current });
+  };
+
   const submit = () => {
     setAskedText(null);
+    countQuery(selected, 'typed');
     stream.run(selected, promise.trim(), baseCorrections());
   };
+
+  /** A hero starter: that member, that question, running now. */
+  const start = (starter: Starter) => {
+    setAskedText(null);
+    setKind('position');
+    setSelected(starter.politicianId);
+    setPromise(starter.text);
+    track('starter_used', { politician_id: starter.politicianId });
+    countQuery(starter.politicianId, 'starter');
+    stream.run(starter.politicianId, starter.text);
+  };
+
+  // Landed: once per page load.
+  useEffect(() => {
+    track('landing_view');
+  }, []);
 
   // A correction re-runs the ENTIRE query from embedding. `stream.run` resets
   // state first, so the previous verdict is gone before the new one starts —
@@ -168,6 +200,7 @@ export default function App() {
   const otherMembers = roster.filter((m) => m.cached && m.politician_id !== selected);
   const askSameOf = (politicianId: string) => {
     setSelected(politicianId);
+    countQuery(politicianId, 'typed');
     stream.run(politicianId, promise.trim(), baseCorrections(), undefined, { chosen: askedText !== null });
   };
   /** Back to the picker. */
@@ -187,6 +220,19 @@ export default function App() {
   const memberName = member?.name ?? stream.result?.senator.name ?? 'this member';
   /** The chat column exists once the answer is complete and the server can answer follow-ups. */
   const followupsShown = stream.phase === 'done' && Boolean(stream.traceId) && modes.followups;
+  // The answer landed: counted once per run, with what kind of answer it was
+  // (the "aha" is a real verdict or label, not a "can't tell").
+  useEffect(() => {
+    if (stream.phase !== 'done' || !stream.result || !stream.traceId) return;
+    const r = stream.result;
+    track('result_shown', {
+      politician_id: r.senator.politician_id,
+      source: querySource.current,
+      nth: queryCount.current,
+      outcome: r.record?.label ?? (r.scored.verdict === 'NOT_DETERMINABLE' ? `ND_${r.scored.nd_reason ?? 'NONE'}` : r.scored.verdict),
+    });
+  }, [stream.phase, stream.traceId]);
+
   /** Every bill on the Receipts tab: weighed, and set aside. */
   const billCount = (stream.result?.scored.evidence.length ?? 0) + (stream.result?.gated?.length ?? 0);
 
@@ -214,6 +260,7 @@ export default function App() {
               onSelect={setSelected}
               onPromiseChange={setPromise}
               onSubmit={submit}
+              onStart={start}
               showScopeNote={modes.feedback}
               kindEnabled={modes.override}
               kind={kind}
@@ -318,6 +365,22 @@ export default function App() {
                   }
                 />
 
+                {/* The next move, said under the answer: the follow-up chat is
+                    where a first answer turns into understanding. */}
+                {followupsShown ? (
+                  <button
+                    type="button"
+                    onClick={() => setFollowupOpen((n) => n + 1)}
+                    className="flex min-h-[52px] w-full items-center gap-3 rounded-card border border-brand/30 bg-card px-4 py-3 text-left text-[16px] text-ink transition-colors duration-150 hover:border-brand"
+                  >
+                    <MessageCircleQuestionIcon className="h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
+                    <span className="flex-1">
+                      <span className="font-semibold">Questions about this answer?</span>{' '}
+                      <span className="text-ink-soft">Ask why a bill counted, which vote decided it, what a term means.</span>
+                    </span>
+                  </button>
+                ) : null}
+
                 {/* "Too broad": a rewording of the reader's own topic to check instead. */}
                 {stream.suggest?.length && stream.result.scored.nd_reason === 'NOT_EVALUABLE' ? (
                   <div className="rounded-card border border-rule bg-card px-4 py-4 text-[16px] text-ink-soft">
@@ -405,7 +468,14 @@ export default function App() {
                   and cannot change it; a new statement is a new query. */}
               {followupsShown ? (
                 <aside className="lg:sticky lg:top-4 lg:self-start">
-                  <FollowUp traceId={stream.traceId!} available={modes.followups} senatorName={memberName} />
+                  <FollowUp
+                    key={stream.traceId!}
+                    traceId={stream.traceId!}
+                    available={modes.followups}
+                    senatorName={memberName}
+                    suggestions={suggestFollowups(stream.result)}
+                    openRequest={followupOpen}
+                  />
                 </aside>
               ) : null}
             </div>

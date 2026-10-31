@@ -17,6 +17,8 @@ import { TAXONOMY_IS_COMPLETE } from './embeddings/taxonomy.js';
 import { feedbackLimiter, globalDailyCap, queryBurstLimiter, queryDailyLimiter, readOnlyLimiter, refundDailyCheck } from './rateLimit.js';
 import { feedbackStore, usageCounter } from './services.js';
 import { validateFeedback } from './data/FeedbackStore.js';
+import { followupRow, validateClientEvent } from './data/FunnelStore.js';
+import { funnelStore } from './services.js';
 import { fundingModes, fundingStore } from './services.js';
 import { createCheckout, fundingCredits, fundingStatus, handleWebhook, modeForOrigin, testReturnUrl } from './funding/funding.js';
 
@@ -234,7 +236,7 @@ app.get('/api/members', async (_req, res) => {
  * one paid model call.
  */
 app.post('/api/followup', queryDailyLimiter, queryBurstLimiter, globalCap, async (req, res) => {
-  const body = (req.body ?? {}) as { run_id?: unknown; question?: unknown; history?: unknown };
+  const body = (req.body ?? {}) as { run_id?: unknown; question?: unknown; history?: unknown; session?: unknown };
   const runId = String(body.run_id ?? '').trim();
   const question = String(body.question ?? '').trim();
   const history = Array.isArray(body.history)
@@ -267,11 +269,32 @@ app.post('/api/followup', queryDailyLimiter, queryBurstLimiter, globalCap, async
       return;
     }
     const answer = await answerFollowup({ record, question, history }, { sinks: traceSinks });
+    // The activation count: a follow-up was asked in this visit. Counted
+    // here, not by the page, so it cannot be lost or sent from outside. The
+    // question is not part of it.
+    const counted = followupRow(body.session);
+    if (counted) void funnelStore.add(counted);
     res.json(answer);
   } catch (err) {
     console.error('[followup]', err);
     res.status(503).json({ error: { code: 'UPSTREAM_UNAVAILABLE', message: 'Could not answer right now.', recoverable: true } });
   }
+});
+
+/**
+ * Anonymous funnel counts from the page: landed, started, saw an answer.
+ * Validated to a closed shape (data/FunnelStore.ts) — anything else is
+ * dropped — and stored write-only. 204 whether or not counting is on, so the
+ * page never learns or cares.
+ */
+app.post('/api/event', feedbackLimiter, (req, res) => {
+  const checked = validateClientEvent(req.body);
+  if (!checked.ok) {
+    res.status(400).json({ error: { code: 'BAD_INPUT', message: checked.message, recoverable: false } });
+    return;
+  }
+  void funnelStore.add(checked.row);
+  res.status(204).end();
 });
 
 /**

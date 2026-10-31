@@ -1,4 +1,5 @@
 import { SupabaseFeedbackStore, nullFeedbackStore, type FeedbackStore } from './data/FeedbackStore.js';
+import { SupabaseFunnelStore, nullFunnelStore, type FunnelStore } from './data/FunnelStore.js';
 import { MemoryUsageCounter, SupabaseUsageCounter, type UsageCounter } from './data/UsageCounter.js';
 import { config } from './config.js';
 import Stripe from 'stripe';
@@ -47,6 +48,10 @@ export const queryStore: QueryStore = config.database.url && config.database.per
 export const feedbackStore: FeedbackStore = config.database.url
   ? new SupabaseFeedbackStore(config.database.url)
   : nullFeedbackStore;
+
+/** Anonymous funnel counts, write-only (data/FunnelStore.ts). Off without a database or the flag. */
+export const funnelStore: FunnelStore =
+  config.database.url && config.features.funnelEvents ? new SupabaseFunnelStore(config.database.url) : nullFunnelStore;
 
 export const usageCounter: UsageCounter = config.database.url
   ? new SupabaseUsageCounter(config.database.url)
