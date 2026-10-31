@@ -12,6 +12,48 @@
 // The summary actionDate actually used comes from Extract Bill Summary's run
 // for the same loop index: $('Extract Bill Summary').all(0, idx).
 // ============================================
+// REVERSAL GUARD (added 2026-10-31). An audit of the 419 reversal rows in
+// core.bill_impacts found 64 whose target_effect read backwards (migration
+// 023). Two shapes, and a deterministic check for each:
+//  - 47 were not reversals at all: amendments that ADD something ("require
+//    proof of citizenship"), appropriations, CRs, debt-limit suspensions,
+//    typed STATUTE or APPROPRIATION with the bill's own change written in as
+//    what "existing law" did. 46 of the 47 titles carry no reversal word; 31
+//    of 45 real statute reversals do. A STATUTE or APPROPRIATION "reversal"
+//    whose title does not say it repeals, disapproves, terminates, rescinds,
+//    nullifies, revokes, sunsets, cancels or withdraws is taken as an
+//    ordinary bill. The cheaper error: an unmarked real repeal is still read
+//    from its own intended effects, while a marked amendment reads backwards.
+//  - Some copied an intended effect into target_effect near word for word.
+//    (overlap of 0.8 or more with any one intended effect.)
+//    That sentence describes the bill, not the target, so it is dropped and
+//    the evaluator returns NEUTRAL for the reversal rather than guess.
+// Agency rules and executive actions are left alone: 263 of 270 good
+// AGENCY_RULE rows are disapproval resolutions, and the title rule would cut
+// real ones there.
+const REVERSAL_TITLE_RE = /disapprov|repeal|terminat|rescind|rescission|nullif|revok|sunset|cancel|withdraw/i;
+// Words over three letters, with a plain suffix strip so "Removed" and
+// "Removes" match. At 0.8 this caught 4 copied rows and none of the 354 good
+// ones in the audit.
+const words = (t) => new Set(String(t || '').toLowerCase().split(/[^a-z0-9%]+/).filter((w) => w.length > 3).map((w) => w.replace(/(ed|es|s|d)$/, '')));
+const jaccard = (a, b) => {
+  const A = words(a), B = words(b);
+  if (!A.size || !B.size) return 0;
+  let both = 0;
+  for (const w of A) if (B.has(w)) both++;
+  return both / (A.size + B.size - both);
+};
+function reversalGuard({ reverses, targetType, targetEffect, titles, intendedEffects }) {
+  if (!reverses) return { reverses, targetType, targetEffect, guard: null };
+  if ((targetType === 'STATUTE' || targetType === 'APPROPRIATION') && !titles.some((t) => REVERSAL_TITLE_RE.test(String(t || '')))) {
+    return { reverses: false, targetType: 'NONE', targetEffect: '', guard: 'NOT_A_REVERSAL_BY_TITLE' };
+  }
+  if (targetEffect && (intendedEffects || []).some((e) => jaccard(targetEffect, e) >= 0.8)) {
+    return { reverses, targetType, targetEffect: '', guard: 'TARGET_EFFECT_COPIES_BILL' };
+  }
+  return { reverses, targetType, targetEffect, guard: null };
+}
+
 const items = $input.all();
 const loopBills = $('Limit').all();
 const pairingReliable = loopBills.length === items.length;
@@ -307,20 +349,28 @@ for (let idx = 0; idx < items.length; idx++) {
   // WHOM) that only the promise supplies. 7 of 12 stated directions in the
   // first backfill batch contradicted their own target_effect sentence.
   const naOr = (v) => (raStr(v) === '' ? 'N/A' : raStr(v));
-  const targetEffect = raStr(ra.target_effect);
+  const checked = reversalGuard({
+    reverses,
+    targetType,
+    targetEffect: raStr(ra.target_effect),
+    titles: [fallbackTitle, inputItem.requested_version_title, parsed.title],
+    intendedEffects: Array.isArray(impactStatement.intended_effects) ? impactStatement.intended_effects : [],
+  });
+  const targetEffect = checked.targetEffect;
   const rawConf = parseFloat(ra.effect_confidence);
   const effectConfidence = targetEffect === ''
     ? 0 : (Number.isFinite(rawConf) ? rawConf : 0.6);
 
   impactStatement.regulatory_action = {
-    reverses_existing_policy: reverses,
-    target_type: targetType,
-    target_name: naOr(ra.target_name),
-    target_source: naOr(ra.target_source),
+    reverses_existing_policy: checked.reverses,
+    target_type: checked.targetType,
+    target_name: checked.reverses ? naOr(ra.target_name) : 'N/A',
+    target_source: checked.reverses ? naOr(ra.target_source) : 'N/A',
     target_direction: 'N/A',
     target_effect: scrub(naOr(targetEffect)),
     direction_confidence: effectConfidence,
-    effect_missing: reverses && targetEffect === ''
+    effect_missing: checked.reverses && targetEffect === '',
+    reversal_guard: checked.guard
   };
 
   // Resolve bill_id and title — INPUT (index-paired) is authoritative.
@@ -387,6 +437,7 @@ const versioned = results.filter(r => r.json.requested_version).length;
 const mismatched = results.filter(r => r.json.source_version_mismatch).length;
 const titleFromText = results.filter(r => r.json.version_title_source === 'TEXT').length;
 console.log(`Parsed: ${results.length} | Flagged for review: ${flagged} | Schema normalized: ${normalized} | Bad keywords: ${badKeywords} | Versioned: ${versioned} | Version mismatch: ${mismatched} | Version title from text: ${titleFromText}`);
-console.log(`Reversal bills: ${reversals} | direction UNKNOWN: ${unknownDir} | direction downgraded (stated without basis): ${downgraded}`);
+const guarded = results.filter(r => r.json.regulatory_action?.reversal_guard).length;
+console.log(`Reversal bills: ${reversals} | direction UNKNOWN: ${unknownDir} | direction downgraded (stated without basis): ${downgraded} | reversal guard applied: ${guarded}`);
 
 return results;
