@@ -92,10 +92,12 @@ describe('the wording', () => {
 });
 
 describe('where it shows', () => {
-  it('the entry page, above the picker, when feedback is on', () => {
+  it('the entry page, right under the query card, when feedback is on', () => {
     const page = entry(true);
     expect(page).toContain(plain(SCOPE_NOTE[0]!));
-    expect(page.indexOf('This is a beta')).toBeLessThan(page.indexOf('Jane Example'));
+    // On the first screen, beside the button: before the browse panel and the example answer.
+    expect(page.indexOf('This is a beta')).toBeGreaterThan(page.indexOf('Check their record'));
+    expect(page.indexOf('This is a beta')).toBeLessThan(page.indexOf('Example answer'));
   });
 
   it('not on the entry page without feedback: it would point at a control that is not there', () => {
@@ -122,7 +124,9 @@ describe('the question box', () => {
     expect(page).toContain('“Did they vote for the Laken Riley Act?”, “promised to protect clean air standards from rollback” or “supports expanding background checks”.');
     // The hero's example answer names Thune, on purpose and labeled as an
     // example; the question box's own help text below it must not.
-    const box = page.slice(page.indexOf('What do you want to check about'));
+    const from = page.indexOf('What do you want to check about');
+    const to = page.indexOf('Example answer');
+    const box = page.slice(from, to === -1 ? undefined : to);
     expect(box).not.toMatch(/Schumer|Thune/);
   });
 });

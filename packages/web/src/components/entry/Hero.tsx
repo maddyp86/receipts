@@ -1,4 +1,4 @@
-import { ArrowDownIcon, ArrowRightIcon, CheckIcon, FileTextIcon, ScaleIcon, ShieldQuestionIcon } from 'lucide-react';
+import { ArrowRightIcon, CheckIcon, FileTextIcon, ScaleIcon, ShieldQuestionIcon } from 'lucide-react';
 import { surnameOf } from '@receipts/shared';
 import { STARTERS, type Starter } from '../../data/topics.js';
 import type { Member } from '../../data/roster.js';
@@ -24,85 +24,80 @@ const PROOF = [
   { Icon: ShieldQuestionIcon, text: 'Says “can’t tell” when the record doesn’t settle it' },
 ];
 
-interface Props {
-  /** Covered members; a starter shows only when its member is covered. */
-  members: ReadonlyArray<Member>;
-  /** Omitted: no starters are offered. */
-  onStart?: (starter: Starter) => void;
-  onBrowse: () => void;
-  busy: boolean;
-}
-
-export function Hero({ members, onStart, onBrowse, busy }: Props) {
-  const starters = !onStart ? [] : STARTERS.flatMap((s) => {
-    const m = members.find((x) => x.politician_id === s.politicianId && x.cached);
-    return m ? [{ starter: s, member: m }] : [];
-  });
-
+/** The wordmark, headline and subtitle. */
+export function HeroHeadline() {
   return (
     <header>
       <p className="font-serif text-[22px] leading-none text-ink">Receipts</p>
-      <h1 className="mt-6 text-balance font-serif text-[38px] leading-[1.05] text-ink sm:text-[50px]">
+      <h1 className="mt-4 text-balance font-serif text-[34px] leading-[1.05] text-ink sm:mt-5 sm:text-[48px]">
         Hold Congress to its word.
       </h1>
-      <p className="mt-4 max-w-[44ch] text-[18px] leading-snug text-ink-soft sm:text-[20px]">
+      <p className="mt-3 max-w-[46ch] text-[16px] leading-snug text-ink-soft sm:text-[19px]">
         See whether the people who represent you vote the way they talk, from campaign promises to the bills they back.
       </p>
+    </header>
+  );
+}
 
-      <ul className="mt-6 space-y-2.5">
-        {PROOF.map(({ Icon, text }) => (
-          <li key={text} className="flex items-start gap-3 text-[16px] leading-snug text-ink">
-            <Icon className="mt-0.5 h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
-            {text}
+/** The three reasons to trust an answer. */
+export function Proof() {
+  return (
+    <ul className="space-y-2.5">
+      {PROOF.map(({ Icon, text }) => (
+        <li key={text} className="flex items-start gap-3 text-[16px] leading-snug text-ink">
+          <Icon className="mt-0.5 h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
+          {text}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+interface StartersProps {
+  /** Covered members; a starter shows only when its member is covered. */
+  members: ReadonlyArray<Member>;
+  onStart: (starter: Starter) => void;
+  busy: boolean;
+}
+
+/** One-tap first questions, under the query card. */
+export function Starters({ members, onStart, busy }: StartersProps) {
+  const starters = STARTERS.flatMap((s) => {
+    const m = members.find((x) => x.politician_id === s.politicianId && x.cached);
+    return m ? [{ starter: s, member: m }] : [];
+  });
+  if (!starters.length) return null;
+
+  return (
+    <section aria-labelledby="starters-heading">
+      <h2 id="starters-heading" className="text-[15px] font-semibold text-ink-soft">
+        Or try one now, one tap:
+      </h2>
+      <ul className="mt-2 space-y-2">
+        {starters.map(({ starter, member }) => (
+          <li key={starter.evalCase}>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onStart(starter)}
+              className="group flex min-h-[48px] w-full items-center gap-3 rounded-card border border-rule bg-card px-4 py-2.5 text-left transition-colors duration-150 hover:border-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-60"
+            >
+              <span className="min-w-0 flex-1 text-[15px] leading-snug text-ink">
+                {withName(starter.text, surnameOf(member.name))}
+                <span className="text-ink-soft">
+                  {' '}
+                  · {member.party && member.state ? `${member.party}-${member.state}` : member.name}
+                </span>
+              </span>
+              <ArrowRightIcon
+                className="h-5 w-5 shrink-0 text-brand transition-transform duration-150 group-hover:translate-x-0.5"
+                aria-hidden="true"
+              />
+            </button>
           </li>
         ))}
       </ul>
-
-      <ExampleAnswer />
-
-      {starters.length ? (
-        <section aria-labelledby="starters-heading" className="mt-8">
-          <h2 id="starters-heading" className="text-[17px] font-semibold text-ink">
-            Try one now, one tap:
-          </h2>
-          <ul className="mt-3 space-y-2.5">
-            {starters.map(({ starter, member }) => (
-              <li key={starter.evalCase}>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onStart?.(starter)}
-                  className="group flex min-h-[56px] w-full items-center gap-3 rounded-card border border-rule bg-card px-4 py-3 text-left shadow-soft transition-colors duration-150 hover:border-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-60"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[14px] font-medium text-ink-soft">
-                      {member.name}
-                      {member.party ? ` (${member.party}-${member.state})` : ''}
-                    </span>
-                    <span className="block text-[16px] leading-snug text-ink">
-                      {withName(starter.text, surnameOf(member.name))}
-                    </span>
-                  </span>
-                  <ArrowRightIcon
-                    className="h-5 w-5 shrink-0 text-brand transition-transform duration-150 group-hover:translate-x-0.5"
-                    aria-hidden="true"
-                  />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <button
-        type="button"
-        onClick={onBrowse}
-        className="mt-6 inline-flex min-h-[48px] items-center gap-2 rounded-md text-[17px] font-semibold text-focus underline underline-offset-4"
-      >
-        Or pick your own lawmaker and question
-        <ArrowDownIcon className="h-4 w-4" aria-hidden="true" />
-      </button>
-    </header>
+    </section>
   );
 }
 
@@ -114,9 +109,9 @@ export function withName(text: string, surname: string): string {
   });
 }
 
-function ExampleAnswer() {
+export function ExampleAnswer() {
   return (
-    <figure className="mt-8 overflow-hidden rounded-card border border-rule bg-card shadow-soft" aria-label="An example answer">
+    <figure className="overflow-hidden rounded-card border border-rule bg-card shadow-soft" aria-label="An example answer">
       <figcaption className="flex items-center justify-between border-b border-rule px-4 py-2 text-[13px] font-medium uppercase tracking-wide text-ink-faint">
         Example answer
         <span className="normal-case tracking-normal">Sen. John Thune</span>

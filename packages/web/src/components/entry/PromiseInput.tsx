@@ -21,9 +21,14 @@ interface Props {
   kindEnabled: boolean;
   kind: StatementKind;
   onKindChange: (kind: StatementKind) => void;
+  /**
+   * Inside the landing page's query card: a short label, no paragraph of
+   * help above the box (the placeholder and the examples line carry it).
+   */
+  compact?: boolean;
 }
 
-export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, onKindChange }: Props) {
+export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, onKindChange, compact = false }: Props) {
   const [topicId, setTopicId] = useState<string | null>(null);
   const topic = topics.find((t) => t.id === topicId);
 
@@ -40,10 +45,15 @@ export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, o
 
   return (
     <div>
-      <label htmlFor="promise" className="block font-serif text-[26px] leading-tight text-ink sm:text-[30px]">
-        What do you want to check about {memberName ?? 'your lawmaker'}?
+      <label
+        htmlFor="promise"
+        className={compact ? 'block text-[16px] font-semibold text-ink' : 'block font-serif text-[26px] leading-tight text-ink sm:text-[30px]'}
+      >
+        {compact
+          ? `What do you want to check${memberName ? ` about ${memberName}` : ''}?`
+          : `What do you want to check about ${memberName ?? 'your lawmaker'}?`}
       </label>
-      <p id="promise-help" className="mt-2 text-[17px] text-ink-soft">
+      <p id="promise-help" className={compact ? 'sr-only' : 'mt-2 text-[17px] text-ink-soft'}>
         Ask what they did, like “Did they vote to extend the ACA tax credits?”, or check something they said, like
         “promised to protect clean air standards”. One idea at a time works best. We’ll check it against how they
         voted and what bills they backed.
@@ -89,12 +99,12 @@ export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, o
         aria-describedby="promise-help promise-examples promise-tips"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        rows={3}
+        rows={compact ? 2 : 3}
         maxLength={600}
         placeholder={`e.g., ${SPECIFIC_EXAMPLES[0]}`}
-        className="mt-5 w-full resize-none rounded-card border border-rule bg-card px-4 py-3.5 text-[18px] leading-relaxed text-ink shadow-soft placeholder:text-ink-faint focus:border-focus focus:outline-none focus:ring-1 focus:ring-focus"
+        className={`${compact ? 'mt-2 text-[17px]' : 'mt-5 text-[18px] shadow-soft'} w-full resize-none rounded-card border border-rule bg-card px-4 py-3.5 leading-relaxed text-ink placeholder:text-ink-faint focus:border-focus focus:outline-none focus:ring-1 focus:ring-focus`}
       />
-      <p id="promise-examples" className="mt-2 text-[15px] leading-relaxed text-ink-soft">
+      <p id="promise-examples" className={`mt-2 leading-relaxed text-ink-soft ${compact ? 'hidden text-[14px] sm:block' : 'text-[15px]'}`}>
         Be specific: name the policy, program or bill. For example,{' '}
         {SPECIFIC_EXAMPLES.map((ex, i) => (
           <span key={ex}>
@@ -106,7 +116,7 @@ export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, o
       {/* Help for phrasing: topic starters and "How to ask". Closed by default,
           one tap away, in the page either way (native <details>, the same
           pattern as "About this beta"). */}
-      <details className="group mt-6">
+      <details className={`group ${compact ? 'mt-1' : 'mt-6'}`}>
         <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
           <span className="inline-flex min-h-[44px] items-center gap-1 text-[16px] font-medium text-focus underline underline-offset-4">
             Need help phrasing it?

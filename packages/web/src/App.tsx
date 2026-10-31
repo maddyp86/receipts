@@ -251,7 +251,7 @@ export default function App() {
         ) : null}
 
         {screen === 'entry' ? (
-          <Page width="narrow">
+          <Page width="wide">
             <Entry
               senators={roster}
               selected={selected}

@@ -89,7 +89,8 @@ describe('the entry screen and coverage', () => {
 
   it('a covered member can be the selection', () => {
     const page = render('X000001');
-    expect(page).toContain('Checking');
+    // Picked: a chip in the search field, with a way to change it.
+    expect(page).toContain('Change from Jane Example');
     expect(page).toContain('Check their record');
   });
 
@@ -102,11 +103,12 @@ describe('the entry screen and coverage', () => {
 
   it('an uncovered member is not offered as a choice, and there is no "coming next" list', () => {
     const page = render('');
-    // Readers find (and can fund) anyone by state or name; the front lists only the checked.
+    // Readers find (and can fund) anyone by searching or browsing; nobody
+    // unchecked is put in front of them, and nothing is preselected.
     expect(page).not.toContain('Being added next');
     expect(page).not.toContain('Pat Sample');
-    // The only selectable card is the covered member's.
-    expect(page.match(/data-covered="true"/g)).toHaveLength(1);
+    expect(page).toContain('id="lawmaker"');
+    expect(page).toContain('Pick who to check first');
   });
 });
 

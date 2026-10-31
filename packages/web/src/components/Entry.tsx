@@ -1,25 +1,29 @@
-import { useMemo, useRef } from 'react';
-import { ArrowRightIcon, FileTextIcon, InfoIcon } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { ArrowRightIcon, InfoIcon, XIcon } from 'lucide-react';
 import type { Senator } from '@receipts/shared';
 import type { Member } from '../data/roster.js';
 import { BetaNotice } from './entry/BetaNotice.js';
-import { Hero } from './entry/Hero.js';
-import { HowItWorks } from './entry/HowItWorks.js';
+import { ExampleAnswer, HeroHeadline, Proof, Starters } from './entry/Hero.js';
+import { LawmakerSearch } from './entry/LawmakerSearch.js';
 import type { Starter } from '../data/topics.js';
 import { PromiseInput, type StatementKind } from './entry/PromiseInput.js';
 import { MemberPicker } from './members/MemberPicker.js';
-import { SelectedMember } from './members/SelectedMember.js';
 
 // Exported from here as before; the list itself lives with the other input copy.
 export { SPECIFIC_EXAMPLES } from '../data/topics.js';
 
 // ===========================================================================
-// The entry screen.
+// The entry screen: step one of two. Step two is the answer.
 //
-// Two steps, in the order a voter thinks: who, then what. The picker is not
-// clutter — it is how a reader learns what they can ask, so coverage is shown
-// honestly (checked now / being added) rather than hidden behind a search box
-// that quietly fails.
+// Everything a first-time visitor needs is above the fold: what Receipts is
+// (headline), and one card to ask in — who (a name search), what (the
+// question), and the button. One-tap starters sit under the card for anyone
+// who would rather see an answer first. On a wide screen an example answer
+// and the reasons to trust it sit beside the card; on a phone, below it.
+//
+// The full picker (by state, House district, request or sponsor a record)
+// is still here, opened from the search, not leading the page. Coverage is
+// shown honestly in both: unchecked members are listed, never selectable.
 //
 // Nobody is preselected. With a short list, a default would be a nudge toward
 // whichever member happens to be first.
@@ -59,7 +63,9 @@ export function Entry({
   kind = 'position',
   onKindChange = () => {},
 }: Props) {
-  const pickerRef = useRef<HTMLElement>(null);
+  const browseRef = useRef<HTMLElement>(null);
+  /** The browse panel: closed, or open (at a name, when one was picked from the search). */
+  const [browse, setBrowse] = useState<{ query: string; n: number } | null>(null);
 
   const members = useMemo<Member[]>(
     () => senators.map((s) => ('chamber' in s ? s : { ...s, chamber: 'senate' as const })),
@@ -71,12 +77,16 @@ export function Entry({
 
   const hasPromise = promise.trim().length > 2;
   const blockedReason = !member ? 'Pick who to check first' : !hasPromise ? 'Tell us what to check' : null;
-  const stepsDone = !member ? 0 : !hasPromise ? 1 : 2;
+
+  function openBrowse(query = '') {
+    setBrowse((b) => ({ query, n: (b?.n ?? 0) + 1 }));
+    requestAnimationFrame(() => browseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
 
   function handleSubmit() {
     if (busy) return;
     if (!member) {
-      pickerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById('lawmaker')?.focus();
       return;
     }
     if (!hasPromise) {
@@ -92,83 +102,114 @@ export function Entry({
         e.preventDefault();
         handleSubmit();
       }}
+      className="lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:items-start lg:gap-12"
     >
-      <Hero
-        members={members}
-        busy={busy}
-        onStart={onStart}
-        onBrowse={() => pickerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-      />
-      <BetaNotice full={showScopeNote} />
+      <div className="min-w-0">
+        <HeroHeadline />
 
-      <div className="mt-10 border-y border-rule py-4">
-        <HowItWorks done={stepsDone} />
+        <section aria-label="Ask about a lawmaker" className="mt-5 rounded-card border border-rule bg-card p-4 shadow-soft sm:mt-6 sm:p-5">
+          <label htmlFor="lawmaker" className="block text-[16px] font-semibold text-ink">
+            Who do you want to check?
+          </label>
+          <div className="mt-2">
+            <LawmakerSearch
+              members={members}
+              selected={member}
+              onSelect={(id) => {
+                onSelect(id);
+                setBrowse(null);
+              }}
+              onClear={() => onSelect('')}
+              onBrowse={openBrowse}
+            />
+          </div>
+
+          <div className="mt-4 sm:mt-5">
+            <PromiseInput
+              compact
+              memberName={member?.name ?? null}
+              value={promise}
+              onChange={onPromiseChange}
+              kindEnabled={kindEnabled}
+              kind={kind}
+              onKindChange={onKindChange}
+            />
+          </div>
+
+          <button
+            type="submit"
+            aria-disabled={blockedReason || busy ? 'true' : undefined}
+            className={`mt-3 flex min-h-[56px] w-full items-center justify-center gap-2 rounded-card text-[18px] font-semibold transition-colors duration-150 ${
+              blockedReason
+                ? 'cursor-default border border-dashed border-ink-faint bg-cantsay-wash text-ink-soft'
+                : 'bg-ink text-paper hover:bg-[#33312D]'
+            }`}
+          >
+            {blockedReason ? (
+              <>
+                <InfoIcon className="h-5 w-5" aria-hidden="true" />
+                {blockedReason}
+              </>
+            ) : (
+              <>
+                {busy ? 'Checking…' : 'Check their record'}
+                <ArrowRightIcon className="h-5 w-5" aria-hidden="true" />
+              </>
+            )}
+          </button>
+        </section>
+
+        {onStart ? (
+          <div className="mt-6">
+            <Starters members={members} onStart={onStart} busy={busy} />
+          </div>
+        ) : null}
+
+        <BetaNotice full={showScopeNote} />
+
+        {browse ? (
+          <section ref={browseRef} aria-labelledby="browse-heading" className="mt-10 scroll-mt-6">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 id="browse-heading" className="font-serif text-[26px] leading-tight text-ink">
+                  Find a lawmaker
+                </h2>
+                <p className="mb-5 mt-1 text-[16px] text-ink-soft">
+                  These are the members of Congress we’ve checked so far. More are being added.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBrowse(null)}
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink-soft hover:text-ink"
+                aria-label="Close"
+              >
+                <XIcon className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
+            <MemberPicker
+              key={browse.n}
+              members={members}
+              selectedId={null}
+              initialMode={browse.query ? 'name' : 'state'}
+              initialQuery={browse.query}
+              onSelect={(id) => {
+                onSelect(id);
+                setBrowse(null);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                requestAnimationFrame(() => document.getElementById('promise')?.focus());
+              }}
+            />
+          </section>
+        ) : null}
       </div>
 
-      <section ref={pickerRef} aria-labelledby="picker-heading" className="mt-10 scroll-mt-6">
-        {member ? (
-          <>
-            <h2 id="picker-heading" className="sr-only">
-              Who you’re checking
-            </h2>
-            <SelectedMember member={member} onChange={() => onSelect('')} />
-          </>
-        ) : (
-          <>
-            <h2 id="picker-heading" className="font-serif text-[26px] leading-tight text-ink sm:text-[30px]">
-              Who do you want to check?
-            </h2>
-            <p className="mb-5 mt-2 text-[17px] text-ink-soft">
-              These are the members of Congress we’ve checked so far. More are being added.
-            </p>
-            <MemberPicker members={members} selectedId={null} onSelect={onSelect} />
-          </>
-        )}
-      </section>
-
-      <section aria-label="What they said" className="mt-12">
-        <PromiseInput
-          memberName={member?.name ?? null}
-          value={promise}
-          onChange={onPromiseChange}
-          kindEnabled={kindEnabled}
-          kind={kind}
-          onKindChange={onKindChange}
-        />
-      </section>
-
-      {/* Pinned to the bottom of a phone screen only once someone is picked:
-          before that it would sit over the landing hero, saying "pick who to
-          check first" to a visitor who has not yet read what this is. */}
-      <div
-        className={`${member ? 'sticky bottom-0 z-10 -mx-5 border-t border-rule bg-paper/95 px-5 backdrop-blur' : ''} mt-10 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-16 sm:backdrop-blur-none`}
-      >
-        <button
-          type="submit"
-          aria-disabled={blockedReason || busy ? 'true' : undefined}
-          className={`flex min-h-[56px] w-full items-center justify-center gap-2 rounded-card text-[18px] font-semibold transition-colors duration-150 ${
-            blockedReason
-              ? 'cursor-default border border-dashed border-ink-faint bg-cantsay-wash text-ink-soft'
-              : 'bg-ink text-paper hover:bg-[#33312D]'
-          }`}
-        >
-          {blockedReason ? (
-            <>
-              <InfoIcon className="h-5 w-5" aria-hidden="true" />
-              {blockedReason}
-            </>
-          ) : (
-            <>
-              {busy ? 'Checking…' : 'Check their record'}
-              <ArrowRightIcon className="h-5 w-5" aria-hidden="true" />
-            </>
-          )}
-        </button>
-        <p className="mt-3 flex items-center justify-center gap-2 text-[15px] text-ink-soft">
-          <FileTextIcon className="h-4 w-4" aria-hidden="true" />
-          Every answer links back to real bills.
-        </p>
-      </div>
+      {/* What an answer looks like, and why to trust it: beside the card on a
+          wide screen, under everything on a phone. */}
+      <aside aria-label="What you get" className="mt-10 space-y-6 lg:mt-[118px]">
+        <ExampleAnswer />
+        <Proof />
+      </aside>
     </form>
   );
 }

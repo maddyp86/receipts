@@ -28,12 +28,15 @@ interface Props {
   members: Member[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** Open on this tab; the landing search opens it on "name" at a member it cannot select. */
+  initialMode?: FindMode;
+  initialQuery?: string;
 }
 
-export function MemberPicker({ members, selectedId, onSelect }: Props) {
-  const [mode, setMode] = useState<FindMode>('state');
+export function MemberPicker({ members, selectedId, onSelect, initialMode = 'state', initialQuery = '' }: Props) {
+  const [mode, setMode] = useState<FindMode>(initialMode);
   const [stateCode, setStateCode] = useState<string | null>(null);
-  const [nameQuery, setNameQuery] = useState('');
+  const [nameQuery, setNameQuery] = useState(initialQuery);
 
   const covered = useMemo(() => members.filter((m) => m.cached), [members]);
   const coveredCountByState = useMemo(
