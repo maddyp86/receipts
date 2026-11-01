@@ -272,7 +272,7 @@ export function QuestionCard({
           {checkingLine(statement, memberName, done)}
         </p>
       ) : null}
-      {topics.length ? (
+      {topics.length && !compact ? (
         <div className={`flex flex-wrap items-center gap-2 text-ink-soft ${compact ? 'mt-2 text-[13px]' : 'mt-3 text-[14px]'}`}>
           <span>Filed under</span>
           {topics.map((t) => (
@@ -404,8 +404,11 @@ export function Waiting({
       <ol className={`rounded-card border border-rule bg-card shadow-soft ${framed ? 'mt-2 p-1' : 'mt-3 space-y-1 p-2'}`}>
         {STAGES.map((stage, i) => {
           const status = statuses[i]!;
-          const detail = detailFor(stage);
-          const tasks = status === 'waiting' ? [] : subtasksFor(notesFor(stage, notes));
+          // In the pop-up, only the four big steps: no detail line, no
+          // subtasks, no "See each bill". The full breakdown is the tool's
+          // waiting page; here the pop-up should not grow as the run goes on.
+          const detail = framed ? null : detailFor(stage);
+          const tasks = framed || status === 'waiting' ? [] : subtasksFor(notesFor(stage, notes));
           return (
             <li
               key={i}

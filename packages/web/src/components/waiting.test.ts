@@ -170,4 +170,23 @@ describe('the narration', () => {
     // Behind a closed dropdown, not on the page's surface.
     expect(page).not.toMatch(/<details[^>]*open/);
   });
+
+  it('in the landing page pop-up (framed), only the four big steps: no detail lines, no bills', () => {
+    const steps = (['classify_scope', 'interpret', 'resolve_senator', 'embed', 'search'] as StepId[])
+      .map((id) => step(id, 'done'))
+      .concat(step('score', 'running'));
+    const page = renderToStaticMarkup(
+      React.createElement(Waiting, {
+        member: { politician_id: 'X1', name: 'Jane Example', chamber: 'senate', cached: true },
+        promise: 'supports something', steps, notes, interpretation: null, framed: true,
+        onCancel: () => {}, onChange: () => {},
+      }),
+    );
+    expect(page).toContain('Reading what you wrote');
+    expect(page).toContain('Reading each bill');
+    expect(page).not.toContain('Reading 1 of 2 bills');
+    expect(page).not.toContain('1 about this · 1 set aside');
+    expect(page).not.toContain('See each bill');
+    expect(page).not.toContain('Good to know');
+  });
 });
