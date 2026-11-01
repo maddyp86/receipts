@@ -656,6 +656,13 @@ function HowItWorksSection() {
             How it works
           </h2>
           <p className="mt-4 text-lg text-lp-muted">From your question to the votes behind the answer.</p>
+          <a
+            href="/methodology"
+            className="mt-3 inline-flex items-center gap-1.5 text-[15px] font-semibold text-lp-brand hover:underline"
+          >
+            Read the full methodology
+            <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
+          </a>
         </div>
 
         <ol className="relative mt-14 grid gap-10 md:grid-cols-3 md:gap-8">
