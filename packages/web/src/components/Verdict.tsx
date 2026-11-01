@@ -429,10 +429,10 @@ type RecordRow = NonNullable<QueryResult['record']>['rows'][number];
  * THE RECORD STEPS (Matt, 1 Nov, Thune / Laken Riley Act). The card used to
  * carry three chips, a bar of one block per action and a sentence counting
  * actions; bills and actions were mixed and nothing visibly added up. It is a
- * snapshot (the receipts below hold the bill-by-bill detail), so it now walks
- * the numbers in order, each with its unit: bills read closely → bills about
- * the question → the senator's actions on those bills, then one line on how
- * those actions count, then what the search covered.
+ * snapshot (the receipts below hold the bill-by-bill detail), so it shows two
+ * numbers, each with its unit: bills on the question → the senator's actions on
+ * them, then one line on how those actions count, then what the search
+ * covered (the bills read closely are said there, not as a step).
  */
 export interface RecordSteps {
   read: number;
@@ -464,10 +464,9 @@ export function recordSteps(result: QueryResult): RecordSteps | null {
 
 /** "6 actions count toward what you asked about · 4 don't count either way", in parts. */
 export function recordStepsTally(s: RecordSteps): { toward: string | null; against: string | null; not: string | null } {
-  const acts = (n: number) => `${n} ${n === 1 ? 'action' : 'actions'}`;
   return {
-    toward: s.toward ? `${acts(s.toward)} ${s.toward === 1 ? 'counts' : 'count'} toward what you asked about` : null,
-    against: s.against ? `${acts(s.against)} ${s.against === 1 ? 'counts' : 'count'} against it` : null,
+    toward: s.toward ? `${s.toward} ${s.toward === 1 ? 'counts' : 'count'} toward what you asked about` : null,
+    against: s.against ? `${s.against} ${s.against === 1 ? 'counts' : 'count'} against it` : null,
     not: s.notCounted ? `${s.notCounted} ${s.notCounted === 1 ? "doesn't" : "don't"} count either way` : null,
   };
 }
@@ -477,16 +476,15 @@ function RecordStepsView({ result, surname }: { result: QueryResult; surname: st
   const scope = searchScopeSentence(result);
   if (!s) return scope ? <p className="record-scope mt-3 text-[13px] text-ink-soft">{scope}</p> : null;
   const who = surname.trim() || 'They';
-  const on = s.actionBills === s.about ? `on those ${s.about}` : `on ${s.actionBills} of them`;
+  const on = s.actionBills === s.about ? (s.about === 1 ? 'on it' : 'on them') : `on ${s.actionBills} of them`;
   const steps = [
-    { n: s.read, label: s.read === 1 ? 'bill read closely' : 'bills read closely' },
-    { n: s.about, label: s.about === 1 ? 'was about your question' : 'were about your question' },
+    { n: s.about, label: s.about === 1 ? 'bill on your question' : 'bills on your question' },
     { n: s.actions, label: `${s.actions === 1 ? 'action' : 'actions'} ${who} took ${on}` },
   ];
   const t = recordStepsTally(s);
   return (
     <div className="record-steps mt-4">
-      <ol className="grid grid-cols-3 gap-1.5 text-center" aria-label="How the answer was found">
+      <ol className="grid max-w-md grid-cols-2 gap-1.5 text-center" aria-label="How the answer was found">
         {steps.map((x, i) => (
           <li key={x.label} className="relative rounded-lg border border-rule px-2 py-2.5">
             {i ? (

@@ -11,9 +11,9 @@ import { VerdictCard, recordSteps, recordStepsTally } from './Verdict.js';
 // block per action and "Of the 10 actions about your question, 6 push toward"
 // mixed bills and actions, and nothing visibly added up. The card is a
 // snapshot, so it walks the numbers in order, each with its unit:
-//   10 bills read closely → 8 were about your question → 10 actions Thune took on those 8
-//   ✓ 6 actions count toward what you asked about · 4 don't count either way
-//   Searched all 555 of Thune's recorded actions since January 2023.
+//   8 bills on your question → 10 actions Thune took on them
+//   ✓ 6 count toward what you asked about · 4 don't count either way
+//   Searched all 555 of Thune's recorded actions since January 2023 and read the 10 bills that came closest.
 // The rows below are that run's (8 bills, 10 actions).
 // ===========================================================================
 
@@ -55,12 +55,12 @@ describe('the record steps', () => {
 
   it('the tally line names actions, and leaves out what is zero', () => {
     expect(recordStepsTally(recordSteps(result(THUNE))!)).toEqual({
-      toward: '6 actions count toward what you asked about',
+      toward: '6 count toward what you asked about',
       against: null,
       not: "4 don't count either way",
     });
     const one = recordStepsTally({ read: 10, about: 2, actions: 2, actionBills: 2, toward: 1, against: 1, notCounted: 0 });
-    expect(one).toEqual({ toward: '1 action counts toward what you asked about', against: '1 action counts against it', not: null });
+    expect(one).toEqual({ toward: '1 counts toward what you asked about', against: '1 counts against it', not: null });
   });
 
   it('nothing to step through when no bill was about the question', () => {
@@ -72,14 +72,15 @@ describe('the record card on the page', () => {
   const html = renderToStaticMarkup(React.createElement(VerdictCard, { result: result(THUNE) }));
   const text = textOf(html);
 
-  it('walks the three steps, each with its unit', () => {
-    expect(text).toMatch(/10 bills read closely .*8 were about your question .*10 actions Thune took on those 8/);
-    expect(text).toContain("✓ 6 actions count toward what you asked about · 4 don't count either way");
+  it('shows two steps, each with its unit, and no "read closely" box', () => {
+    expect(text).toMatch(/8 bills on your question .*10 actions Thune took on them/);
+    expect(text).not.toMatch(/bills read closely/);
+    expect(text).toContain("✓ 6 count toward what you asked about · 4 don't count either way");
   });
 
   it('says one bill can carry several actions when it does, and what the search covered', () => {
     expect(text).toContain('One bill can carry several actions');
-    expect(text).toContain('Searched all 555 of Thune’s recorded actions since January 2023.');
+    expect(text).toContain('Searched all 555 of Thune’s recorded actions since January 2023 and read the 10 bills that came closest.');
   });
 
   it('keeps the description, after the steps; no chips, no bar, no bill list', () => {
@@ -94,6 +95,6 @@ describe('the record card on the page', () => {
     const t = textOf(renderToStaticMarkup(React.createElement(VerdictCard, { result: result(ossoff, 'Jon Ossoff', { evaluated: 10, admitted: 5 }, 705) })));
     expect(t).not.toContain('One bill can carry several actions');
     expect(t).toContain('4 actions Ossoff took on 4 of them');
-    expect(t).toContain('✕ 1 action counts against it');
+    expect(t).toContain('✕ 1 counts against it');
   });
 });
