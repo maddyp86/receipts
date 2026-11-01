@@ -1,55 +1,99 @@
+import * as React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { recordTallySentence } from './Verdict.js';
+import type { QueryResult } from '@receipts/shared';
+import { VerdictCard, recordActionPhrase, recordBills, recordCountLine } from './Verdict.js';
+
+(globalThis as { React?: unknown }).React = React;
 
 // ===========================================================================
-// THE RECORD BAR (Matt, 31 Oct, Ossoff / ACA tax credits, trace 9b534012):
-// "3 for · 1 against" under the bar left readers asking: for or against
-// what? The bar now opens with a sentence that says.
-//
-// And (Matt, 1 Nov, Thune / Laken Riley Act): the chip above said "4 about
-// your question" while the sentence said "Of the 6 actions". The 4 is bills;
-// the 6 is what the senator did on them (S.5 alone: co-sponsored, voted to end
-// debate, voted to pass). The sentence names both, and accounts for every
-// block on the bar, the uncounted one included.
+// THE RECORD CARD (Matt, 1 Nov, Thune / Laken Riley Act). The card carried
+// "10 read closely" and "8 about your question" chips, a bar of 10 blocks and
+// "Of the 10 actions about your question, 6 push toward…". Bills and actions
+// were mixed and nothing visibly added up. It now says one line and lists the
+// bills, each with what the senator did on it; the search is one sentence.
+// The rows below are that run's (8 bills, 10 actions).
 // ===========================================================================
 
-type Rows = Parameters<typeof recordTallySentence>[0];
-const row = (reading: 'for' | 'against' | 'not_counted', stage: Rows[number]['stage'], bill_id = 'b') =>
-  ({ action_uid: `A-${bill_id}`, bill_id, stage, vote: null, reading, bill_effect: 'ADVANCE', broad: false }) as unknown as Rows[number];
+type Rows = NonNullable<QueryResult['record']>['rows'];
+const row = (bill_id: string, stage: Rows[number]['stage'], reading: string, vote: string | null = null, broad = false) =>
+  ({ action_uid: `ACT-${bill_id}`, bill_id, stage, vote, reading, bill_effect: reading === 'for' ? 'ADVANCE' : 'NEUTRAL', broad }) as Rows[number];
 
-describe('the record bar sentence', () => {
-  it('the Thune case: 4 bills, 6 actions, and the one not counted is said', () => {
-    const rows = [
-      row('for', 'cosponsor', 's160-118'),
-      row('for', 'cloture', 's5-119'),
-      row('for', 'passage', 's5-119'),
-      row('for', 'cosponsor', 's5-119'),
-      row('for', 'cosponsor', 's3933-118'),
-      row('not_counted', 'passage', 's2-119'),
-    ];
-    expect(recordTallySentence(rows, 'Thune')).toBe(
-      'On the 4 bills about your question, Thune took 6 actions: 5 push toward what you asked about, none work against it, and 1 isn’t counted.'.replace('’', "'"),
+const THUNE: Rows = [
+  row('s5183-118', 'cosponsor', 'not_counted'),
+  row('s733-118', 'sponsor', 'not_counted'),
+  row('s333-118', 'cosponsor', 'for'),
+  row('s160-118', 'cosponsor', 'for'),
+  row('s5-119', 'cloture', 'for', 'YEA'),
+  row('s5-119', 'passage', 'for', 'YEA'),
+  row('s5-119', 'cosponsor', 'for'),
+  row('s3933-118', 'cosponsor', 'for'),
+  row('s2-119', 'passage', 'not_counted', 'YEA', true),
+  row('sjres18-118', 'passage', 'not_counted', 'YEA'),
+];
+
+describe('the record card, in words', () => {
+  it('one line that accounts for every action, and says bills and actions apart', () => {
+    expect(recordCountLine(THUNE, 'Thune')).toBe(
+      'Of Thune’s 10 actions on these 8 bills, 6 count toward what you asked about and 4 don’t count either way.'.replace(/’(?=t)/, "'"),
     );
   });
 
-  it('the Ossoff case: one vote and two co-sponsorships toward, one against, four bills', () => {
-    const rows = [row('for', 'cloture', 's3385'), row('for', 'cosponsor', 's46'), row('for', 'cosponsor', 's4684'), row('against', 'cosponsor', 's2556')];
-    expect(recordTallySentence(rows, 'Ossoff')).toBe(
-      'On the 4 bills about your question, Ossoff took 4 actions: 3 push toward what you asked about and 1 works against it.',
+  it('says what counts against, and what was set aside', () => {
+    const rows = [row('a', 'cloture', 'for', 'YEA'), row('b', 'cosponsor', 'against'), row('c', 'passage', 'not_counted', 'NAY')];
+    expect(recordCountLine(rows, 'Ossoff', 2)).toBe(
+      "Of Ossoff’s 3 actions on these 3 bills, 1 counts toward what you asked about, 1 counts against it, and 1 doesn't count either way. 2 more were set aside by our rules.",
+    );
+    expect(recordCountLine([row('a', 'passage', 'for', 'YEA')], 'Thune')).toBe(
+      'Thune took one action on this bill, and it counts toward what you asked about.',
     );
   });
 
-  it('says "none" rather than "0", gets the singular right, and says what was set aside', () => {
-    expect(recordTallySentence([row('for', 'passage')], 'Thune')).toBe(
-      'On the one bill about your question, Thune took one action, and it pushes toward what you asked about.',
-    );
-    expect(recordTallySentence([row('against', 'cloture', 'x'), row('against', 'passage', 'x')], 'Thune', 1)).toBe(
-      'On the one bill about your question, Thune took 2 actions: none push toward what you asked about and 2 work against it. 1 more was set aside by our rules.',
-    );
+  it('each action in plain words', () => {
+    expect(recordActionPhrase(row('x', 'cloture', 'for', 'YEA'))).toBe('Voted Yes to end debate');
+    expect(recordActionPhrase(row('x', 'passage', 'for', 'NAY'))).toBe('Voted No to pass');
+    expect(recordActionPhrase(row('x', 'cosponsor', 'for'))).toBe('Co-sponsored');
+    expect(recordActionPhrase(row('x', 'sponsor', 'for'))).toBe('Sponsored');
   });
 
-  it('falls back to "they" without a name, and has nothing to say when nothing was counted', () => {
-    expect(recordTallySentence([row('for', 'vote', 'a'), row('for', 'vote', 'b')])).toMatch(/^On the 2 bills about your question, they took 2 actions:/);
-    expect(recordTallySentence([row('not_counted', 'vote')])).toBeNull();
+  it('groups the actions by bill: counted first, the bill with votes first', () => {
+    const bills = recordBills(THUNE);
+    expect(bills.map((b) => b.bill_id)).toEqual(['s5-119', 's333-118', 's160-118', 's3933-118', 's2-119', 'sjres18-118', 's5183-118', 's733-118']);
+    expect(bills[0]).toEqual({ bill_id: 's5-119', reading: 'for', actions: ['Co-sponsored', 'Voted Yes to end debate', 'Voted Yes to pass'], broad: false });
+    expect(bills.find((b) => b.bill_id === 's2-119')).toMatchObject({ reading: 'not_counted', broad: true });
+  });
+});
+
+describe('the record card on the page', () => {
+  const result = {
+    senator: { politician_id: 'T000250', name: 'John Thune', cached: true, record_actions: 555 },
+    interpretation: { raw: 'Did they vote for the Laken Riley Act?', restated: 'x', primary_issue: 'x', sub_issue: 'x', stance: 'In Favor', statement_type: 'Policy Position', provenance: 'default', promise_type: 'policy' },
+    scored: { verdict: 'KEPT', band: 'Medium', mode: 'ranked', nd_reason: null, ranked: [], evidence: [{ bill_id: 's5-119', title: 'A bill to require the Secretary of Homeland Security to take into custody aliens who have been charged with theft.' }], receipt: {} },
+    explanation: { why: 'Because.', connectors: {}, confidence: 0.8 },
+    coverage: { congresses: [118, 119], observed: null, unknown: false },
+    search: { returned: 10, below_floor: 0, evaluated: 10, admitted: 8, relevance_applied: true, exclusions: [] },
+    record: { label: 'VOTED_FOR', reason: 'VOTES', rows: THUNE, counted: { for: 2, against: 0 }, set_aside: 0 },
+    gated: [],
+  } as unknown as QueryResult;
+  const html = renderToStaticMarkup(React.createElement(VerdictCard, { result }));
+  const text = html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/\s+/g, ' ');
+
+  it('has no chips and no bar', () => {
+    expect(html).not.toContain('search-funnel');
+    expect(html).not.toContain('role="img"');
+    expect(text).not.toMatch(/read closely|about your question\b(?! and)/);
+  });
+
+  it('lists each bill with what he did, then the ones not counted and why', () => {
+    expect(text).toContain('S. 5 · 119th Congress');
+    expect(text).toContain('Co-sponsored · Voted Yes to end debate · Voted Yes to pass');
+    expect(text).toContain('Not counted');
+    expect(text).toMatch(/S\. 2 · Voted Yes to pass\. Too broad to count/);
+    expect((html.match(/data-reading="for"/g) ?? []).length).toBe(4);
+    expect((html.match(/data-reading="not_counted"/g) ?? []).length).toBe(4);
+  });
+
+  it('says what the search did in one sentence, in bills', () => {
+    expect(text).toContain('We searched all 555 of Thune’s recorded actions since January 2023. Ten bills came close to your question, and eight were actually about it.');
   });
 });

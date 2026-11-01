@@ -14,6 +14,7 @@ import {
   BAND_REASON_COPY,
   assertedPromiseLine,
   billCitation,
+  congressOfBillId,
   confidencePhrase,
   ND_NO_REASON_COPY,
   ND_REASON_COPY,
@@ -423,83 +424,130 @@ function readResult(props: VerdictProps) {
  */
 type RecordRow = NonNullable<QueryResult['record']>['rows'][number];
 
-/** "1 vote and 2 co-sponsorships": what kind of action each row was. */
-function actionKinds(rows: RecordRow[]): string {
-  const n = { vote: 0, sponsorship: 0, 'co-sponsorship': 0 };
-  for (const r of rows) n[r.stage === 'sponsor' ? 'sponsorship' : r.stage === 'cosponsor' ? 'co-sponsorship' : 'vote'] += 1;
-  const parts = Object.entries(n)
-    .filter(([, c]) => c > 0)
-    .map(([k, c]) => `${c} ${k}${c === 1 ? '' : 's'}`);
-  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0] ?? '';
+/**
+ * THE RECORD LIST (Matt, 1 Nov, Thune / Laken Riley Act). The card used to
+ * carry three search counts ("555 actions in record", "10 read closely",
+ * "8 about your question"), a bar with one block per action and a sentence
+ * counting actions. Bills and actions were mixed, the numbers did not visibly
+ * add up, and the bar added nothing a reader could use. The card now says one
+ * thing in words and lists the bills, each with what the senator did on it,
+ * counted ones first. The search counts are one plain sentence at the bottom.
+ */
+
+/** "Voted Yes to end debate", "Co-sponsored": one action in plain words. */
+export function recordActionPhrase(r: RecordRow): string {
+  if (r.stage === 'sponsor') return 'Sponsored';
+  if (r.stage === 'cosponsor') return 'Co-sponsored';
+  const v = String(r.vote ?? '').toUpperCase();
+  const how = r.stage === 'cloture' ? ' to end debate' : r.stage === 'passage' ? ' to pass' : '';
+  if (v === 'YEA' || v === 'AYE' || v === 'YES') return `Voted Yes${how}`;
+  if (v === 'NAY' || v === 'NO') return `Voted No${how}`;
+  return v ? `Did not vote${how}` : `Voted${how}`;
+}
+
+export interface RecordBill {
+  bill_id: string;
+  reading: 'for' | 'against' | 'not_counted';
+  actions: string[];
+  broad: boolean;
+}
+
+/** The rows grouped by bill, in order: counted bills first, those with a vote first among them. */
+export function recordBills(rows: RecordRow[]): RecordBill[] {
+  const by = new Map<string, RecordRow[]>();
+  for (const r of rows) by.set(r.bill_id, [...(by.get(r.bill_id) ?? []), r]);
+  const order = (s: RecordRow['stage']) => (s === 'sponsor' ? 0 : s === 'cosponsor' ? 1 : s === 'cloture' ? 2 : 3);
+  const bills = [...by.entries()].map(([bill_id, rs]) => ({
+    bill_id,
+    reading: (rs.some((r) => r.reading === 'against') ? 'against' : rs.some((r) => r.reading === 'for') ? 'for' : 'not_counted') as RecordBill['reading'],
+    actions: [...rs].sort((x, y) => order(x.stage) - order(y.stage)).map(recordActionPhrase),
+    broad: rs.some((r) => r.broad),
+    voted: rs.some((r) => r.stage !== 'sponsor' && r.stage !== 'cosponsor'),
+  }));
+  const rank = (b: (typeof bills)[number]) => (b.reading === 'not_counted' ? 2 : 0) + (b.voted ? 0 : 1);
+  return bills.sort((x, y) => rank(x) - rank(y)).map(({ voted: _v, ...b }) => b);
 }
 
 /**
- * The bar's meaning in one sentence, since "3 for · 1 against" alone left
- * readers asking for or against what (Matt, 31 Oct). "For" is an action that
- * pushes toward what they asked about; "against" is one that works against it.
- *
- * It names the bills as well as the actions, and accounts for every block on
- * the bar: the chip above says "4 bills about your question" while the bar has
- * one block per action, and one bill can carry several (Thune, Laken Riley
- * Act: a co-sponsorship, the vote to end debate and the final vote on S.5).
- * "Of the 6 actions about your question" under a "4" read as a contradiction
- * (Matt, 1 Nov).
+ * The card's one line: "Of Thune's 10 actions on these 8 bills, 6 count toward
+ * what you asked about and 4 don't count." Every action is accounted for.
  */
-export function recordTallySentence(rows: RecordRow[], surname = '', setAside = 0): string | null {
+export function recordCountLine(rows: RecordRow[], surname = '', setAside = 0): string | null {
+  if (!rows.length) return null;
   const fors = rows.filter((r) => r.reading === 'for').length;
   const againsts = rows.filter((r) => r.reading === 'against').length;
-  if (!fors && !againsts) return null;
   const not = rows.length - fors - againsts;
-  const total = rows.length;
   const bills = new Set(rows.map((r) => r.bill_id)).size;
-  const who = surname.trim() || 'they';
-  const aside = setAside ? ` ${setAside} more ${setAside === 1 ? 'was' : 'were'} set aside by our rules.` : '';
-  if (total === 1) {
-    return `On the one bill about your question, ${who} took one action, and it ${fors ? 'pushes toward what you asked about' : 'works against it'}.${aside}`;
-  }
-  const lead = `On the ${bills === 1 ? 'one bill' : `${bills} bills`} about your question, ${who} took ${total} actions: `;
+  const who = surname.trim() ? `${surname.trim()}’s` : 'their';
+  const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
   const parts = [
-    fors ? `${fors} push${fors === 1 ? 'es' : ''} toward what you asked about` : 'none push toward what you asked about',
-    againsts ? `${againsts} work${againsts === 1 ? 's' : ''} against it` : 'none work against it',
-    ...(not ? [`${not} ${not === 1 ? "isn't" : "aren't"} counted`] : []),
+    ...(fors ? [`${fors} ${fors === 1 ? 'counts' : 'count'} toward what you asked about`] : []),
+    ...(againsts ? [`${againsts} ${againsts === 1 ? 'counts' : 'count'} against it`] : []),
+    ...(not ? [`${not} ${not === 1 ? "doesn't" : "don't"} count either way`] : []),
   ];
   const list = parts.length > 2 ? `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}` : parts.join(' and ');
-  return `${lead}${list}.${aside}`;
+  if (rows.length === 1) {
+    const how = fors ? 'counts toward what you asked about' : againsts ? 'counts against it' : "doesn't count either way";
+    const actor = surname.trim() || 'They';
+    return `${actor} took one action on this bill, and it ${how}.${setAside ? ` ${setAside} more ${setAside === 1 ? 'was' : 'were'} set aside by our rules.` : ''}`;
+  }
+  const lead = `Of ${who} ${n(rows.length, 'action', 'actions')} on ${bills === 1 ? 'this bill' : `these ${bills} bills`}, `;
+  const body = list;
+  const aside = setAside ? ` ${setAside} more ${setAside === 1 ? 'was' : 'were'} set aside by our rules.` : '';
+  return `${lead}${body}.${aside}`;
 }
 
-/** Toward / against / not counted / set aside, one block per vote or sponsorship row. */
-function RecordBar({ answer, setAside, surname }: { answer: NonNullable<QueryResult['record']>; setAside: number; surname: string }) {
-  const forRows = answer.rows.filter((r) => r.reading === 'for');
-  const againstRows = answer.rows.filter((r) => r.reading === 'against');
-  const fors = forRows.length;
-  const againsts = againstRows.length;
-  const not = answer.rows.length - fors - againsts;
-  const segments = [
-    { key: 'for', n: fors, cls: 'bg-kept' },
-    { key: 'against', n: againsts, cls: 'bg-broken' },
-    { key: 'not', n: not + setAside, cls: 'bg-rule' },
-  ].filter((x) => x.n > 0);
-  if (!segments.length) return null;
-  const sentence = recordTallySentence(answer.rows, surname, setAside);
-  const legend = [
-    { cls: 'bg-kept', text: `Toward it: ${fors ? actionKinds(forRows) : 'none'}` },
-    { cls: 'bg-broken', text: `Against it: ${againsts ? actionKinds(againstRows) : 'none'}` },
-    ...(not ? [{ cls: 'bg-rule', text: `${not} not counted` }] : []),
-    ...(setAside ? [{ cls: 'bg-rule', text: `${setAside} set aside` }] : []),
-  ];
+function RecordList({ result, surname }: { result: QueryResult; surname: string }) {
+  const answer = result.record!;
+  const bills = recordBills(answer.rows);
+  if (!bills.length) return null;
+  const titleOf = new Map((result.scored.evidence ?? []).map((e) => [e.bill_id, e.title]));
+  const counted = bills.filter((b) => b.reading !== 'not_counted');
+  const uncounted = bills.filter((b) => b.reading === 'not_counted');
+  const line = recordCountLine(answer.rows, surname, answer.set_aside);
+  const name = (b: RecordBill) => billCitation(b.bill_id) ?? b.bill_id;
+  const congress = (b: RecordBill) => {
+    const c = congressOfBillId(b.bill_id);
+    return c ? `${c}th Congress` : null;
+  };
   return (
-    <div className="tally mt-3">
-      {sentence ? <p className="tally-sentence text-[15px] leading-snug text-ink">{sentence}</p> : null}
-      <div className="mt-2 flex h-2.5 gap-1" role="img" aria-label={sentence ?? legend.map((l) => l.text).join(', ')}>
-        {segments.map((x) =>
-          Array.from({ length: x.n }).map((_, i) => <span key={`${x.key}-${i}`} className={`h-full flex-1 rounded-full ${x.cls}`} />),
-        )}
-      </div>
-      <p className="tally-legend mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-soft" aria-hidden="true">
-        {legend.map((l) => (
-          <span key={l.text} className="inline-flex items-center gap-1.5"><span className={`h-2.5 w-2.5 rounded-full ${l.cls}`} />{l.text}</span>
-        ))}
-      </p>
+    <div className="record-list mt-4">
+      {line ? <p className="record-count text-[16px] leading-snug text-ink">{line}</p> : null}
+      {counted.length ? (
+        <ul className="mt-3 divide-y divide-rule rounded-lg border border-rule">
+          {counted.map((b) => (
+            <li key={b.bill_id} className="flex gap-3 px-3.5 py-3" data-reading={b.reading}>
+              <span
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${b.reading === 'for' ? 'bg-kept-wash text-kept' : 'bg-broken-wash text-broken'}`}
+                aria-label={b.reading === 'for' ? 'Counts toward what you asked about' : 'Counts against what you asked about'}
+              >
+                {b.reading === 'for' ? <CheckIcon className="h-3.5 w-3.5" aria-hidden="true" /> : <XIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+              </span>
+              <div className="min-w-0">
+                <p className="text-[15px] font-medium text-ink">
+                  {name(b)}
+                  {congress(b) ? <span className="font-normal text-ink-soft"> · {congress(b)}</span> : null}
+                </p>
+                {titleOf.get(b.bill_id) ? <p className="truncate text-[14px] text-ink-soft">{titleOf.get(b.bill_id)}</p> : null}
+                <p className="mt-0.5 text-[15px] text-ink">{b.actions.join(' · ')}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {uncounted.length ? (
+        <div className="mt-3">
+          <p className="text-[14px] font-medium text-ink-soft">Not counted</p>
+          <ul className="mt-1 space-y-1">
+            {uncounted.map((b) => (
+              <li key={b.bill_id} className="text-[14px] leading-snug text-ink-soft" data-reading="not_counted">
+                <span className="font-medium text-ink">{name(b)}</span> · {b.actions.join(' · ')}.{' '}
+                {b.broad ? 'Too broad to count: it covers far more than this.' : 'About a related issue, not the one you asked about.'}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -513,7 +561,7 @@ function RecordBar({ answer, setAside, surname }: { answer: NonNullable<QueryRes
 function RecordCard(props: VerdictProps) {
   const { result } = props;
   const answer = result.record!;
-  const funnel = searchFunnel(result);
+  const searched = searchSummarySentence(result);
   const boundary = recordBoundarySentence(result);
   const sub = answerReasonLine(answer, result.gated);
   const summary = result.explanation.card_summary?.trim();
@@ -532,26 +580,10 @@ function RecordCard(props: VerdictProps) {
         <p className="verdict-band mt-2 text-[16px] leading-snug text-ink-soft">
           {result.senator.name} · you asked: <span className="text-ink">“{result.interpretation.raw}”</span>
         </p>
-        {funnel ? (
-          <dl className="search-funnel mt-4 flex flex-wrap gap-2">
-            {[
-              { n: funnel.searched, label: 'actions in record' },
-              { n: funnel.close, label: funnel.close === 1 ? 'bill read closely' : 'bills read closely' },
-              { n: funnel.about, label: funnel.about === 1 ? 'bill about your question' : 'bills about your question' },
-            ].map((x) =>
-              x.n === null ? null : (
-                <div key={x.label} className="flex items-baseline gap-1.5 rounded-full border border-rule bg-card/80 px-3 py-1">
-                  <dt className="sr-only">{x.label}</dt>
-                  <dd className="text-[16px] font-medium text-ink">{x.n.toLocaleString('en-US')}</dd>
-                  <dd className="text-[14px] text-ink-soft" aria-hidden="true">{x.label}</dd>
-                </div>
-              ),
-            )}
-          </dl>
-        ) : null}
-        <RecordBar answer={answer} setAside={answer.set_aside} surname={String(result.senator.name ?? '').split(/\s+/).pop() ?? ''} />
         {summary ? <p className="verdict-tally mt-3 text-[16px] leading-relaxed text-ink">{summary}</p> : null}
+        <RecordList result={result} surname={String(result.senator.name ?? '').split(/\s+/).pop() ?? ''} />
         {boundary ? <p className="record-boundary mt-4 text-[16px] leading-relaxed text-ink">{boundary}</p> : null}
+        {searched ? <p className="record-search mt-3 text-[14px] leading-snug text-ink-soft">{searched}</p> : null}
         {props.actions ? <div className="result-actions mt-5">{props.actions}</div> : null}
       </div>
     </section>
