@@ -115,6 +115,14 @@ function LandingHero({
     return m ? [{ starter: s, member: m }] : [];
   });
 
+  // One line to start; grows with what is typed (up to about five lines).
+  useEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [promise]);
+
   // Picked someone with nothing typed yet: straight on to the question.
   const prev = useRef<string | null>(selected?.politician_id ?? null);
   useEffect(() => {
@@ -150,30 +158,26 @@ function LandingHero({
 
   return (
     <section className="bg-lp-navy text-white" aria-labelledby="hero-title">
-      <div className="mx-auto max-w-6xl px-5 pb-20 pt-8 sm:px-6 lg:pt-10">
+      <div className="mx-auto max-w-6xl px-5 pb-20 pt-5 sm:px-6 lg:pt-7">
         <div className="mx-auto max-w-3xl text-center">
-          <p className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[13px] text-white/80">
-            <span className="h-1.5 w-1.5 rounded-full bg-lp-signal" aria-hidden="true" />
-            Beta · Senate record since January 2023
-          </p>
-          <h1 id="hero-title" className="mt-4 scroll-mt-24 text-balance font-display text-[2.6rem] font-semibold leading-[1.05] sm:text-6xl">
+          <h1 id="hero-title" className="scroll-mt-24 text-balance font-display text-[2.3rem] font-semibold leading-[1.05] sm:text-[3.25rem]">
             Hold Congress to <span className="text-lp-signal">its word</span>
           </h1>
-          <p className="mx-auto mt-4 max-w-xl text-lg leading-relaxed text-white/75">
+          <p className="mx-auto mt-3 max-w-xl text-lg leading-relaxed text-white/75">
             See whether the people who represent you vote the way they talk, from campaign promises to the bills they back.
           </p>
         </div>
 
-        <div className="mx-auto mt-8 max-w-2xl">
+        <div className="mx-auto mt-6 max-w-2xl">
           <form
             onSubmit={handleSubmit}
             aria-label="Check a lawmaker"
-            className="rounded-2xl bg-lp-navy3 p-5 text-left text-white shadow-[0_24px_60px_-24px_rgba(0,0,0,0.7)] ring-1 ring-white/20 sm:p-7"
+            className="rounded-2xl bg-lp-navy3 p-4 text-left text-white shadow-[0_24px_60px_-24px_rgba(0,0,0,0.7)] ring-1 ring-white/20 sm:p-5"
           >
             <StepLabel n={1} done={Boolean(selected)} htmlFor="lawmaker">
               Who do you want to check?
             </StepLabel>
-            <div className="mt-3 sm:pl-10">
+            <div className="mt-2 sm:pl-10">
               <LawmakerSearch
                 tone="dark"
                 members={members}
@@ -186,31 +190,35 @@ function LandingHero({
 
             <fieldset
               disabled={!selected}
-              className={`mt-6 transition-opacity duration-200 ease-out ${selected ? '' : 'opacity-55'}`}
+              className={`mt-5 transition-opacity duration-200 ease-out ${selected ? '' : 'opacity-55'}`}
             >
               <StepLabel n={2} done={false} htmlFor="promise">
                 What do you want to check{selected ? ` about ${selected.name}` : ''}?
               </StepLabel>
-              <div className="mt-3 sm:pl-10">
+              <div className="mt-2 sm:pl-10">
                 <textarea
                   ref={textRef}
                   id="promise"
-                  rows={2}
+                  rows={1}
                   maxLength={600}
                   value={promise}
                   onChange={(e) => onPromiseChange(e.target.value)}
                   placeholder={selected ? 'e.g., Did they vote for the Laken Riley Act?' : 'Pick a lawmaker first'}
-                  className="w-full resize-none rounded-xl border border-white/15 bg-lp-navy px-3.5 py-3 text-[15px] text-white outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-white/40 focus:border-lp-signal focus:ring-4 focus:ring-lp-signal/20"
+                  className="block max-h-[9.5rem] w-full resize-none overflow-y-auto rounded-xl border border-white/15 bg-lp-navy px-3.5 py-3 text-[15px] text-white outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-white/40 focus:border-lp-signal focus:ring-4 focus:ring-lp-signal/20"
                 />
-                <p className="mt-2 text-[13px] text-white/55">Be specific: name the policy, program or bill.</p>
-                <PhrasingHelp tone="dark" onPick={pick} className="group mt-1" />
+                <PhrasingHelp
+                  tone="dark"
+                  onPick={pick}
+                  className="group mt-1"
+                  lead={<span className="text-[13px] text-white/55">Be specific: name the policy, program or bill.</span>}
+                />
               </div>
             </fieldset>
 
             <button
               type="submit"
               aria-disabled={busy ? 'true' : undefined}
-              className="mt-6 inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-lp-brand px-5 py-3 text-[15px] font-semibold text-white transition-[background-color,transform] duration-150 ease-out hover:bg-lp-brand-dark focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-lp-signal/40 active:scale-[0.98]"
+              className="mt-5 inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-lp-brand px-5 py-3 text-[15px] font-semibold text-white transition-[background-color,transform] duration-150 ease-out hover:bg-lp-brand-dark focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-lp-signal/40 active:scale-[0.98]"
             >
               {busy ? (
                 <>
@@ -226,15 +234,17 @@ function LandingHero({
             </button>
           </form>
 
+          <LandingBeta full={showScopeNote} />
+
           {dailyLimit ? (
-            <p className="mt-3 flex items-start gap-2 px-1 text-sm text-white/70">
+            <p className="mt-2 flex items-start gap-2 px-1 text-sm text-white/70">
               <GaugeIcon className="mt-0.5 h-4 w-4 shrink-0 text-lp-signal" aria-hidden="true" />
               <span>Free during the preview: up to {dailyLimit} checks a day, including follow-up questions.</span>
             </p>
           ) : null}
 
           {starters.length ? (
-            <div className="mt-10">
+            <div className="mt-8">
               <h2 className="px-1 text-sm font-medium text-white/55">Or try one now, in one tap:</h2>
               <ul className="mt-1 divide-y divide-white/[0.07]">
                 {starters.map(({ starter, member }) => (
@@ -264,7 +274,6 @@ function LandingHero({
             </div>
           ) : null}
 
-          <LandingBeta full={showScopeNote} />
         </div>
       </div>
     </section>
@@ -273,9 +282,9 @@ function LandingHero({
 
 /** The beta note: the one line always; the full approved note one tap away where it can point at feedback. */
 function LandingBeta({ full }: { full: boolean }) {
-  if (!full) return <p className="mt-6 px-1 text-[13px] text-white/60">{BETA_LINE}</p>;
+  if (!full) return <p className="mt-3 px-1 text-[13px] text-white/60">{BETA_LINE}</p>;
   return (
-    <details className="group mt-6 px-1">
+    <details className="group mt-3 px-1">
       <summary className="cursor-pointer list-none text-[13px] text-white/60 [&::-webkit-details-marker]:hidden">
         {BETA_LINE}{' '}
         <span className="inline-flex items-center gap-1 font-medium text-lp-signal underline underline-offset-4">

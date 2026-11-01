@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { CheckIcon, ChevronDownIcon, CornerDownLeftIcon, XIcon } from 'lucide-react';
 import { askingPairs, cantCheck, topics } from '../../data/topics.js';
 
@@ -56,17 +56,29 @@ interface Props {
   tone?: Tone;
   /** Classes on the <details> (spacing). */
   className?: string;
+  /**
+   * A hint shown on the same line, before the link (the landing page's "Be
+   * specific…"), so the two take one line instead of two.
+   */
+  lead?: ReactNode;
 }
 
-export function PhrasingHelp({ onPick, tone = 'light', className = 'group mt-6' }: Props) {
+export function PhrasingHelp({ onPick, tone = 'light', className = 'group mt-6', lead }: Props) {
   const [topicId, setTopicId] = useState<string | null>(null);
   const topic = topics.find((t) => t.id === topicId);
   const c = TONE[tone];
 
   return (
     <details className={className}>
-      <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-        <span className={`inline-flex min-h-[44px] items-center gap-1 text-[16px] font-medium underline underline-offset-4 ${c.summary}`}>
+      <summary
+        className={`cursor-pointer list-none [&::-webkit-details-marker]:hidden ${lead ? 'flex flex-wrap items-center gap-x-3' : ''}`}
+      >
+        {lead}
+        <span
+          className={`inline-flex items-center gap-1 font-medium underline underline-offset-4 ${c.summary} ${
+            lead ? 'min-h-[36px] text-[14px]' : 'min-h-[44px] text-[16px]'
+          }`}
+        >
           Need help phrasing it?
           <ChevronDownIcon className="h-4 w-4 transition-transform duration-200 group-open:rotate-180" aria-hidden="true" />
         </span>
