@@ -2,7 +2,7 @@ import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { QueryResult } from '@receipts/shared';
-import { VerdictCard, recordSteps, recordStepsTally } from './Verdict.js';
+import { VerdictCard, recordSteps } from './Verdict.js';
 
 (globalThis as { React?: unknown }).React = React;
 
@@ -11,9 +11,8 @@ import { VerdictCard, recordSteps, recordStepsTally } from './Verdict.js';
 // block per action and "Of the 10 actions about your question, 6 push toward"
 // mixed bills and actions, and nothing visibly added up. The card is a
 // snapshot, so it walks the numbers in order, each with its unit:
-//   8 bills on your question → 10 actions Thune took on them
-//   ✓ 6 count toward what you asked about · 4 don't count either way
-//   Searched all 555 of Thune's recorded actions since January 2023 and read the 10 bills that came closest.
+//   [8 bills on your question] [6 of Thune's actions count toward it] [4 of Thune's actions don't count]
+//   Searched all 555 of Thune's recorded actions since January 2023.
 // The rows below are that run's (8 bills, 10 actions).
 // ===========================================================================
 
@@ -53,16 +52,6 @@ describe('the record steps', () => {
     expect(recordSteps(result(THUNE))).toEqual({ read: 10, about: 8, actions: 10, actionBills: 8, toward: 6, against: 0, notCounted: 4 });
   });
 
-  it('the tally line names actions, and leaves out what is zero', () => {
-    expect(recordStepsTally(recordSteps(result(THUNE))!)).toEqual({
-      toward: '6 count toward what you asked about',
-      against: null,
-      not: "4 don't count either way",
-    });
-    const one = recordStepsTally({ read: 10, about: 2, actions: 2, actionBills: 2, toward: 1, against: 1, notCounted: 0 });
-    expect(one).toEqual({ toward: '1 counts toward what you asked about', against: '1 counts against it', not: null });
-  });
-
   it('nothing to step through when no bill was about the question', () => {
     expect(recordSteps(result([], 'John Thune', { evaluated: 2, admitted: 0 }))).toBeNull();
   });
@@ -71,29 +60,38 @@ describe('the record steps', () => {
 describe('the record card on the page', () => {
   const html = renderToStaticMarkup(React.createElement(VerdictCard, { result: result(THUNE) }));
   const text = textOf(html);
+  const boxes = (h: string) => [...h.matchAll(/data-box="(\w+)"/g)].map((m) => m[1]);
 
-  it('shows two steps, each with its unit, and no "read closely" box', () => {
-    expect(text).toMatch(/8 bills on your question .*10 actions Thune took on them/);
-    expect(text).not.toMatch(/bills read closely/);
-    expect(text).toContain("✓ 6 count toward what you asked about · 4 don't count either way");
+  it('three boxes: the bills, then the actions split by how they count', () => {
+    expect(boxes(html)).toEqual(['bills', 'toward', 'not']);
+    expect(text).toMatch(/8 bills on your question 6 of Thune’s actions count toward it 4 of Thune’s actions don’t count/);
+    expect(text).not.toMatch(/read closely|actions Thune took/);
   });
 
   it('says what the search covered, and nothing more', () => {
+    expect(text).toContain('Searched all 555 of Thune’s recorded actions since January 2023.');
     expect(text).not.toContain('One bill can carry several actions');
-    expect(text).toContain('Searched all 555 of Thune’s recorded actions since January 2023 and read the 10 bills that came closest.');
+    expect(text).not.toContain('came closest');
   });
 
-  it('keeps the description, after the steps; no chips, no bar, no bill list', () => {
+  it('keeps the description, after the boxes; no chips, no bar, no bill list', () => {
     expect(text.indexOf('Thune voted for the Laken Riley Act.')).toBeGreaterThan(text.indexOf('Searched all 555'));
     expect(html).not.toContain('search-funnel');
     expect(html).not.toContain('role="img"');
     expect(html).not.toContain('record-list');
   });
 
-  it('says "of them" when the actions are on only some of the bills, and shows an against', () => {
+  it('an action against gets its own box; an empty category gets none', () => {
     const ossoff = [row('s3385', 'cloture', 'for', 'YEA'), row('s46', 'cosponsor', 'for'), row('s4684', 'cosponsor', 'for'), row('s2556', 'cosponsor', 'against')];
-    const t = textOf(renderToStaticMarkup(React.createElement(VerdictCard, { result: result(ossoff, 'Jon Ossoff', { evaluated: 10, admitted: 5 }, 705) })));
-    expect(t).toContain('4 actions Ossoff took on 4 of them');
-    expect(t).toContain('✕ 1 counts against it');
+    const h = renderToStaticMarkup(React.createElement(VerdictCard, { result: result(ossoff, 'Jon Ossoff', { evaluated: 10, admitted: 4 }, 705) }));
+    expect(boxes(h)).toEqual(['bills', 'toward', 'against']);
+    expect(textOf(h)).toContain('1 of Ossoff’s actions counts against it');
+  });
+
+  it('all four when every kind is there, two columns on a phone', () => {
+    const rows = [row('a', 'cloture', 'for', 'YEA'), row('b', 'cosponsor', 'against'), row('c', 'passage', 'not_counted', 'YEA')];
+    const h = renderToStaticMarkup(React.createElement(VerdictCard, { result: result(rows, 'John Thune', { evaluated: 10, admitted: 3 }) }));
+    expect(boxes(h)).toEqual(['bills', 'toward', 'against', 'not']);
+    expect(h).toContain('grid-cols-2 sm:grid-cols-4');
   });
 });

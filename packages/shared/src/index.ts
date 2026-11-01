@@ -1888,10 +1888,7 @@ function recordStart(coverage: CoverageWindow | undefined): string | null {
  */
 /**
  * What the search covered, and nothing about relevance: "Searched all 555 of
- * Thune’s recorded actions since January 2023 and read the 10 bills that came
- * closest." The bills read closely are 10 about half the time and fewer when
- * few clear the similarity floor, so they are said here, not as a step.
- * Shown under the record card's
+ * Thune’s recorded actions since January 2023." Shown under the record card's
  * steps, where it says what a "no" or a short list is measured against
  * without posing as a step that judged all 555 (Matt, 1 Nov).
  */
@@ -1900,10 +1897,9 @@ export function searchScopeSentence(result: QueryResult): string | null {
   if (!f) return null;
   const surname = surnameOf(result.senator.name);
   const since = recordStart(result.coverage);
-  const read = f.close === 0 ? '' : ` and read the ${f.close === 1 ? 'one bill' : `${f.close} bills`} that came closest`;
   return (f.searched
     ? `Searched all ${f.searched.toLocaleString('en-US')} of ${surname}’s recorded actions`
-    : `Searched ${surname}’s recorded actions`) + (since ? ` since ${since}` : '') + `${read}.`;
+    : `Searched ${surname}’s recorded actions`) + (since ? ` since ${since}.` : '.');
 }
 
 export function searchSummarySentence(result: QueryResult): string | null {

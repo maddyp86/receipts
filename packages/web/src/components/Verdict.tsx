@@ -429,10 +429,9 @@ type RecordRow = NonNullable<QueryResult['record']>['rows'][number];
  * THE RECORD STEPS (Matt, 1 Nov, Thune / Laken Riley Act). The card used to
  * carry three chips, a bar of one block per action and a sentence counting
  * actions; bills and actions were mixed and nothing visibly added up. It is a
- * snapshot (the receipts below hold the bill-by-bill detail), so it shows two
- * numbers, each with its unit: bills on the question → the senator's actions on
- * them, then one line on how those actions count, then what the search
- * covered (the bills read closely are said there, not as a step).
+ * snapshot (the receipts below hold the bill-by-bill detail), so it shows a row
+ * of boxes, one number each: the bills on the question, then the senator's
+ * actions on them split by how they count. Then what the search covered.
  */
 export interface RecordSteps {
   read: number;
@@ -462,51 +461,32 @@ export function recordSteps(result: QueryResult): RecordSteps | null {
   };
 }
 
-/** "6 actions count toward what you asked about · 4 don't count either way", in parts. */
-export function recordStepsTally(s: RecordSteps): { toward: string | null; against: string | null; not: string | null } {
-  return {
-    toward: s.toward ? `${s.toward} ${s.toward === 1 ? 'counts' : 'count'} toward what you asked about` : null,
-    against: s.against ? `${s.against} ${s.against === 1 ? 'counts' : 'count'} against it` : null,
-    not: s.notCounted ? `${s.notCounted} ${s.notCounted === 1 ? "doesn't" : "don't"} count either way` : null,
-  };
-}
-
 function RecordStepsView({ result, surname }: { result: QueryResult; surname: string }) {
   const s = recordSteps(result);
   const scope = searchScopeSentence(result);
   if (!s) return scope ? <p className="record-scope mt-3 text-[13px] text-ink-soft">{scope}</p> : null;
-  const who = surname.trim() || 'They';
-  const on = s.actionBills === s.about ? (s.about === 1 ? 'on it' : 'on them') : `on ${s.actionBills} of them`;
-  const steps = [
-    { n: s.about, label: s.about === 1 ? 'bill on your question' : 'bills on your question' },
-    { n: s.actions, label: `${s.actions === 1 ? 'action' : 'actions'} ${who} took ${on}` },
+  const whose = surname.trim() ? `${surname.trim()}’s` : 'their';
+  const of = (n: number, rest1: string, restN: string) => `of ${whose} actions ${n === 1 ? rest1 : restN}`;
+  // One box per number: the bills, then how the actions on them count. A
+  // category with nothing in it gets no box (Matt, 1 Nov: option G).
+  const boxes = [
+    { key: 'bills', n: s.about, label: s.about === 1 ? 'bill on your question' : 'bills on your question', tone: 'text-ink', wash: '' },
+    ...(s.toward ? [{ key: 'toward', n: s.toward, label: of(s.toward, 'counts toward it', 'count toward it'), tone: 'text-kept', wash: 'bg-kept-wash/60' }] : []),
+    ...(s.against ? [{ key: 'against', n: s.against, label: of(s.against, 'counts against it', 'count against it'), tone: 'text-broken', wash: 'bg-broken-wash/60' }] : []),
+    ...(s.notCounted ? [{ key: 'not', n: s.notCounted, label: of(s.notCounted, 'doesn’t count', 'don’t count'), tone: 'text-ink-soft', wash: '' }] : []),
   ];
-  const t = recordStepsTally(s);
+  const cols = boxes.length === 4 ? 'grid-cols-2 sm:grid-cols-4' : boxes.length === 3 ? 'grid-cols-3' : 'grid-cols-2';
   return (
     <div className="record-steps mt-4">
-      <ol className="grid grid-cols-2 gap-1.5 text-center" aria-label="How the answer was found">
-        {steps.map((x, i) => (
-          <li key={x.label} className="relative rounded-lg border border-rule px-2 py-2.5">
-            {i ? (
-              <span className="absolute -left-[11px] top-1/2 -translate-y-1/2 bg-card text-[13px] text-ink-soft" aria-hidden="true">
-                →
-              </span>
-            ) : null}
-            <p className="text-[22px] font-semibold leading-none text-ink">{x.n.toLocaleString('en-US')}</p>
+      <ul className={`grid ${cols} gap-1.5 text-center`} aria-label="What the record holds on your question">
+        {boxes.map((x) => (
+          <li key={x.key} className={`rounded-lg border border-rule px-2 py-2.5 ${x.wash}`} data-box={x.key}>
+            <p className={`text-[22px] font-semibold leading-none ${x.tone}`}>{x.n.toLocaleString('en-US')}</p>
             <p className="mt-1 text-[13px] leading-tight text-ink-soft">{x.label}</p>
           </li>
         ))}
-      </ol>
-      <p className="record-steps-tally mt-2 text-[15px] leading-snug text-ink">
-        {[
-          t.toward ? <span key="t" className="font-medium text-kept">✓ {t.toward}</span> : null,
-          t.against ? <span key="a" className="font-medium text-broken">✕ {t.against}</span> : null,
-          t.not ? <span key="n" className="text-ink-soft">{t.not}</span> : null,
-        ]
-          .filter(Boolean)
-          .flatMap((el, i) => (i ? [<span key={`d${i}`} className="text-ink-soft"> · </span>, el] : [el]))}
-      </p>
-      {scope ? <p className="record-scope mt-1.5 text-[13px] text-ink-soft">{scope}</p> : null}
+      </ul>
+      {scope ? <p className="record-scope mt-2 text-[13px] text-ink-soft">{scope}</p> : null}
     </div>
   );
 }
