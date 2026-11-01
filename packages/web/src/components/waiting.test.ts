@@ -89,7 +89,8 @@ describe('the entry screen and coverage', () => {
 
   it('a covered member can be the selection', () => {
     const page = render('X000001');
-    expect(page).toContain('Checking');
+    // Picked: a chip in the search field, with a way to change it.
+    expect(page).toContain('Change from Jane Example');
     expect(page).toContain('Check their record');
   });
 
@@ -102,11 +103,12 @@ describe('the entry screen and coverage', () => {
 
   it('an uncovered member is not offered as a choice, and there is no "coming next" list', () => {
     const page = render('');
-    // Readers find (and can fund) anyone by state or name; the front lists only the checked.
+    // Readers find (and can fund) anyone by searching or browsing; nobody
+    // unchecked is put in front of them, and nothing is preselected.
     expect(page).not.toContain('Being added next');
     expect(page).not.toContain('Pat Sample');
-    // The only selectable card is the covered member's.
-    expect(page.match(/data-covered="true"/g)).toHaveLength(1);
+    expect(page).toContain('id="lawmaker"');
+    expect(page).toContain('Pick who to check first');
   });
 });
 
@@ -167,5 +169,24 @@ describe('the narration', () => {
     expect(page).toContain('See each bill (3)');
     // Behind a closed dropdown, not on the page's surface.
     expect(page).not.toMatch(/<details[^>]*open/);
+  });
+
+  it('in the landing page pop-up (framed), only the four big steps: no detail lines, no bills', () => {
+    const steps = (['classify_scope', 'interpret', 'resolve_senator', 'embed', 'search'] as StepId[])
+      .map((id) => step(id, 'done'))
+      .concat(step('score', 'running'));
+    const page = renderToStaticMarkup(
+      React.createElement(Waiting, {
+        member: { politician_id: 'X1', name: 'Jane Example', chamber: 'senate', cached: true },
+        promise: 'supports something', steps, notes, interpretation: null, framed: true,
+        onCancel: () => {}, onChange: () => {},
+      }),
+    );
+    expect(page).toContain('Reading what you wrote');
+    expect(page).toContain('Reading each bill');
+    expect(page).not.toContain('Reading 1 of 2 bills');
+    expect(page).not.toContain('1 about this · 1 set aside');
+    expect(page).not.toContain('See each bill');
+    expect(page).not.toContain('Good to know');
   });
 });

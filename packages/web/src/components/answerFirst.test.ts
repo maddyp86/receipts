@@ -35,17 +35,17 @@ const result = (over: { evaluated?: number; admitted?: number; relevance?: boole
 describe('what the search did, in words', () => {
   it('the insulin case: searched the whole record, two came close, neither was about it', () => {
     expect(searchSummarySentence(result())).toBe(
-      'We searched all 609 of Schumer’s recorded actions since January 2023. Two came close, but neither was actually about this.',
+      'We searched all 609 of Schumer’s recorded actions since January 2023. Two bills came close, but neither was actually about this.',
     );
   });
 
   it('nothing came close', () => {
-    expect(searchSummarySentence(result({ evaluated: 0 }))).toMatch(/since January 2023\. None came close to your question\.$/);
+    expect(searchSummarySentence(result({ evaluated: 0 }))).toMatch(/since January 2023\. No bills came close to your question\.$/);
   });
 
   it('a verdict: how many came close, and how many were about it', () => {
     expect(searchSummarySentence(result({ evaluated: 7, admitted: 3, nd: null }))).toMatch(
-      /Seven came close to your question, and three were actually about it\.$/,
+      /Seven bills came close to your question, and three were actually about it\.$/,
     );
   });
 

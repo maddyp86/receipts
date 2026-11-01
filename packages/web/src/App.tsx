@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ArrowLeftIcon, RotateCcwIcon } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { track } from './lib/track.js';
+import type { Starter } from './data/topics.js';
+import { ArrowLeftIcon, MessageCircleQuestionIcon, RotateCcwIcon } from 'lucide-react';
 import { surnameOf, type Corrections, type DirectoryMember, type InputKind, type Senator } from '@receipts/shared';
 import { useReceiptStream } from './lib/useReceiptStream.js';
 import { apiUrl } from './lib/api.js';
 import { buildRoster, type Member } from './data/roster.js';
 import { Entry } from './components/Entry.js';
+import { Landing, RunDialog } from './components/landing/Landing.js';
 import type { StatementKind } from './components/entry/PromiseInput.js';
 import { QuestionCard, Waiting } from './components/Waiting.js';
 import { EvidenceList, HowWeGotHereToggle, SearchSummary, VerdictCard, WhyPanel } from './components/Verdict.js';
@@ -16,6 +19,7 @@ import {
   type TaxonomyEntry,
 } from './components/CorrectionPanel.js';
 import { FollowUp } from './components/FollowUp.js';
+import { suggestFollowups } from './lib/followupSuggestions.js';
 import { GlossaryProvider } from './components/glossary/GlossaryContext.js';
 import { SelectedMember } from './components/members/SelectedMember.js';
 import { FundedThanks, FundingProvider } from './components/members/FundRecord.js';
@@ -31,6 +35,10 @@ import { SiteFooter } from './components/policy/PolicyPages.js';
 // plus "stopped": the stream ended without an answer, on purpose (a statement
 // no vote can settle, a member not analysed) or not (an error, a limit).
 // ===========================================================================
+
+const MODE_KEY = 'receipts.mode';
+/** The landing page's progress pop-up stays at least this long, so a stored answer does not flash it. */
+const MIN_RUN_MS = 1500;
 
 function Page({ width, children }: { width: 'narrow' | 'wide'; children: ReactNode }) {
   return (
@@ -48,6 +56,36 @@ export default function App() {
   const [senators, setSenators] = useState<Senator[]>([]);
   const [directory, setDirectory] = useState<DirectoryMember[]>([]);
   const [modes, setModes] = useState({ demo: false, fixture: false, override: false, followups: false, feedback: false, prompts: false });
+  /** Checks a day per reader (follow-ups included), from the server. */
+  const [dailyLimit, setDailyLimit] = useState<number | null>(null);
+
+  /**
+   * Landing page or tool. A first visit lands on the landing page, whose one
+   * job is a first check; from the first check on, this tab is in the tool,
+   * and "new question" goes to the tool's entry screen, not back to the pitch.
+   * Kept per tab (sessionStorage), like the session id: a new visit lands again.
+   */
+  const [mode, setMode] = useState<'landing' | 'tool'>(() => {
+    try {
+      return window.sessionStorage.getItem(MODE_KEY) === 'tool' ? 'tool' : 'landing';
+    } catch {
+      return 'landing';
+    }
+  });
+  /** The first check, started on the landing page and shown in a progress pop-up over it. */
+  const [landingRun, setLandingRun] = useState(false);
+  /** When it started, and whether a finished run is being held on screen (see below). */
+  const landingRunStart = useRef(0);
+  const [landingHold, setLandingHold] = useState(false);
+  const goTo = (next: 'landing' | 'tool') => {
+    setMode(next);
+    try {
+      window.sessionStorage.setItem(MODE_KEY, next);
+    } catch {
+      /* No storage: the mode lasts as long as the page. */
+    }
+  };
+
   const [taxonomy, setTaxonomy] = useState<TaxonomyEntry[]>([]);
   // Nobody is preselected: with a short list, a default is a nudge.
   const [selected, setSelected] = useState('');
@@ -61,6 +99,8 @@ export default function App() {
   const [kind, setKind] = useState<StatementKind>('position');
 
   const stream = useReceiptStream();
+  /** Bumped to open the follow-up chat from the prompt under the answer. */
+  const [followupOpen, setFollowupOpen] = useState(0);
 
   /** Back from Stripe Checkout: ?funded=<member id>. Read once, then cleared from the address bar. */
   const [fundedId, setFundedId] = useState<string | null>(() => {
@@ -84,6 +124,7 @@ export default function App() {
         setSenators(list);
         // A selection the list no longer covers is dropped, not kept.
         setSelected((cur) => (list.some((s) => s.politician_id === cur && s.cached) ? cur : ''));
+        setDailyLimit(typeof d.query_per_day === 'number' && d.query_per_day > 0 ? d.query_per_day : null);
         setModes({
           demo: Boolean(d.demo_mode),
           fixture: Boolean(d.fixture_mode),
@@ -127,10 +168,43 @@ export default function App() {
   const baseCorrections = (): Corrections | undefined =>
     modes.override && kind === 'promise' ? { assert_campaign_promise: true } : undefined;
 
+  /** How many queries this tab has started, for the funnel's "second question" count. */
+  const queryCount = useRef(0);
+  /** Where the current query came from, carried onto its result event. */
+  const querySource = useRef<'starter' | 'typed'>('typed');
+  const countQuery = (politicianId: string, source: 'starter' | 'typed') => {
+    queryCount.current += 1;
+    querySource.current = source;
+    // A first check from the landing page runs in a pop-up over it; the tab
+    // moves into the tool when the run ends (see the landingRun effect).
+    if (mode === 'landing') {
+      landingRunStart.current = Date.now();
+      setLandingRun(true);
+    }
+    track('query_submitted', { politician_id: politicianId, source, nth: queryCount.current });
+  };
+
   const submit = () => {
     setAskedText(null);
+    countQuery(selected, 'typed');
     stream.run(selected, promise.trim(), baseCorrections());
   };
+
+  /** A hero starter: that member, that question, running now. */
+  const start = (starter: Starter) => {
+    setAskedText(null);
+    setKind('position');
+    setSelected(starter.politicianId);
+    setPromise(starter.text);
+    track('starter_used', { politician_id: starter.politicianId });
+    countQuery(starter.politicianId, 'starter');
+    stream.run(starter.politicianId, starter.text);
+  };
+
+  // Landed: once per page load.
+  useEffect(() => {
+    track('landing_view');
+  }, []);
 
   // A correction re-runs the ENTIRE query from embedding. `stream.run` resets
   // state first, so the previous verdict is gone before the new one starts —
@@ -168,6 +242,7 @@ export default function App() {
   const otherMembers = roster.filter((m) => m.cached && m.politician_id !== selected);
   const askSameOf = (politicianId: string) => {
     setSelected(politicianId);
+    countQuery(politicianId, 'typed');
     stream.run(politicianId, promise.trim(), baseCorrections(), undefined, { chosen: askedText !== null });
   };
   /** Back to the picker. */
@@ -187,6 +262,50 @@ export default function App() {
   const memberName = member?.name ?? stream.result?.senator.name ?? 'this member';
   /** The chat column exists once the answer is complete and the server can answer follow-ups. */
   const followupsShown = stream.phase === 'done' && Boolean(stream.traceId) && modes.followups;
+  // The answer landed: counted once per run, with what kind of answer it was
+  // (the "aha" is a real verdict or label, not a "can't tell").
+  useEffect(() => {
+    if (stream.phase !== 'done' || !stream.result || !stream.traceId) return;
+    const r = stream.result;
+    track('result_shown', {
+      politician_id: r.senator.politician_id,
+      source: querySource.current,
+      nth: queryCount.current,
+      outcome: r.record?.label ?? (r.scored.verdict === 'NOT_DETERMINABLE' ? `ND_${r.scored.nd_reason ?? 'NONE'}` : r.scored.verdict),
+    });
+  }, [stream.phase, stream.traceId]);
+
+  // The landing page's first check ends: with an answer or a stop, the tab is
+  // now in the tool and that page shows; cancelled, it stays on the landing page.
+  //
+  // A stored answer comes back at once, and the starters are exactly the
+  // questions most often asked, so most first checks would flash the pop-up
+  // for an instant and jump. The pop-up stays at least MIN_RUN_MS from the
+  // start, saying the answer is ready, so the change of page is never a flicker.
+  useEffect(() => {
+    if (!landingRun || screen === 'waiting') return;
+    if (screen === 'entry') {
+      setLandingHold(false);
+      setLandingRun(false);
+      return;
+    }
+    const finish = () => {
+      setLandingHold(false);
+      setLandingRun(false);
+      goTo('tool');
+    };
+    const left = MIN_RUN_MS - (Date.now() - landingRunStart.current);
+    if (left <= 0) {
+      finish();
+      return;
+    }
+    setLandingHold(true);
+    const t = window.setTimeout(finish, left);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- goTo only sets state
+  }, [landingRun, screen]);
+  const runningOnLanding = landingRun && mode === 'landing' && (screen === 'waiting' || landingHold);
+
   /** Every bill on the Receipts tab: weighed, and set aside. */
   const billCount = (stream.result?.scored.evidence.length ?? 0) + (stream.result?.gated?.length ?? 0);
 
@@ -204,9 +323,25 @@ export default function App() {
           </div>
         ) : null}
 
-        {screen === 'entry' ? (
-          <Page width="narrow">
+        {(screen === 'entry' || runningOnLanding) && mode === 'landing' ? (
+          <Landing
+            members={roster}
+            selected={member}
+            onSelect={setSelected}
+            promise={promise}
+            onPromiseChange={setPromise}
+            onSubmit={submit}
+            onStart={start}
+            busy={busy}
+            dailyLimit={dailyLimit}
+            showScopeNote={modes.feedback}
+          />
+        ) : null}
+
+        {screen === 'entry' && mode === 'tool' ? (
+          <Page width="wide">
             <Entry
+              onHome={() => goTo('landing')}
               senators={roster}
               selected={selected}
               promise={promise}
@@ -214,6 +349,7 @@ export default function App() {
               onSelect={setSelected}
               onPromiseChange={setPromise}
               onSubmit={submit}
+              onStart={start}
               showScopeNote={modes.feedback}
               kindEnabled={modes.override}
               kind={kind}
@@ -222,7 +358,24 @@ export default function App() {
           </Page>
         ) : null}
 
-        {screen === 'waiting' && member ? (
+        {runningOnLanding && member ? (
+          <RunDialog onCancel={reword} done={landingHold} memberName={member.name}>
+            <Waiting
+              framed
+              member={member}
+              promise={promise.trim()}
+              steps={stream.steps}
+              notes={stream.notes}
+              interpretation={stream.interpretation}
+              rewritten={stream.rewritten}
+              asked={askedText}
+              onCancel={reword}
+              onChange={editStatement}
+            />
+          </RunDialog>
+        ) : null}
+
+        {screen === 'waiting' && member && !runningOnLanding ? (
           <Page width="narrow">
             <Waiting
               member={member}
@@ -238,7 +391,7 @@ export default function App() {
           </Page>
         ) : null}
 
-        {screen === 'stopped' ? (
+        {screen === 'stopped' && !runningOnLanding ? (
           <Page width="narrow">
             <TopBar onBack={reword} backLabel="Go back" />
             {member ? (
@@ -284,7 +437,7 @@ export default function App() {
           </Page>
         ) : null}
 
-        {screen === 'result' && stream.result && stream.interpretation ? (
+        {screen === 'result' && stream.result && stream.interpretation && !runningOnLanding ? (
           <Page width="wide">
             <TopBar onBack={askAnother} backLabel="New question" icon="new" />
 
@@ -317,6 +470,22 @@ export default function App() {
                     />
                   }
                 />
+
+                {/* The next move, said under the answer: the follow-up chat is
+                    where a first answer turns into understanding. */}
+                {followupsShown ? (
+                  <button
+                    type="button"
+                    onClick={() => setFollowupOpen((n) => n + 1)}
+                    className="flex min-h-[52px] w-full items-center gap-3 rounded-card border border-brand/30 bg-card px-4 py-3 text-left text-[16px] text-ink transition-colors duration-150 hover:border-brand"
+                  >
+                    <MessageCircleQuestionIcon className="h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
+                    <span className="flex-1">
+                      <span className="font-semibold">Questions about this answer?</span>{' '}
+                      <span className="text-ink-soft">Ask why a bill counted, which vote decided it, what a term means.</span>
+                    </span>
+                  </button>
+                ) : null}
 
                 {/* "Too broad": a rewording of the reader's own topic to check instead. */}
                 {stream.suggest?.length && stream.result.scored.nd_reason === 'NOT_EVALUABLE' ? (
@@ -405,7 +574,14 @@ export default function App() {
                   and cannot change it; a new statement is a new query. */}
               {followupsShown ? (
                 <aside className="lg:sticky lg:top-4 lg:self-start">
-                  <FollowUp traceId={stream.traceId!} available={modes.followups} senatorName={memberName} />
+                  <FollowUp
+                    key={stream.traceId!}
+                    traceId={stream.traceId!}
+                    available={modes.followups}
+                    senatorName={memberName}
+                    suggestions={suggestFollowups(stream.result)}
+                    openRequest={followupOpen}
+                  />
                 </aside>
               ) : null}
             </div>

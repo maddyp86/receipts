@@ -1886,6 +1886,22 @@ function recordStart(coverage: CoverageWindow | undefined): string | null {
  * nothing: an empty search is a fact about our record, which the coverage
  * line bounds. Null when no search ran.
  */
+/**
+ * What the search covered, and nothing about relevance: "Searched all 555 of
+ * Thune’s recorded actions since January 2023." Shown under the record card's
+ * steps, where it says what a "no" or a short list is measured against
+ * without posing as a step that judged all 555 (Matt, 1 Nov).
+ */
+export function searchScopeSentence(result: QueryResult): string | null {
+  const f = searchFunnel(result);
+  if (!f) return null;
+  const surname = surnameOf(result.senator.name);
+  const since = recordStart(result.coverage);
+  return (f.searched
+    ? `Searched all ${f.searched.toLocaleString('en-US')} of ${surname}’s recorded actions`
+    : `Searched ${surname}’s recorded actions`) + (since ? ` since ${since}.` : '.');
+}
+
 export function searchSummarySentence(result: QueryResult): string | null {
   const f = searchFunnel(result);
   if (!f) return null;
@@ -1895,14 +1911,17 @@ export function searchSummarySentence(result: QueryResult): string | null {
     (f.searched
       ? `We searched all ${f.searched.toLocaleString('en-US')} of ${surname}’s recorded actions`
       : `We searched ${surname}’s recorded actions`) + (since ? ` since ${since}.` : '.');
-  if (f.close === 0) return `${lead} None came close to your question.`;
+  // "bills": the search reads bills, and a bare "Ten came close" under
+  // "555 recorded actions" read as ten actions (Matt, 1 Nov).
+  const bills = (n: number) => `${countWord(n)} ${n === 1 ? 'bill' : 'bills'}`;
+  if (f.close === 0) return `${lead} No bills came close to your question.`;
   if (f.about === 0) {
     const none = f.close === 1 ? 'it wasn’t' : f.close === 2 ? 'neither was' : 'none was';
-    return `${lead} ${countWord(f.close)} came close, but ${none} actually about this.`;
+    return `${lead} ${bills(f.close)} came close, but ${none} actually about this.`;
   }
   const s = result.search!;
-  if (!s.relevance_applied) return `${lead} ${countWord(f.close)} came close to your question.`;
-  return `${lead} ${countWord(f.close)} came close to your question, and ${countWord(f.about).toLowerCase()} ${f.about === 1 ? 'was' : 'were'} actually about it.`;
+  if (!s.relevance_applied) return `${lead} ${bills(f.close)} came close to your question.`;
+  return `${lead} ${bills(f.close)} came close to your question, and ${countWord(f.about).toLowerCase()} ${f.about === 1 ? 'was' : 'were'} actually about it.`;
 }
 
 /**
@@ -2461,4 +2480,37 @@ export function sanitizeReaderText(text: string | null | undefined): string | nu
     .replace(/\s*[—–]+\s*/g, ', ')
     .replace(/,\s*,/g, ',')
     .replace(/:\s*,/g, ':');
+}
+
+// ---------------------------------------------------------------------------
+// Funnel events — anonymous step counts, no text (migration 025)
+// ---------------------------------------------------------------------------
+
+/**
+ * The steps of the first-visit funnel: landed, started, saw an answer, asked
+ * a follow-up. Counted against the per-tab session id and nothing else.
+ * `followup_asked` is recorded by the server inside /api/followup, never sent
+ * by the page, so a dropped request cannot lose the activation event.
+ */
+export const FUNNEL_EVENTS = ['landing_view', 'starter_used', 'query_submitted', 'result_shown', 'followup_asked'] as const;
+export type FunnelEvent = (typeof FUNNEL_EVENTS)[number];
+/** The events the page may send. */
+export const CLIENT_FUNNEL_EVENTS: readonly FunnelEvent[] = ['landing_view', 'starter_used', 'query_submitted', 'result_shown'];
+
+/**
+ * Every property an event may carry, with what it may hold. Ids from closed
+ * sets, enums and small counts only: there is deliberately no field a
+ * question's text could ride in on.
+ */
+export interface FunnelProps {
+  politician_id?: string;
+  /** How the query started: a hero starter, or typed into the box. */
+  source?: 'starter' | 'typed';
+  /** The nth query in this tab. */
+  nth?: number;
+  /** What came back: a verdict, a record label, or the reason there was none. */
+  outcome?: string;
+  // No run id, deliberately: a run id leads to the stored question, and the
+  // corpus firewall (DECISIONS 2026-08-22) says queries cannot be joined to
+  // analytics. The funnel needs steps, not which answer.
 }

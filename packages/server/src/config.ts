@@ -466,6 +466,12 @@ export const config = {
      */
     feedbackPrompts: boolOverride(process.env.ENABLE_FEEDBACK_PROMPTS) ?? false,
     /**
+     * Anonymous funnel counts (data/FunnelStore.ts): landed, started, saw an
+     * answer, asked a follow-up — no question text. OFF by default because
+     * the table is created by migration 025; run it, then turn this on.
+     */
+    funnelEvents: boolOverride(process.env.ENABLE_FUNNEL_EVENTS) ?? false,
+    /**
      * Record questions ("Did they vote to…?") answered from the record with a
      * label, rather than rewritten into a statement and graded as the
      * senator's own words. ON by default; ENABLE_RECORD_QUESTIONS=false puts

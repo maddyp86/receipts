@@ -27,6 +27,33 @@ export interface FundingStatus {
 
 const OFF: FundingStatus = { enabled: false };
 
+/** Light: the tool's member cards. Dark: the landing page's query box. Same words either way. */
+type Tone = 'light' | 'dark';
+const FT = {
+  light: {
+    funded: 'text-ink',
+    sponsor:
+      'inline-flex min-h-[44px] items-center justify-center rounded-card border border-ink bg-card px-4 text-[15px] font-semibold text-ink transition-colors duration-150 hover:bg-paper disabled:border-rule disabled:text-ink-soft',
+    body: 'text-ink-soft',
+    error: 'text-broken',
+    done: 'text-ink',
+    requestLink: 'min-h-[44px] text-[15px] font-medium text-focus underline underline-offset-4 disabled:text-ink-soft',
+    requestButton:
+      'inline-flex min-h-[44px] items-center justify-center rounded-card border border-ink bg-card px-4 text-[15px] font-semibold text-ink transition-colors duration-150 hover:bg-paper disabled:border-rule disabled:text-ink-soft',
+  },
+  dark: {
+    funded: 'text-white',
+    sponsor:
+      'inline-flex min-h-[44px] items-center justify-center rounded-xl bg-lp-brand px-5 text-[15px] font-semibold text-white transition-colors duration-150 hover:bg-lp-brand-dark disabled:opacity-60',
+    body: 'text-white/65',
+    error: 'text-[#F97066]',
+    done: 'text-white',
+    requestLink: 'min-h-[44px] text-[15px] font-medium text-lp-signal underline underline-offset-4 disabled:text-white/50',
+    requestButton:
+      'inline-flex min-h-[44px] items-center justify-center rounded-xl border border-white/25 bg-white/5 px-5 text-[15px] font-semibold text-white transition-colors duration-150 hover:bg-white/10 disabled:opacity-60',
+  },
+} as const;
+
 /**
  * Which site this is, so the server can pick Stripe's live or test keys. Sent
  * explicitly because a same-origin GET carries no Origin header.
@@ -78,14 +105,15 @@ export function formatDay(isoDay: string): string {
  * funded" line; or fund it (when funding is on) and request it for free.
  * The free request shows even with funding off, so no card is a dead end.
  */
-export function FundRecord({ memberId, name }: { memberId: string; name: string }) {
+export function FundRecord({ memberId, name, tone = 'light' }: { memberId: string; name: string; tone?: Tone }) {
   const status = useFundingStatus();
+  const t = FT[tone];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const funded = status.funded?.find((f) => f.member_id === memberId);
   if (funded) {
     return (
-      <p className="mt-2 text-[15px] leading-snug text-ink" data-funded="true">
+      <p className={`mt-2 text-[15px] leading-snug ${t.funded}`} data-funded="true">
         Sponsored by a reader. Being checked now, ready by {formatDay(funded.live_by)}.
       </p>
     );
@@ -94,7 +122,7 @@ export function FundRecord({ memberId, name }: { memberId: string; name: string 
   if (!status.enabled || !status.price_cents) {
     return (
       <div className="mt-3">
-        <RequestRecord memberId={memberId} name={name} />
+        <RequestRecord memberId={memberId} name={name} tone={tone} />
       </div>
     );
   }
@@ -128,27 +156,27 @@ export function FundRecord({ memberId, name }: { memberId: string; name: string 
         onClick={start}
         disabled={busy}
         aria-label={`Sponsor ${name}’s record, ${price}`}
-        className="inline-flex min-h-[44px] items-center justify-center rounded-card border border-ink bg-card px-4 text-[15px] font-semibold text-ink transition-colors duration-150 hover:bg-paper disabled:border-rule disabled:text-ink-soft"
+        className={t.sponsor}
       >
         {busy ? 'Opening payment…' : `Sponsor this record — ${price}`}
       </button>
-      <p className="text-[14px] leading-snug text-ink-soft">
+      <p className={`text-[14px] leading-snug ${t.body}`}>
         We’ll check {name}’s votes and the bills they’ve backed since 2023 and email you the moment it’s
         ready: within {status.sla_days} days, or your money back. Your name goes on the record as its
         sponsor, or leave it blank to stay anonymous. Sponsorship never changes what we find. Not a
         tax-deductible donation.
       </p>
       {status.mode === 'test' ? (
-        <p className="text-[13px] leading-snug text-ink-soft" data-test-mode="true">
+        <p className={`text-[13px] leading-snug ${t.body}`} data-test-mode="true">
           Test mode: no real charge. Pay with card 4242 4242 4242 4242, any future date and any CVC.
         </p>
       ) : null}
       {error ? (
-        <p className="text-[14px] leading-snug text-broken" role="alert">
+        <p className={`text-[14px] leading-snug ${t.error}`} role="alert">
           {error}
         </p>
       ) : null}
-      <RequestRecord memberId={memberId} name={name} secondary />
+      <RequestRecord memberId={memberId} name={name} secondary tone={tone} />
     </div>
   );
 }
@@ -177,13 +205,24 @@ function rememberRequested(memberId: string) {
  * "Request this record": free, no email, no account. Counted in
  * app.member_requests beside paid funding, so we can see who people want.
  */
-export function RequestRecord({ memberId, name, secondary = false }: { memberId: string; name: string; secondary?: boolean }) {
+export function RequestRecord({
+  memberId,
+  name,
+  secondary = false,
+  tone = 'light',
+}: {
+  memberId: string;
+  name: string;
+  secondary?: boolean;
+  tone?: Tone;
+}) {
+  const t = FT[tone];
   const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>(() =>
     requestedHere().includes(memberId) ? 'done' : 'idle',
   );
   if (state === 'done') {
     return (
-      <p className="text-[14px] leading-snug text-ink" role="status">
+      <p className={`text-[14px] leading-snug ${t.done}`} role="status">
         Request sent. The members people ask about most are checked first.
       </p>
     );
@@ -210,16 +249,12 @@ export function RequestRecord({ memberId, name, secondary = false }: { memberId:
         onClick={send}
         disabled={state === 'busy'}
         aria-label={`Request ${name}’s record for free`}
-        className={
-          secondary
-            ? 'min-h-[44px] text-[15px] font-medium text-focus underline underline-offset-4 disabled:text-ink-soft'
-            : 'inline-flex min-h-[44px] items-center justify-center rounded-card border border-ink bg-card px-4 text-[15px] font-semibold text-ink transition-colors duration-150 hover:bg-paper disabled:border-rule disabled:text-ink-soft'
-        }
+        className={secondary ? t.requestLink : t.requestButton}
       >
         {state === 'busy' ? 'Sending…' : secondary ? 'Or request it for free' : 'Request this record'}
       </button>
       {state === 'error' ? (
-        <p className="text-[14px] leading-snug text-broken" role="alert">
+        <p className={`text-[14px] leading-snug ${t.error}`} role="alert">
           That didn’t go through. Please try again.
         </p>
       ) : null}
