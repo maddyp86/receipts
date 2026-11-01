@@ -2514,3 +2514,5 @@ export interface FunnelProps {
   // corpus firewall (DECISIONS 2026-08-22) says queries cannot be joined to
   // analytics. The funnel needs steps, not which answer.
 }
+
+export * from './methodology.js';

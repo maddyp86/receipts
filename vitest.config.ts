@@ -39,6 +39,16 @@ export default defineConfig({
       // two real runs. Reuse is tested directly, with the cache enabled in
       // that test (data/answerCache.test.ts).
       ANSWER_REUSE: 'false',
+      // The code's own defaults for models and retrieval, whatever a local
+      // `.env` says: the methodology page states these (shared/methodology.ts)
+      // and server/src/methodology.test.ts checks them. Empty means default.
+      CLASSIFY_MODEL: '',
+      FULFILL_MODEL: '',
+      EXPLAIN_MODEL: '',
+      JUDGE_MODEL: '',
+      EMBEDDING_MODEL: '',
+      EMBEDDING_DIMENSIONS: '',
+      RETRIEVAL_TOP_K: '',
     },
   },
 });

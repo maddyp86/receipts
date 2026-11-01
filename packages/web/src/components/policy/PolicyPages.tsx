@@ -42,6 +42,9 @@ export function SiteFooter() {
   return (
     <footer className="mx-auto max-w-2xl px-5 pb-10 pt-4 sm:px-8">
       <nav aria-label="Policies" className="flex flex-wrap gap-x-5 gap-y-2 border-t border-rule pt-5 text-[14px]">
+        <a href="/methodology" className="text-ink-soft underline underline-offset-2 hover:text-ink">
+          How Receipts works
+        </a>
         {(Object.keys(POLICY_PATHS) as (keyof typeof POLICY_PATHS)[]).map((path) => (
           <a key={path} href={path} className="text-ink-soft underline underline-offset-2 hover:text-ink">
             {TITLES[POLICY_PATHS[path]]}
