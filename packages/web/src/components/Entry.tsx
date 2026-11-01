@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ArrowRightIcon, InfoIcon, XIcon } from 'lucide-react';
 import type { Senator } from '@receipts/shared';
 import type { Member } from '../data/roster.js';
@@ -45,8 +45,7 @@ interface Props {
   showScopeNote?: boolean;
   /** Back to the landing page (the wordmark). Omitted: the wordmark is plain text. */
   onHome?: () => void;
-  /** Open with the browse panel showing, at this name ('' = by state). From the landing page's search. */
-  initialBrowse?: string | null;
+
   /** The reader may assert "this was a campaign promise" (server flag). */
   kindEnabled?: boolean;
   kind?: StatementKind;
@@ -63,7 +62,6 @@ export function Entry({
   onSubmit,
   onStart,
   onHome,
-  initialBrowse = null,
   showScopeNote = false,
   kindEnabled = false,
   kind = 'position',
@@ -71,13 +69,7 @@ export function Entry({
 }: Props) {
   const browseRef = useRef<HTMLElement>(null);
   /** The browse panel: closed, or open (at a name, when one was picked from the search). */
-  const [browse, setBrowse] = useState<{ query: string; n: number } | null>(
-    initialBrowse !== null ? { query: initialBrowse, n: 1 } : null,
-  );
-  useEffect(() => {
-    if (initialBrowse !== null) browseRef.current?.scrollIntoView({ block: 'start' });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arriving from the landing page
-  }, []);
+  const [browse, setBrowse] = useState<{ query: string; n: number } | null>(null);
 
   const members = useMemo<Member[]>(
     () => senators.map((s) => ('chamber' in s ? s : { ...s, chamber: 'senate' as const })),

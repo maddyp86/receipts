@@ -78,8 +78,7 @@ export default function App() {
       /* No storage: the mode lasts as long as the page. */
     }
   };
-  /** The landing page's "browse by state" / unchecked member: open the tool's browse panel there. */
-  const [browseRequest, setBrowseRequest] = useState<string | null>(null);
+
   const [taxonomy, setTaxonomy] = useState<TaxonomyEntry[]>([]);
   // Nobody is preselected: with a short list, a default is a nudge.
   const [selected, setSelected] = useState('');
@@ -171,7 +170,6 @@ export default function App() {
     querySource.current = source;
     // The first check moves this tab from the landing page into the tool.
     goTo('tool');
-    setBrowseRequest(null);
     track('query_submitted', { politician_id: politicianId, source, nth: queryCount.current });
   };
 
@@ -292,10 +290,6 @@ export default function App() {
             onPromiseChange={setPromise}
             onSubmit={submit}
             onStart={start}
-            onBrowse={(name) => {
-              setBrowseRequest(name ?? '');
-              goTo('tool');
-            }}
             busy={busy}
             dailyLimit={dailyLimit}
             showScopeNote={modes.feedback}
@@ -306,7 +300,6 @@ export default function App() {
           <Page width="wide">
             <Entry
               onHome={() => goTo('landing')}
-              initialBrowse={browseRequest}
               senators={roster}
               selected={selected}
               promise={promise}

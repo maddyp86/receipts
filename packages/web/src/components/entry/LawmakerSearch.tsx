@@ -56,6 +56,12 @@ interface Props {
   onBrowse: (name?: string) => void;
   /** Light for the tool; dark for the landing page's navy composer. */
   tone?: 'light' | 'dark';
+  /**
+   * A member we have not checked was picked. Given: the caller shows their
+   * sponsor / request panel in place (the landing page). Omitted: the browse
+   * panel opens at their card (the tool).
+   */
+  onPickUnchecked?: (id: string) => void;
 }
 
 /** Class sets per tone. Light is the tool's look, unchanged; dark is the landing page's. */
@@ -109,7 +115,7 @@ function DarkAvatar({ name, muted }: { name: string; muted?: boolean }) {
   );
 }
 
-export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse, tone = 'light' }: Props) {
+export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse, tone = 'light', onPickUnchecked }: Props) {
   const t = TONES[tone];
   const dark = tone === 'dark';
   const [query, setQuery] = useState('');
@@ -140,6 +146,8 @@ export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse,
       onSelect(m.politician_id);
       // Straight on to the question.
       requestAnimationFrame(() => document.getElementById('promise')?.focus());
+    } else if (onPickUnchecked) {
+      onPickUnchecked(m.politician_id);
     } else {
       onBrowse(m.name);
     }
@@ -240,12 +248,31 @@ export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse,
                     {shortLabel(m)}
                   </span>
                   <span className={t.sub}>
-                    {m.cached ? memberTitle(m) : 'Not checked yet · request their record'}
+                    {m.cached ? memberTitle(m) : dark ? 'Not checked yet' : 'Not checked yet · request their record'}
                   </span>
                 </span>
+                {dark ? (
+                  m.cached ? (
+                    <span className="shrink-0 rounded-full bg-lp-verified/25 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-lp-verified-bright">
+                      Ready
+                    </span>
+                  ) : (
+                    <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-white/55">
+                      Not checked
+                    </span>
+                  )
+                ) : null}
               </li>
             ))}
           </ul>
+          {!query.trim() ? (
+            // Open and empty, only the checked are listed: say plainly that
+            // everyone else is one search away, so nobody concludes their
+            // senator is missing.
+            <p className={dark ? 'border-t border-white/10 px-4 py-2.5 text-[13px] text-white/60' : 'border-t border-rule px-4 py-2.5 text-[14px] text-ink-soft'}>
+              Not listed? Type any member of Congress. If we haven’t checked them yet, you can request their record.
+            </p>
+          ) : null}
           {query.trim() && rows.length === 0 ? (
             <p className={t.empty}>Nobody by that name yet. More members are being added.</p>
           ) : null}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   ArrowRightIcon,
   ArrowUpIcon,
@@ -14,6 +14,8 @@ import {
   ShieldQuestionIcon,
   XIcon,
 } from 'lucide-react';
+import { FundRecord } from '../members/FundRecord.js';
+import { MemberPicker } from '../members/MemberPicker.js';
 import { SCOPE_NOTE, surnameOf } from '@receipts/shared';
 import type { Member } from '../../data/roster.js';
 import { STARTERS, type Starter } from '../../data/topics.js';
@@ -41,8 +43,6 @@ interface Props {
   onPromiseChange: (text: string) => void;
   onSubmit: () => void;
   onStart: (starter: Starter) => void;
-  /** Open the tool's browse panel (by state / district), at a name if given. */
-  onBrowse: (name?: string) => void;
   busy: boolean;
   /** Checks a day per reader, from the server. Not shown until known. */
   dailyLimit: number | null;
@@ -104,23 +104,33 @@ function LandingHero({
   onPromiseChange,
   onSubmit,
   onStart,
-  onBrowse,
   busy,
   dailyLimit,
   showScopeNote,
 }: Props) {
   const textRef = useRef<HTMLTextAreaElement>(null);
+  /** A member we have not checked, picked in the search: their request / sponsor panel shows in the box. */
+  const [uncheckedId, setUncheckedId] = useState<string | null>(null);
+  const unchecked = uncheckedId ? (members.find((m) => m.politician_id === uncheckedId) ?? null) : null;
+  /** The browse pop-up: by state, House district, everyone. Open at a name, or by state (''). */
+  const [browse, setBrowse] = useState<string | null>(null);
+  const ready = members.filter((m) => m.cached);
+  const pickReady = (id: string) => {
+    setUncheckedId(null);
+    setBrowse(null);
+    onSelect(id);
+  };
   const starters = STARTERS.flatMap((s) => {
     const m = members.find((x) => x.politician_id === s.politicianId && x.cached);
     return m ? [{ starter: s, member: m }] : [];
   });
 
-  // One line to start; grows with what is typed (up to about five lines).
+  // At least 100px, room for a full question; grows with what is typed (to about seven lines).
   useEffect(() => {
     const el = textRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight + 2}px`;
+    el.style.height = `${Math.max(100, el.scrollHeight + 2)}px`;
   }, [promise]);
 
   // Picked someone with nothing typed yet: straight on to the question.
@@ -181,13 +191,53 @@ function LandingHero({
               <LawmakerSearch
                 tone="dark"
                 members={members}
-                selected={selected}
-                onSelect={onSelect}
-                onClear={() => onSelect('')}
-                onBrowse={onBrowse}
+                selected={selected ?? unchecked}
+                onSelect={pickReady}
+                onClear={() => {
+                  setUncheckedId(null);
+                  onSelect('');
+                }}
+                onBrowse={(name) => setBrowse(name ?? '')}
+                onPickUnchecked={(id) => {
+                  onSelect('');
+                  setUncheckedId(id);
+                }}
               />
             </div>
 
+            {unchecked ? (
+              <div role="region" aria-live="polite" aria-label={`${unchecked.name} is not checked yet`} className="mt-5 sm:pl-10">
+                <div className="rounded-xl bg-white/5 p-4 ring-1 ring-white/10">
+                  <p className="text-[15px] font-semibold text-white">Not checked yet</p>
+                  <p className="mt-1 text-[15px] leading-relaxed text-white/70">
+                    We haven’t been through {unchecked.name}’s record yet, so we can’t answer questions about them.
+                  </p>
+                  <FundRecord tone="dark" memberId={unchecked.politician_id} name={unchecked.name} />
+                </div>
+                {ready.length ? (
+                  <div className="mt-4">
+                    <p className="text-[13px] text-white/60">Or check a senator who’s ready:</p>
+                    <ul className="mt-2 flex flex-wrap gap-2">
+                      {ready.map((m) => (
+                        <li key={m.politician_id}>
+                          <button
+                            type="button"
+                            onClick={() => pickReady(m.politician_id)}
+                            className="inline-flex min-h-[40px] items-center rounded-full border border-white/15 px-3.5 text-[14px] text-white/85 transition-colors duration-150 hover:border-lp-signal hover:text-white"
+                          >
+                            {m.name}
+                            {m.party && m.state ? <span className="ml-1.5 text-white/50">{m.party}-{m.state}</span> : null}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {unchecked ? null : (
+            <>
             <fieldset
               disabled={!selected}
               className={`mt-5 transition-opacity duration-200 ease-out ${selected ? '' : 'opacity-55'}`}
@@ -199,12 +249,12 @@ function LandingHero({
                 <textarea
                   ref={textRef}
                   id="promise"
-                  rows={1}
+                  rows={3}
                   maxLength={600}
                   value={promise}
                   onChange={(e) => onPromiseChange(e.target.value)}
                   placeholder={selected ? 'e.g., Did they vote for the Laken Riley Act?' : 'Pick a lawmaker first'}
-                  className="block max-h-[9.5rem] w-full resize-none overflow-y-auto rounded-xl border border-white/15 bg-lp-navy px-3.5 py-3 text-[15px] text-white outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-white/40 focus:border-lp-signal focus:ring-4 focus:ring-lp-signal/20"
+                  className="block max-h-[12rem] min-h-[100px] w-full resize-none overflow-y-auto rounded-xl border border-white/15 bg-lp-navy px-3.5 py-3 text-[15px] text-white outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-white/40 focus:border-lp-signal focus:ring-4 focus:ring-lp-signal/20"
                 />
                 <PhrasingHelp
                   tone="dark"
@@ -232,7 +282,13 @@ function LandingHero({
                 </>
               )}
             </button>
+            </>
+            )}
           </form>
+
+          {browse !== null ? (
+            <BrowseDialog query={browse} members={members} onPick={pickReady} onClose={() => setBrowse(null)} />
+          ) : null}
 
           <LandingBeta full={showScopeNote} />
 
@@ -277,6 +333,81 @@ function LandingHero({
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * "Browse by state, or find your House district": everyone in Congress, in a
+ * pop-up over the landing page instead of a jump to another screen. The same
+ * picker as the tool (MemberPicker): checked members to pick, the rest with
+ * request / sponsor on their card.
+ */
+function BrowseDialog({
+  query,
+  members,
+  onPick,
+  onClose,
+}: {
+  query: string;
+  members: readonly Member[];
+  onPick: (id: string) => void;
+  onClose: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    panelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-lp-navy/75 px-4 py-6 backdrop-blur-sm sm:py-12" onClick={onClose}>
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="browse-title"
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-2xl animate-rise-in rounded-2xl bg-white p-5 text-left text-ink shadow-2xl focus:outline-none sm:p-7"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 id="browse-title" className="font-display text-[28px] font-semibold leading-tight text-lp-ink">
+              Find your lawmaker
+            </h2>
+            <p className="mt-1 text-[15px] text-lp-muted">
+              Every member of Congress. Pick one who’s ready, or request a record we haven’t checked yet.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="-mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-lp-muted hover:bg-lp-paper hover:text-lp-ink"
+          >
+            <XIcon className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="mt-5">
+          <MemberPicker
+            members={[...members]}
+            selectedId={null}
+            initialMode={query ? 'name' : 'state'}
+            initialQuery={query}
+            onSelect={onPick}
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 

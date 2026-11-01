@@ -17,7 +17,7 @@ function render(over: Partial<React.ComponentProps<typeof Landing>> = {}) {
   const html = renderToStaticMarkup(
     React.createElement(Landing, {
       members: MEMBERS, selected: null, onSelect: () => {}, promise: '', onPromiseChange: () => {},
-      onSubmit: () => {}, onStart: () => {}, onBrowse: () => {}, busy: false, dailyLimit: 20, showScopeNote: false,
+      onSubmit: () => {}, onStart: () => {}, busy: false, dailyLimit: 20, showScopeNote: false,
       ...over,
     }),
   );
