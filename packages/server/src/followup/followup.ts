@@ -35,7 +35,15 @@ import { QueryTrace, anthropicUsage, type TraceSink } from '../trace/Trace.js';
 // problems; a second failure is refused rather than rendered.
 // ===========================================================================
 
-export const FOLLOWUP_MAX_TOKENS = 1500;
+/**
+ * A ceiling, not a spend: only generated tokens are billed. Thinking counts
+ * against it (adaptive thinking is on by default on Claude Sonnet 5.5), so it
+ * leaves room for thinking AND a short answer: at 1,500 a long think could use
+ * the whole budget and leave no text, which the guard would refuse.
+ */
+export const FOLLOWUP_MAX_TOKENS = 8000;
+/** A short answer from a fixed record: `medium` (Sonnet 5.5's default is `high`). */
+export const FOLLOWUP_EFFORT = 'medium';
 export const FOLLOWUP_PROMPT_VERSION = 'followup-v2';
 
 export const FOLLOWUP_SYSTEM_PROMPT = `You are answering a follow-up question from a person who is looking at a finished result from Receipts, a tool that checks a senator's legislative record against a statement the person typed.
@@ -262,12 +270,14 @@ export interface FollowupFetch {
 export function liveFollowupFetch(): FollowupFetch {
   return async (system, messages) => {
     const client = new Anthropic({ apiKey: config.anthropic.apiKey });
-    const msg = await client.messages.create({
+    // `output_config` is not in this SDK's types yet, hence the cast.
+    const msg = (await client.messages.create({
       model: config.models.explain,
       max_tokens: FOLLOWUP_MAX_TOKENS,
       system,
       messages,
-    });
+      output_config: { effort: FOLLOWUP_EFFORT },
+    } as Anthropic.MessageCreateParamsNonStreaming)) as Anthropic.Message;
     const text = msg.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)

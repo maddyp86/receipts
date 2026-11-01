@@ -32,6 +32,10 @@ export interface ModelRates {
 
 export const MODEL_RATES: Record<string, ModelRates> = {
   'claude-sonnet-5': { vendor: 'anthropic', input: 2, cacheWrite: 2.5, cacheRead: 0.2, output: 10 },
+  // Same rates as Sonnet 5 (read 2026-11-01).
+  'claude-sonnet-5-5': { vendor: 'anthropic', input: 2, cacheWrite: 2.5, cacheRead: 0.2, output: 10 },
+  // Cache reads $0.20; the 5-minute write is 1.25x input (read 2026-11-01).
+  'claude-opus-5-5': { vendor: 'anthropic', input: 4, cacheWrite: 5, cacheRead: 0.2, output: 20 },
   'claude-haiku-4-5': { vendor: 'anthropic', input: 1, cacheWrite: 1.25, cacheRead: 0.1, output: 5 },
   'gpt-5.4-mini': { vendor: 'openai', input: 0.75, cacheWrite: 0, cacheRead: 0.075, output: 4.5 },
 };

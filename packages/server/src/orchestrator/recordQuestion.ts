@@ -116,8 +116,35 @@ export function plainRecordExplanation(session: QuerySession, answer: RecordAnsw
   return lines.join(' ');
 }
 
-const EXPLAIN_TOOL = (TOOL_DEFINITIONS as unknown as Anthropic.Tool[]).find((t) => t.name === 'explain_result')!;
+/**
+ * The explain_result tool, strict: the arguments always match its schema.
+ *
+ * Not forced. Claude Sonnet 5.5 and Claude Opus 5.5 reject a forced
+ * `tool_choice` ({ type: 'tool' } or 'any') with a 400, so the call is
+ * `auto` and the instruction to answer with the tool lives in the prompt
+ * (RECORD_EXPLANATION_CONSTRAINTS). A reply without the call is sent back
+ * once more, like a draft the checks refuse. `strict` is not in this SDK's
+ * types yet; the API takes it as a top-level tool field.
+ */
+const EXPLAIN_TOOL = {
+  ...(TOOL_DEFINITIONS as unknown as Anthropic.Tool[]).find((t) => t.name === 'explain_result')!,
+  strict: true,
+} as Anthropic.Tool;
 const MAX_EXPLAIN_ATTEMPTS = 3;
+/** The request for one record-explanation call. Exported for the test: never a forced tool_choice. */
+export function recordExplainParams(messages: Anthropic.MessageParam[]): Anthropic.MessageStreamParams {
+  return {
+    model: config.models.explain,
+    max_tokens: config.anthropic.maxTokens,
+    system: RECORD_EXPLANATION_CONSTRAINTS,
+    tools: [EXPLAIN_TOOL],
+    tool_choice: { type: 'auto' },
+    messages,
+  };
+}
+
+/** Sent back when a reply came without the explain_result call. */
+export const CALL_THE_TOOL = 'Write the answer by calling explain_result. Do not answer in plain text.';
 
 /**
  * One explanation call (two more only when the checks send a draft back).
@@ -138,16 +165,7 @@ async function explainRecord(session: QuerySession, answer: RecordAnswer): Promi
     try {
       // Streamed, as the orchestrator's turns are: the SDK refuses an
       // unstreamed call at this max_tokens.
-      message = await client.messages
-        .stream({
-          model: config.models.explain,
-          max_tokens: config.anthropic.maxTokens,
-          system: RECORD_EXPLANATION_CONSTRAINTS,
-          tools: [EXPLAIN_TOOL],
-          tool_choice: { type: 'tool', name: 'explain_result' },
-          messages,
-        })
-        .finalMessage();
+      message = await client.messages.stream(recordExplainParams(messages)).finalMessage();
     } catch (err) {
       end({
         stage: 'ORCHESTRATOR_TURN', kind: 'model', status: 'error', label: `record explanation call ${attempt} failed`,
@@ -163,8 +181,17 @@ async function explainRecord(session: QuerySession, answer: RecordAnswer): Promi
       input: { attempt },
       output: { stop_reason: message.stop_reason, content: anthropicContent(message.content) },
     });
+    // A refusal or a cut-off reply has nothing to send back: give up, and
+    // the fact-only explanation is used.
+    if (message.stop_reason === 'refusal' || message.stop_reason === 'max_tokens') return false;
     const call = message.content.find((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
-    if (!call) return false;
+    if (!call) {
+      // Answered in text instead of with the tool: ask once more, keeping
+      // the reply in the history unchanged.
+      messages.push({ role: 'assistant', content: message.content });
+      messages.push({ role: 'user', content: CALL_THE_TOOL });
+      continue;
+    }
     const env = await dispatchTool(session, 'explain_result', call.input as Record<string, unknown>);
     if (env.ok) return true;
     // Sent back with the checks' reasons, like the orchestrator's drafts.
