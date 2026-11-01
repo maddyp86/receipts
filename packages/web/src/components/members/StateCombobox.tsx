@@ -6,9 +6,11 @@ interface Props {
   onPick: (code: string) => void;
   /** How many members we can check now, by state code. Shown beside the state. */
   coveredCountByState: Record<string, number>;
+  /** List in the page flow instead of floating over it (inside the browse pop-up, where it would be cut off). */
+  inline?: boolean;
 }
 
-export function StateCombobox({ onPick, coveredCountByState }: Props) {
+export function StateCombobox({ onPick, coveredCountByState, inline = false }: Props) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -89,7 +91,7 @@ export function StateCombobox({ onPick, coveredCountByState }: Props) {
           id={listId}
           role="listbox"
           aria-label="States"
-          className="absolute left-0 right-0 z-20 mt-2 max-h-72 overflow-auto rounded-card border border-rule bg-card py-1 shadow-soft"
+          className={`${inline ? '' : 'absolute left-0 right-0 z-20'} mt-2 max-h-72 overflow-auto rounded-card border border-rule bg-card py-1 shadow-soft`}
         >
           {matches.length === 0 ? (
             <li className="px-4 py-3 text-[16px] text-ink-soft">No state matches “{query}”.</li>

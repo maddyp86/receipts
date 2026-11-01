@@ -385,7 +385,7 @@ function BrowseDialog({
               Find your lawmaker
             </h2>
             <p className="mt-1 text-[15px] text-lp-muted">
-              Every member of Congress. Pick one who’s ready, or request a record we haven’t checked yet.
+              Every member of Congress, by state or by name. Pick one who’s ready, or request a record we haven’t checked yet.
             </p>
           </div>
           <button
@@ -403,6 +403,7 @@ function BrowseDialog({
             selectedId={null}
             initialMode={query ? 'name' : 'state'}
             initialQuery={query}
+            findOnly
             onSelect={onPick}
           />
         </div>

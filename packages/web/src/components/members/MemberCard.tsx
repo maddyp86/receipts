@@ -1,8 +1,16 @@
+import { createContext, useContext } from 'react';
 import { CheckIcon } from 'lucide-react';
 import type { Member } from '../../data/roster.js';
 import { memberArea, memberTitle, partyName } from '../../lib/members.js';
 import { MemberPortrait } from './MemberPortrait.js';
 import { FunderCredit, FundRecord } from './FundRecord.js';
+
+/**
+ * Whether a covered card shows its round select mark. Off in the landing page's
+ * browse pop-up, where picking someone closes the pop-up: a mark that is never
+ * seen ticked reads as a checkbox to fill in.
+ */
+export const MemberCardSelectMark = createContext(true);
 
 interface Props {
   member: Member;
@@ -13,6 +21,7 @@ interface Props {
 }
 
 export function MemberCard({ member, selected, onSelect, coveredAlternative }: Props) {
+  const showMark = useContext(MemberCardSelectMark);
   const area = memberArea(member);
   const party = partyName(member.party);
 
@@ -60,6 +69,7 @@ export function MemberCard({ member, selected, onSelect, coveredAlternative }: P
         {details}
         <FunderCredit memberId={member.politician_id} className="mt-1" />
       </span>
+      {showMark ? (
       <span
         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${
           selected ? 'border-ink bg-ink text-paper' : 'border-rule bg-card'
@@ -68,6 +78,7 @@ export function MemberCard({ member, selected, onSelect, coveredAlternative }: P
       >
         {selected ? <CheckIcon className="h-4 w-4" strokeWidth={3} /> : null}
       </span>
+      ) : null}
     </button>
   );
 }
