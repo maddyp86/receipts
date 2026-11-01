@@ -1886,6 +1886,22 @@ function recordStart(coverage: CoverageWindow | undefined): string | null {
  * nothing: an empty search is a fact about our record, which the coverage
  * line bounds. Null when no search ran.
  */
+/**
+ * What the search covered, and nothing about relevance: "Searched all 555 of
+ * Thune’s recorded actions since January 2023." Shown under the record card's
+ * steps, where it says what a "no" or a short list is measured against
+ * without posing as a step that judged all 555 (Matt, 1 Nov).
+ */
+export function searchScopeSentence(result: QueryResult): string | null {
+  const f = searchFunnel(result);
+  if (!f) return null;
+  const surname = surnameOf(result.senator.name);
+  const since = recordStart(result.coverage);
+  return (f.searched
+    ? `Searched all ${f.searched.toLocaleString('en-US')} of ${surname}’s recorded actions`
+    : `Searched ${surname}’s recorded actions`) + (since ? ` since ${since}.` : '.');
+}
+
 export function searchSummarySentence(result: QueryResult): string | null {
   const f = searchFunnel(result);
   if (!f) return null;

@@ -2,16 +2,18 @@ import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { QueryResult } from '@receipts/shared';
-import { VerdictCard, recordActionPhrase, recordBills, recordCountLine } from './Verdict.js';
+import { VerdictCard, recordSteps, recordStepsTally } from './Verdict.js';
 
 (globalThis as { React?: unknown }).React = React;
 
 // ===========================================================================
-// THE RECORD CARD (Matt, 1 Nov, Thune / Laken Riley Act). The card carried
-// "10 read closely" and "8 about your question" chips, a bar of 10 blocks and
-// "Of the 10 actions about your question, 6 push toward…". Bills and actions
-// were mixed and nothing visibly added up. It now says one line and lists the
-// bills, each with what the senator did on it; the search is one sentence.
+// THE RECORD CARD (Matt, 1 Nov, Thune / Laken Riley Act). Chips, a bar of one
+// block per action and "Of the 10 actions about your question, 6 push toward"
+// mixed bills and actions, and nothing visibly added up. The card is a
+// snapshot, so it walks the numbers in order, each with its unit:
+//   10 bills read closely → 8 were about your question → 10 actions Thune took on those 8
+//   ✓ 6 actions count toward what you asked about · 4 don't count either way
+//   Searched all 555 of Thune's recorded actions since January 2023.
 // The rows below are that run's (8 bills, 10 actions).
 // ===========================================================================
 
@@ -32,68 +34,66 @@ const THUNE: Rows = [
   row('sjres18-118', 'passage', 'not_counted', 'YEA'),
 ];
 
-describe('the record card, in words', () => {
-  it('one line that accounts for every action, and says bills and actions apart', () => {
-    expect(recordCountLine(THUNE, 'Thune')).toBe(
-      'Of Thune’s 10 actions on these 8 bills, 6 count toward what you asked about and 4 don’t count either way.'.replace(/’(?=t)/, "'"),
-    );
+const result = (rows: Rows, name = 'John Thune', search = { evaluated: 10, admitted: 8 }, record_actions = 555) =>
+  ({
+    senator: { politician_id: 'T000250', name, cached: true, record_actions },
+    interpretation: { raw: 'Did they vote for the Laken Riley Act?', restated: 'x', primary_issue: 'x', sub_issue: 'x', stance: 'In Favor', statement_type: 'Policy Position', provenance: 'default', promise_type: 'policy' },
+    scored: { verdict: 'KEPT', band: 'Medium', mode: 'ranked', nd_reason: null, ranked: [], evidence: [], receipt: {} },
+    explanation: { why: 'Because.', connectors: {}, confidence: 0.8, card_summary: 'Thune voted for the Laken Riley Act.' },
+    coverage: { congresses: [118, 119], observed: null, unknown: false },
+    search: { returned: 10, below_floor: 0, ...search, relevance_applied: true, exclusions: [] },
+    record: { label: 'VOTED_FOR', reason: 'VOTES', rows, counted: { for: 2, against: 0 }, set_aside: 0 },
+    gated: [],
+  }) as unknown as QueryResult;
+
+const textOf = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/\s+/g, ' ');
+
+describe('the record steps', () => {
+  it('the Thune case: 10 bills read, 8 about it, 10 actions on those 8, 6 counted', () => {
+    expect(recordSteps(result(THUNE))).toEqual({ read: 10, about: 8, actions: 10, actionBills: 8, toward: 6, against: 0, notCounted: 4 });
   });
 
-  it('says what counts against, and what was set aside', () => {
-    const rows = [row('a', 'cloture', 'for', 'YEA'), row('b', 'cosponsor', 'against'), row('c', 'passage', 'not_counted', 'NAY')];
-    expect(recordCountLine(rows, 'Ossoff', 2)).toBe(
-      "Of Ossoff’s 3 actions on these 3 bills, 1 counts toward what you asked about, 1 counts against it, and 1 doesn't count either way. 2 more were set aside by our rules.",
-    );
-    expect(recordCountLine([row('a', 'passage', 'for', 'YEA')], 'Thune')).toBe(
-      'Thune took one action on this bill, and it counts toward what you asked about.',
-    );
+  it('the tally line names actions, and leaves out what is zero', () => {
+    expect(recordStepsTally(recordSteps(result(THUNE))!)).toEqual({
+      toward: '6 actions count toward what you asked about',
+      against: null,
+      not: "4 don't count either way",
+    });
+    const one = recordStepsTally({ read: 10, about: 2, actions: 2, actionBills: 2, toward: 1, against: 1, notCounted: 0 });
+    expect(one).toEqual({ toward: '1 action counts toward what you asked about', against: '1 action counts against it', not: null });
   });
 
-  it('each action in plain words', () => {
-    expect(recordActionPhrase(row('x', 'cloture', 'for', 'YEA'))).toBe('Voted Yes to end debate');
-    expect(recordActionPhrase(row('x', 'passage', 'for', 'NAY'))).toBe('Voted No to pass');
-    expect(recordActionPhrase(row('x', 'cosponsor', 'for'))).toBe('Co-sponsored');
-    expect(recordActionPhrase(row('x', 'sponsor', 'for'))).toBe('Sponsored');
-  });
-
-  it('groups the actions by bill: counted first, the bill with votes first', () => {
-    const bills = recordBills(THUNE);
-    expect(bills.map((b) => b.bill_id)).toEqual(['s5-119', 's333-118', 's160-118', 's3933-118', 's2-119', 'sjres18-118', 's5183-118', 's733-118']);
-    expect(bills[0]).toEqual({ bill_id: 's5-119', reading: 'for', actions: ['Co-sponsored', 'Voted Yes to end debate', 'Voted Yes to pass'], broad: false });
-    expect(bills.find((b) => b.bill_id === 's2-119')).toMatchObject({ reading: 'not_counted', broad: true });
+  it('nothing to step through when no bill was about the question', () => {
+    expect(recordSteps(result([], 'John Thune', { evaluated: 2, admitted: 0 }))).toBeNull();
   });
 });
 
 describe('the record card on the page', () => {
-  const result = {
-    senator: { politician_id: 'T000250', name: 'John Thune', cached: true, record_actions: 555 },
-    interpretation: { raw: 'Did they vote for the Laken Riley Act?', restated: 'x', primary_issue: 'x', sub_issue: 'x', stance: 'In Favor', statement_type: 'Policy Position', provenance: 'default', promise_type: 'policy' },
-    scored: { verdict: 'KEPT', band: 'Medium', mode: 'ranked', nd_reason: null, ranked: [], evidence: [{ bill_id: 's5-119', title: 'A bill to require the Secretary of Homeland Security to take into custody aliens who have been charged with theft.' }], receipt: {} },
-    explanation: { why: 'Because.', connectors: {}, confidence: 0.8 },
-    coverage: { congresses: [118, 119], observed: null, unknown: false },
-    search: { returned: 10, below_floor: 0, evaluated: 10, admitted: 8, relevance_applied: true, exclusions: [] },
-    record: { label: 'VOTED_FOR', reason: 'VOTES', rows: THUNE, counted: { for: 2, against: 0 }, set_aside: 0 },
-    gated: [],
-  } as unknown as QueryResult;
-  const html = renderToStaticMarkup(React.createElement(VerdictCard, { result }));
-  const text = html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/\s+/g, ' ');
+  const html = renderToStaticMarkup(React.createElement(VerdictCard, { result: result(THUNE) }));
+  const text = textOf(html);
 
-  it('has no chips and no bar', () => {
+  it('walks the three steps, each with its unit', () => {
+    expect(text).toMatch(/10 bills read closely .*8 were about your question .*10 actions Thune took on those 8/);
+    expect(text).toContain("✓ 6 actions count toward what you asked about · 4 don't count either way");
+  });
+
+  it('says one bill can carry several actions when it does, and what the search covered', () => {
+    expect(text).toContain('One bill can carry several actions');
+    expect(text).toContain('Searched all 555 of Thune’s recorded actions since January 2023.');
+  });
+
+  it('keeps the description, after the steps; no chips, no bar, no bill list', () => {
+    expect(text.indexOf('Thune voted for the Laken Riley Act.')).toBeGreaterThan(text.indexOf('Searched all 555'));
     expect(html).not.toContain('search-funnel');
     expect(html).not.toContain('role="img"');
-    expect(text).not.toMatch(/read closely|about your question\b(?! and)/);
+    expect(html).not.toContain('record-list');
   });
 
-  it('lists each bill with what he did, then the ones not counted and why', () => {
-    expect(text).toContain('S. 5 · 119th Congress');
-    expect(text).toContain('Co-sponsored · Voted Yes to end debate · Voted Yes to pass');
-    expect(text).toContain('Not counted');
-    expect(text).toMatch(/S\. 2 · Voted Yes to pass\. Too broad to count/);
-    expect((html.match(/data-reading="for"/g) ?? []).length).toBe(4);
-    expect((html.match(/data-reading="not_counted"/g) ?? []).length).toBe(4);
-  });
-
-  it('says what the search did in one sentence, in bills', () => {
-    expect(text).toContain('We searched all 555 of Thune’s recorded actions since January 2023. Ten bills came close to your question, and eight were actually about it.');
+  it('drops the several-actions note when every bill has one action, and says "of them" when not every bill has one', () => {
+    const ossoff = [row('s3385', 'cloture', 'for', 'YEA'), row('s46', 'cosponsor', 'for'), row('s4684', 'cosponsor', 'for'), row('s2556', 'cosponsor', 'against')];
+    const t = textOf(renderToStaticMarkup(React.createElement(VerdictCard, { result: result(ossoff, 'Jon Ossoff', { evaluated: 10, admitted: 5 }, 705) })));
+    expect(t).not.toContain('One bill can carry several actions');
+    expect(t).toContain('4 actions Ossoff took on 4 of them');
+    expect(t).toContain('✕ 1 action counts against it');
   });
 });

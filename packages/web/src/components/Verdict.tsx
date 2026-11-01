@@ -28,6 +28,7 @@ import {
   notDeterminableHeadline,
   reusedSentence,
   searchFunnel,
+  searchScopeSentence,
   searchSummarySentence,
   verdictWord,
   type DirectedAction,
@@ -425,129 +426,92 @@ function readResult(props: VerdictProps) {
 type RecordRow = NonNullable<QueryResult['record']>['rows'][number];
 
 /**
- * THE RECORD LIST (Matt, 1 Nov, Thune / Laken Riley Act). The card used to
- * carry three search counts ("555 actions in record", "10 read closely",
- * "8 about your question"), a bar with one block per action and a sentence
- * counting actions. Bills and actions were mixed, the numbers did not visibly
- * add up, and the bar added nothing a reader could use. The card now says one
- * thing in words and lists the bills, each with what the senator did on it,
- * counted ones first. The search counts are one plain sentence at the bottom.
+ * THE RECORD STEPS (Matt, 1 Nov, Thune / Laken Riley Act). The card used to
+ * carry three chips, a bar of one block per action and a sentence counting
+ * actions; bills and actions were mixed and nothing visibly added up. It is a
+ * snapshot (the receipts below hold the bill-by-bill detail), so it now walks
+ * the numbers in order, each with its unit: bills read closely → bills about
+ * the question → the senator's actions on those bills, then one line on how
+ * those actions count, then what the search covered.
  */
-
-/** "Voted Yes to end debate", "Co-sponsored": one action in plain words. */
-export function recordActionPhrase(r: RecordRow): string {
-  if (r.stage === 'sponsor') return 'Sponsored';
-  if (r.stage === 'cosponsor') return 'Co-sponsored';
-  const v = String(r.vote ?? '').toUpperCase();
-  const how = r.stage === 'cloture' ? ' to end debate' : r.stage === 'passage' ? ' to pass' : '';
-  if (v === 'YEA' || v === 'AYE' || v === 'YES') return `Voted Yes${how}`;
-  if (v === 'NAY' || v === 'NO') return `Voted No${how}`;
-  return v ? `Did not vote${how}` : `Voted${how}`;
+export interface RecordSteps {
+  read: number;
+  about: number;
+  actions: number;
+  /** Bills the actions are on; the third step says "on those 8" only when it is all of them. */
+  actionBills: number;
+  toward: number;
+  against: number;
+  notCounted: number;
 }
 
-export interface RecordBill {
-  bill_id: string;
-  reading: 'for' | 'against' | 'not_counted';
-  actions: string[];
-  broad: boolean;
-}
-
-/** The rows grouped by bill, in order: counted bills first, those with a vote first among them. */
-export function recordBills(rows: RecordRow[]): RecordBill[] {
-  const by = new Map<string, RecordRow[]>();
-  for (const r of rows) by.set(r.bill_id, [...(by.get(r.bill_id) ?? []), r]);
-  const order = (s: RecordRow['stage']) => (s === 'sponsor' ? 0 : s === 'cosponsor' ? 1 : s === 'cloture' ? 2 : 3);
-  const bills = [...by.entries()].map(([bill_id, rs]) => ({
-    bill_id,
-    reading: (rs.some((r) => r.reading === 'against') ? 'against' : rs.some((r) => r.reading === 'for') ? 'for' : 'not_counted') as RecordBill['reading'],
-    actions: [...rs].sort((x, y) => order(x.stage) - order(y.stage)).map(recordActionPhrase),
-    broad: rs.some((r) => r.broad),
-    voted: rs.some((r) => r.stage !== 'sponsor' && r.stage !== 'cosponsor'),
-  }));
-  const rank = (b: (typeof bills)[number]) => (b.reading === 'not_counted' ? 2 : 0) + (b.voted ? 0 : 1);
-  return bills.sort((x, y) => rank(x) - rank(y)).map(({ voted: _v, ...b }) => b);
-}
-
-/**
- * The card's one line: "Of Thune's 10 actions on these 8 bills, 6 count toward
- * what you asked about and 4 don't count." Every action is accounted for.
- */
-export function recordCountLine(rows: RecordRow[], surname = '', setAside = 0): string | null {
-  if (!rows.length) return null;
-  const fors = rows.filter((r) => r.reading === 'for').length;
-  const againsts = rows.filter((r) => r.reading === 'against').length;
-  const not = rows.length - fors - againsts;
-  const bills = new Set(rows.map((r) => r.bill_id)).size;
-  const who = surname.trim() ? `${surname.trim()}’s` : 'their';
-  const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
-  const parts = [
-    ...(fors ? [`${fors} ${fors === 1 ? 'counts' : 'count'} toward what you asked about`] : []),
-    ...(againsts ? [`${againsts} ${againsts === 1 ? 'counts' : 'count'} against it`] : []),
-    ...(not ? [`${not} ${not === 1 ? "doesn't" : "don't"} count either way`] : []),
-  ];
-  const list = parts.length > 2 ? `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}` : parts.join(' and ');
-  if (rows.length === 1) {
-    const how = fors ? 'counts toward what you asked about' : againsts ? 'counts against it' : "doesn't count either way";
-    const actor = surname.trim() || 'They';
-    return `${actor} took one action on this bill, and it ${how}.${setAside ? ` ${setAside} more ${setAside === 1 ? 'was' : 'were'} set aside by our rules.` : ''}`;
-  }
-  const lead = `Of ${who} ${n(rows.length, 'action', 'actions')} on ${bills === 1 ? 'this bill' : `these ${bills} bills`}, `;
-  const body = list;
-  const aside = setAside ? ` ${setAside} more ${setAside === 1 ? 'was' : 'were'} set aside by our rules.` : '';
-  return `${lead}${body}.${aside}`;
-}
-
-function RecordList({ result, surname }: { result: QueryResult; surname: string }) {
-  const answer = result.record!;
-  const bills = recordBills(answer.rows);
-  if (!bills.length) return null;
-  const titleOf = new Map((result.scored.evidence ?? []).map((e) => [e.bill_id, e.title]));
-  const counted = bills.filter((b) => b.reading !== 'not_counted');
-  const uncounted = bills.filter((b) => b.reading === 'not_counted');
-  const line = recordCountLine(answer.rows, surname, answer.set_aside);
-  const name = (b: RecordBill) => billCitation(b.bill_id) ?? b.bill_id;
-  const congress = (b: RecordBill) => {
-    const c = congressOfBillId(b.bill_id);
-    return c ? `${c}th Congress` : null;
+export function recordSteps(result: QueryResult): RecordSteps | null {
+  const funnel = searchFunnel(result);
+  const rows = result.record?.rows ?? [];
+  if (!funnel || !funnel.about || !rows.length) return null;
+  const toward = rows.filter((r) => r.reading === 'for').length;
+  const against = rows.filter((r) => r.reading === 'against').length;
+  return {
+    read: funnel.close,
+    about: funnel.about,
+    actions: rows.length,
+    actionBills: new Set(rows.map((r) => r.bill_id)).size,
+    toward,
+    against,
+    notCounted: rows.length - toward - against,
   };
+}
+
+/** "6 actions count toward what you asked about · 4 don't count either way", in parts. */
+export function recordStepsTally(s: RecordSteps): { toward: string | null; against: string | null; not: string | null } {
+  const acts = (n: number) => `${n} ${n === 1 ? 'action' : 'actions'}`;
+  return {
+    toward: s.toward ? `${acts(s.toward)} ${s.toward === 1 ? 'counts' : 'count'} toward what you asked about` : null,
+    against: s.against ? `${acts(s.against)} ${s.against === 1 ? 'counts' : 'count'} against it` : null,
+    not: s.notCounted ? `${s.notCounted} ${s.notCounted === 1 ? "doesn't" : "don't"} count either way` : null,
+  };
+}
+
+function RecordStepsView({ result, surname }: { result: QueryResult; surname: string }) {
+  const s = recordSteps(result);
+  const scope = searchScopeSentence(result);
+  if (!s) return scope ? <p className="record-scope mt-3 text-[13px] text-ink-soft">{scope}</p> : null;
+  const who = surname.trim() || 'They';
+  const on = s.actionBills === s.about ? `on those ${s.about}` : `on ${s.actionBills} of them`;
+  const steps = [
+    { n: s.read, label: s.read === 1 ? 'bill read closely' : 'bills read closely' },
+    { n: s.about, label: s.about === 1 ? 'was about your question' : 'were about your question' },
+    { n: s.actions, label: `${s.actions === 1 ? 'action' : 'actions'} ${who} took ${on}` },
+  ];
+  const t = recordStepsTally(s);
   return (
-    <div className="record-list mt-4">
-      {line ? <p className="record-count text-[16px] leading-snug text-ink">{line}</p> : null}
-      {counted.length ? (
-        <ul className="mt-3 divide-y divide-rule rounded-lg border border-rule">
-          {counted.map((b) => (
-            <li key={b.bill_id} className="flex gap-3 px-3.5 py-3" data-reading={b.reading}>
-              <span
-                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${b.reading === 'for' ? 'bg-kept-wash text-kept' : 'bg-broken-wash text-broken'}`}
-                aria-label={b.reading === 'for' ? 'Counts toward what you asked about' : 'Counts against what you asked about'}
-              >
-                {b.reading === 'for' ? <CheckIcon className="h-3.5 w-3.5" aria-hidden="true" /> : <XIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+    <div className="record-steps mt-4">
+      <ol className="grid grid-cols-3 gap-1.5 text-center" aria-label="How the answer was found">
+        {steps.map((x, i) => (
+          <li key={x.label} className="relative rounded-lg border border-rule px-2 py-2.5">
+            {i ? (
+              <span className="absolute -left-[11px] top-1/2 -translate-y-1/2 bg-card text-[13px] text-ink-soft" aria-hidden="true">
+                →
               </span>
-              <div className="min-w-0">
-                <p className="text-[15px] font-medium text-ink">
-                  {name(b)}
-                  {congress(b) ? <span className="font-normal text-ink-soft"> · {congress(b)}</span> : null}
-                </p>
-                {titleOf.get(b.bill_id) ? <p className="truncate text-[14px] text-ink-soft">{titleOf.get(b.bill_id)}</p> : null}
-                <p className="mt-0.5 text-[15px] text-ink">{b.actions.join(' · ')}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
+            ) : null}
+            <p className="text-[22px] font-semibold leading-none text-ink">{x.n.toLocaleString('en-US')}</p>
+            <p className="mt-1 text-[13px] leading-tight text-ink-soft">{x.label}</p>
+          </li>
+        ))}
+      </ol>
+      <p className="record-steps-tally mt-2 text-[15px] leading-snug text-ink">
+        {[
+          t.toward ? <span key="t" className="font-medium text-kept">✓ {t.toward}</span> : null,
+          t.against ? <span key="a" className="font-medium text-broken">✕ {t.against}</span> : null,
+          t.not ? <span key="n" className="text-ink-soft">{t.not}</span> : null,
+        ]
+          .filter(Boolean)
+          .flatMap((el, i) => (i ? [<span key={`d${i}`} className="text-ink-soft"> · </span>, el] : [el]))}
+      </p>
+      {s.actions > s.actionBills ? (
+        <p className="mt-0.5 text-[13px] text-ink-soft">One bill can carry several actions: a co-sponsorship and each vote count separately.</p>
       ) : null}
-      {uncounted.length ? (
-        <div className="mt-3">
-          <p className="text-[14px] font-medium text-ink-soft">Not counted</p>
-          <ul className="mt-1 space-y-1">
-            {uncounted.map((b) => (
-              <li key={b.bill_id} className="text-[14px] leading-snug text-ink-soft" data-reading="not_counted">
-                <span className="font-medium text-ink">{name(b)}</span> · {b.actions.join(' · ')}.{' '}
-                {b.broad ? 'Too broad to count: it covers far more than this.' : 'About a related issue, not the one you asked about.'}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      {scope ? <p className="record-scope mt-1.5 text-[13px] text-ink-soft">{scope}</p> : null}
     </div>
   );
 }
@@ -561,7 +525,6 @@ function RecordList({ result, surname }: { result: QueryResult; surname: string 
 function RecordCard(props: VerdictProps) {
   const { result } = props;
   const answer = result.record!;
-  const searched = searchSummarySentence(result);
   const boundary = recordBoundarySentence(result);
   const sub = answerReasonLine(answer, result.gated);
   const summary = result.explanation.card_summary?.trim();
@@ -580,10 +543,9 @@ function RecordCard(props: VerdictProps) {
         <p className="verdict-band mt-2 text-[16px] leading-snug text-ink-soft">
           {result.senator.name} · you asked: <span className="text-ink">“{result.interpretation.raw}”</span>
         </p>
-        {summary ? <p className="verdict-tally mt-3 text-[16px] leading-relaxed text-ink">{summary}</p> : null}
-        <RecordList result={result} surname={String(result.senator.name ?? '').split(/\s+/).pop() ?? ''} />
+        <RecordStepsView result={result} surname={String(result.senator.name ?? '').split(/\s+/).pop() ?? ''} />
+        {summary ? <p className="verdict-tally mt-4 text-[16px] leading-relaxed text-ink">{summary}</p> : null}
         {boundary ? <p className="record-boundary mt-4 text-[16px] leading-relaxed text-ink">{boundary}</p> : null}
-        {searched ? <p className="record-search mt-3 text-[14px] leading-snug text-ink-soft">{searched}</p> : null}
         {props.actions ? <div className="result-actions mt-5">{props.actions}</div> : null}
       </div>
     </section>
