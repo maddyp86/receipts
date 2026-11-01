@@ -3,6 +3,11 @@ import { createRoot } from 'react-dom/client';
 import App from './App.js';
 import { PolicyPage, policyForPath } from './components/policy/PolicyPages.js';
 // Order matters: utilities first, then the hand-written rules that must win.
+// Landing page fonts, self-hosted (see tailwind.config.js). Only fetched by a
+// page that uses them.
+import '@fontsource-variable/source-serif-4';
+import '@fontsource-variable/inter';
+import '@fontsource/jetbrains-mono/400.css';
 import './tailwind.css';
 import './styles.css';
 

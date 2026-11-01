@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { CheckIcon, ChevronDownIcon, CornerDownLeftIcon, XIcon } from 'lucide-react';
-import { SPECIFIC_EXAMPLES, askingPairs, cantCheck, topics } from '../../data/topics.js';
+import { SPECIFIC_EXAMPLES } from '../../data/topics.js';
+import { PhrasingHelp } from './PhrasingHelp.js';
 import { GlossaryTerm } from '../glossary/GlossaryTerm.js';
 
 export type StatementKind = 'position' | 'promise';
@@ -21,11 +20,14 @@ interface Props {
   kindEnabled: boolean;
   kind: StatementKind;
   onKindChange: (kind: StatementKind) => void;
+  /**
+   * Inside the landing page's query card: a short label, no paragraph of
+   * help above the box (the placeholder and the examples line carry it).
+   */
+  compact?: boolean;
 }
 
-export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, onKindChange }: Props) {
-  const [topicId, setTopicId] = useState<string | null>(null);
-  const topic = topics.find((t) => t.id === topicId);
+export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, onKindChange, compact = false }: Props) {
 
   function pick(text: string) {
     onChange(text);
@@ -40,10 +42,15 @@ export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, o
 
   return (
     <div>
-      <label htmlFor="promise" className="block font-serif text-[26px] leading-tight text-ink sm:text-[30px]">
-        What do you want to check about {memberName ?? 'your lawmaker'}?
+      <label
+        htmlFor="promise"
+        className={compact ? 'block text-[16px] font-semibold text-ink' : 'block font-serif text-[26px] leading-tight text-ink sm:text-[30px]'}
+      >
+        {compact
+          ? `What do you want to check${memberName ? ` about ${memberName}` : ''}?`
+          : `What do you want to check about ${memberName ?? 'your lawmaker'}?`}
       </label>
-      <p id="promise-help" className="mt-2 text-[17px] text-ink-soft">
+      <p id="promise-help" className={compact ? 'sr-only' : 'mt-2 text-[17px] text-ink-soft'}>
         Ask what they did, like “Did they vote to extend the ACA tax credits?”, or check something they said, like
         “promised to protect clean air standards”. One idea at a time works best. We’ll check it against how they
         voted and what bills they backed.
@@ -89,12 +96,12 @@ export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, o
         aria-describedby="promise-help promise-examples promise-tips"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        rows={3}
+        rows={compact ? 2 : 3}
         maxLength={600}
         placeholder={`e.g., ${SPECIFIC_EXAMPLES[0]}`}
-        className="mt-5 w-full resize-none rounded-card border border-rule bg-card px-4 py-3.5 text-[18px] leading-relaxed text-ink shadow-soft placeholder:text-ink-faint focus:border-focus focus:outline-none focus:ring-1 focus:ring-focus"
+        className={`${compact ? 'mt-2 text-[17px]' : 'mt-5 text-[18px] shadow-soft'} w-full resize-none rounded-card border border-rule bg-card px-4 py-3.5 leading-relaxed text-ink placeholder:text-ink-faint focus:border-focus focus:outline-none focus:ring-1 focus:ring-focus`}
       />
-      <p id="promise-examples" className="mt-2 text-[15px] leading-relaxed text-ink-soft">
+      <p id="promise-examples" className={`mt-2 leading-relaxed text-ink-soft ${compact ? 'hidden text-[14px] sm:block' : 'text-[15px]'}`}>
         Be specific: name the policy, program or bill. For example,{' '}
         {SPECIFIC_EXAMPLES.map((ex, i) => (
           <span key={ex}>
@@ -103,102 +110,8 @@ export function PromiseInput({ memberName, value, onChange, kindEnabled, kind, o
         ))}
       </p>
 
-      {/* Help for phrasing: topic starters and "How to ask". Closed by default,
-          one tap away, in the page either way (native <details>, the same
-          pattern as "About this beta"). */}
-      <details className="group mt-6">
-        <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-          <span className="inline-flex min-h-[44px] items-center gap-1 text-[16px] font-medium text-focus underline underline-offset-4">
-            Need help phrasing it?
-            <ChevronDownIcon
-              className="h-4 w-4 transition-transform duration-200 group-open:rotate-180"
-              aria-hidden="true"
-            />
-          </span>
-        </summary>
-        <div className="mt-3">
-          <p className="text-[16px] text-ink-soft">Start with a topic:</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {topics.map((t) => {
-              const active = t.id === topicId;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setTopicId(active ? null : t.id)}
-                  className={`min-h-[44px] whitespace-nowrap rounded-full border px-4 text-[16px] transition-colors duration-150 ${
-                    active ? 'border-ink bg-ink text-paper' : 'border-rule bg-card text-ink hover:border-ink-faint'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {topic ? (
-            <div key={topic.id} className="mt-4 animate-rise-in rounded-card border border-rule bg-card">
-              <p className="px-4 pt-4 text-[15px] text-ink-soft">Tap one to use it. You can change the words after.</p>
-              <ul className="mt-2 divide-y divide-rule">
-                {topic.examples.map((ex) => (
-                  <li key={ex.text}>
-                    <button
-                      type="button"
-                      onClick={() => pick(ex.text)}
-                      className="flex min-h-[52px] w-full items-center justify-between gap-3 px-4 py-3 text-left text-[17px] text-ink transition-colors duration-150 hover:bg-paper"
-                    >
-                      <span>“{ex.text}”</span>
-                      <span className="flex shrink-0 items-center gap-1 text-[14px] text-ink-soft">
-                        Use
-                        <CornerDownLeftIcon className="h-4 w-4" aria-hidden="true" />
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </div>
-
-        <div id="promise-tips" className="mt-6 border-t border-rule pt-4 text-[15px] text-ink-soft">
-          <p className="font-medium text-ink">How to ask</p>
-          <ul className="mt-2 space-y-4">
-            {askingPairs.map((pair) => (
-              <li key={pair.instead}>
-                <p className="flex items-start gap-2">
-                  <XIcon className="mt-0.5 h-4 w-4 shrink-0 text-broken" aria-hidden="true" />
-                  <span>
-                    <span className="font-medium text-ink">Instead of</span> "{pair.instead}"
-                  </span>
-                </p>
-                <p className="mt-1.5 pl-6 font-medium text-ink">Try</p>
-                <ul className="mt-0.5 space-y-0.5 pl-6">
-                  {pair.tries.map((t) => (
-                    <li key={t}>
-                      {/* Fills the box and focuses it; never submits. */}
-                      <button
-                        type="button"
-                        onClick={() => pick(t)}
-                        className="-ml-1 flex min-h-[36px] items-start gap-2 rounded px-1 py-1 text-left transition-colors duration-150 hover:bg-card hover:text-ink"
-                      >
-                        <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-kept" aria-hidden="true" />
-                        <span>"{t}"</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
-            <li className="flex items-start gap-2">
-              <XIcon className="mt-0.5 h-4 w-4 shrink-0 text-broken" aria-hidden="true" />
-              <span>
-                <span className="font-medium text-ink">Can't check</span> "{cantCheck.text}": {cantCheck.why}.
-              </span>
-            </li>
-          </ul>
-        </div>
-      </details>
+      {/* Help for phrasing: topic starters and "How to ask" (shared with the landing page). */}
+      <PhrasingHelp onPick={pick} className={`group ${compact ? 'mt-1' : 'mt-6'}`} />
     </div>
   );
 }

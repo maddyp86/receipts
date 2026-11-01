@@ -3,7 +3,7 @@ import { ArrowLeftIcon, ExternalLinkIcon, SearchIcon } from 'lucide-react';
 import type { Member } from '../../data/roster.js';
 import { districtCount, stateName } from '../../lib/members.js';
 import { GlossaryTerm } from '../glossary/GlossaryTerm.js';
-import { MemberCard } from './MemberCard.js';
+import { MemberCard, MemberCardSelectMark } from './MemberCard.js';
 import { StateCombobox } from './StateCombobox.js';
 
 // ===========================================================================
@@ -28,12 +28,21 @@ interface Props {
   members: Member[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** Open on this tab; the landing search opens it on "name" at a member it cannot select. */
+  initialMode?: FindMode;
+  initialQuery?: string;
+  /**
+   * The landing page's browse pop-up: no list of checked members up front (the
+   * search already offers them), straight to "By state / By name", no select
+   * marks on the cards, and lists that open in the flow so nothing is cut off.
+   */
+  findOnly?: boolean;
 }
 
-export function MemberPicker({ members, selectedId, onSelect }: Props) {
-  const [mode, setMode] = useState<FindMode>('state');
+export function MemberPicker({ members, selectedId, onSelect, initialMode = 'state', initialQuery = '', findOnly = false }: Props) {
+  const [mode, setMode] = useState<FindMode>(initialMode);
   const [stateCode, setStateCode] = useState<string | null>(null);
-  const [nameQuery, setNameQuery] = useState('');
+  const [nameQuery, setNameQuery] = useState(initialQuery);
 
   const covered = useMemo(() => members.filter((m) => m.cached), [members]);
   const coveredCountByState = useMemo(
@@ -52,7 +61,10 @@ export function MemberPicker({ members, selectedId, onSelect }: Props) {
     : [];
 
   return (
+    <MemberCardSelectMark.Provider value={!findOnly}>
     <div>
+      {findOnly ? null : (
+      <>
       {/* 1. What can be checked now. */}
       {covered.length === 0 ? (
         <p className="rounded-card border border-dashed border-rule bg-paper p-4 text-[16px] text-ink-soft">
@@ -87,9 +99,14 @@ export function MemberPicker({ members, selectedId, onSelect }: Props) {
         </div>
       )}
 
+      </>
+      )}
+
       {/* 2. Find anyone: checked, or not yet and fundable. */}
-      <div className="mt-8">
-        <p className="text-[16px] text-ink-soft">Looking for someone else? Find them by state or by name.</p>
+      <div className={findOnly ? '' : 'mt-8'}>
+        {findOnly ? null : (
+          <p className="text-[16px] text-ink-soft">Looking for someone else? Find them by state or by name.</p>
+        )}
         <div
           role="tablist"
           aria-label="How to find who represents you"
@@ -113,7 +130,7 @@ export function MemberPicker({ members, selectedId, onSelect }: Props) {
 
         <div className="mt-4">
           {mode === 'state' && !stateCode ? (
-            <StateCombobox onPick={setStateCode} coveredCountByState={coveredCountByState} />
+            <StateCombobox onPick={setStateCode} coveredCountByState={coveredCountByState} inline={findOnly} />
           ) : null}
 
           {mode === 'state' && stateCode ? (
@@ -171,6 +188,7 @@ export function MemberPicker({ members, selectedId, onSelect }: Props) {
         </div>
       </div>
     </div>
+    </MemberCardSelectMark.Provider>
   );
 }
 

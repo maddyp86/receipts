@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { MessageCircleQuestionIcon, XIcon } from 'lucide-react';
 import { apiUrl } from '../lib/api.js';
+import { sessionId } from '../lib/session.js';
 
 // ===========================================================================
 // Follow-up questions about THIS result.
@@ -30,9 +31,13 @@ interface Props {
   traceId: string;
   available: boolean;
   senatorName: string;
+  /** Tappable first questions, built from this result (lib/followupSuggestions.ts). */
+  suggestions?: readonly string[];
+  /** Bumped by the page to open the chat and put the cursor in it ("Ask a question" under the answer). */
+  openRequest?: number;
 }
 
-export function FollowUp({ traceId, available, senatorName }: Props) {
+export function FollowUp({ traceId, available, senatorName, suggestions = [], openRequest = 0 }: Props) {
   const [open, setOpen] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [question, setQuestion] = useState('');
@@ -40,6 +45,23 @@ export function FollowUp({ traceId, available, senatorName }: Props) {
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Asked from outside: open the sheet on a phone, and on any screen put the
+  // cursor in the box. The value at mount is not a request — it may be left
+  // over from the previous answer.
+  const openAtMount = useRef(openRequest);
+  useEffect(() => {
+    if (openRequest === openAtMount.current) return;
+    setOpen(true);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, [openRequest]);
+
+  // The phone button draws the eye once, for a few seconds after the answer lands.
+  const [nudge, setNudge] = useState(true);
+  useEffect(() => {
+    const t = window.setTimeout(() => setNudge(false), 4000);
+    return () => window.clearTimeout(t);
+  }, []);
 
   // The newest answer in view, inside the panel's own scroll.
   useEffect(() => {
@@ -58,8 +80,8 @@ export function FollowUp({ traceId, available, senatorName }: Props) {
 
   if (!available) return null;
 
-  const ask = async () => {
-    const q = question.trim();
+  const ask = async (text?: string) => {
+    const q = (text ?? question).trim();
     if (!q || busy) return;
     setBusy(true);
     setError(null);
@@ -70,7 +92,9 @@ export function FollowUp({ traceId, available, senatorName }: Props) {
       const res = await fetch(apiUrl('/api/followup'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ run_id: traceId, question: q, history }),
+        // The session id lets the server count that a follow-up was asked in
+        // this visit. The question itself is not counted or kept.
+        body: JSON.stringify({ run_id: traceId, question: q, history, session: sessionId() || undefined }),
       });
       const body = (await res.json()) as { answer?: string; refused?: boolean; error?: { message: string } };
       if (!res.ok || !body.answer) {
@@ -141,6 +165,24 @@ export function FollowUp({ traceId, available, senatorName }: Props) {
                   </li>
                 ))}
               </ol>
+            ) : suggestions.length ? (
+              <div>
+                <p className="text-[14px] leading-relaxed text-ink-soft">Tap a question to ask it:</p>
+                <ul className="mt-2 space-y-2">
+                  {suggestions.map((s) => (
+                    <li key={s}>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void ask(s)}
+                        className="w-full rounded-2xl border border-brand/30 bg-paper px-3.5 py-2.5 text-left text-[15px] leading-snug text-brand transition-colors duration-150 hover:border-brand hover:bg-brand/5 disabled:opacity-50"
+                      >
+                        {s}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : (
               <p className="text-[14px] leading-relaxed text-ink-faint">
                 For example: why didn’t one of these bills count for {senatorName}?
@@ -198,7 +240,7 @@ export function FollowUp({ traceId, available, senatorName }: Props) {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-4 inset-x-4 z-30 mx-auto inline-flex min-h-[52px] max-w-md items-center justify-center gap-2 whitespace-nowrap rounded-full bg-brand px-6 text-[16px] font-semibold text-white shadow-soft transition-colors duration-150 hover:bg-brand-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand lg:hidden"
+          className={`fixed bottom-4 inset-x-4 z-30 mx-auto inline-flex ${nudge ? 'animate-pulse ring-4 ring-brand/30' : ''} min-h-[52px] max-w-md items-center justify-center gap-2 whitespace-nowrap rounded-full bg-brand px-6 text-[16px] font-semibold text-white shadow-soft transition-colors duration-150 hover:bg-brand-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand lg:hidden`}
         >
           <MessageCircleQuestionIcon className="h-5 w-5" aria-hidden="true" />
           Ask about this result
