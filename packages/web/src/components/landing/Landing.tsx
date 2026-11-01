@@ -372,8 +372,8 @@ export function LandingDialog({
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-lp-navy/75 px-4 font-lp-sans backdrop-blur-sm ${
-        compact ? 'py-4 sm:py-8' : 'py-6 sm:py-12'
+      className={`fixed inset-0 z-50 flex justify-center overflow-y-auto bg-lp-navy/75 px-4 font-lp-sans backdrop-blur-sm ${
+        compact ? 'items-center py-4 sm:py-8' : 'items-start py-6 sm:py-12'
       }`}
       onClick={onClose}
     >
@@ -475,7 +475,7 @@ export function RunDialog({
         <p id="run-title" role="status" className="inline-flex min-w-0 items-center gap-2 text-[16px] font-semibold text-lp-ink">
           {done ? (
             <>
-              <CheckIcon className="h-4 w-4 text-lp-verified" aria-hidden="true" />
+              <CheckIcon className="h-4 w-4 text-lp-brand" aria-hidden="true" />
               Your answer is ready
             </>
           ) : (

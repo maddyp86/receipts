@@ -417,11 +417,17 @@ export function Waiting({
             >
               <span className={`flex shrink-0 items-center justify-center ${framed ? 'h-6 w-6' : 'h-8 w-8'}`} aria-hidden="true">
                 {status === 'done' ? (
-                  <span className={`flex items-center justify-center rounded-full bg-ink text-paper ${framed ? 'h-5 w-5' : 'h-7 w-7'}`}>
+                  <span
+                    className={`flex items-center justify-center rounded-full text-paper ${
+                      framed ? 'h-5 w-5 bg-lp-brand' : 'h-7 w-7 bg-ink'
+                    }`}
+                  >
                     <CheckIcon className={framed ? 'h-3 w-3' : 'h-4 w-4'} strokeWidth={3} />
                   </span>
                 ) : status === 'working' ? (
-                  <Loader2Icon className={`${framed ? 'h-5 w-5' : 'h-6 w-6'} animate-spin text-ink motion-reduce:animate-none`} />
+                  <Loader2Icon
+                    className={`${framed ? 'h-5 w-5 text-lp-brand' : 'h-6 w-6 text-ink'} animate-spin motion-reduce:animate-none`}
+                  />
                 ) : status === 'error' ? (
                   <TriangleAlertIcon className="h-6 w-6 text-broken" />
                 ) : (
