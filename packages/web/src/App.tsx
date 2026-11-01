@@ -7,6 +7,7 @@ import { useReceiptStream } from './lib/useReceiptStream.js';
 import { apiUrl } from './lib/api.js';
 import { buildRoster, type Member } from './data/roster.js';
 import { Entry } from './components/Entry.js';
+import { Landing } from './components/landing/Landing.js';
 import type { StatementKind } from './components/entry/PromiseInput.js';
 import { QuestionCard, Waiting } from './components/Waiting.js';
 import { EvidenceList, HowWeGotHereToggle, SearchSummary, VerdictCard, WhyPanel } from './components/Verdict.js';
@@ -35,6 +36,8 @@ import { SiteFooter } from './components/policy/PolicyPages.js';
 // no vote can settle, a member not analysed) or not (an error, a limit).
 // ===========================================================================
 
+const MODE_KEY = 'receipts.mode';
+
 function Page({ width, children }: { width: 'narrow' | 'wide'; children: ReactNode }) {
   return (
     <main
@@ -51,6 +54,32 @@ export default function App() {
   const [senators, setSenators] = useState<Senator[]>([]);
   const [directory, setDirectory] = useState<DirectoryMember[]>([]);
   const [modes, setModes] = useState({ demo: false, fixture: false, override: false, followups: false, feedback: false, prompts: false });
+  /** Checks a day per reader (follow-ups included), from the server. */
+  const [dailyLimit, setDailyLimit] = useState<number | null>(null);
+
+  /**
+   * Landing page or tool. A first visit lands on the landing page, whose one
+   * job is a first check; from the first check on, this tab is in the tool,
+   * and "new question" goes to the tool's entry screen, not back to the pitch.
+   * Kept per tab (sessionStorage), like the session id: a new visit lands again.
+   */
+  const [mode, setMode] = useState<'landing' | 'tool'>(() => {
+    try {
+      return window.sessionStorage.getItem(MODE_KEY) === 'tool' ? 'tool' : 'landing';
+    } catch {
+      return 'landing';
+    }
+  });
+  const goTo = (next: 'landing' | 'tool') => {
+    setMode(next);
+    try {
+      window.sessionStorage.setItem(MODE_KEY, next);
+    } catch {
+      /* No storage: the mode lasts as long as the page. */
+    }
+  };
+  /** The landing page's "browse by state" / unchecked member: open the tool's browse panel there. */
+  const [browseRequest, setBrowseRequest] = useState<string | null>(null);
   const [taxonomy, setTaxonomy] = useState<TaxonomyEntry[]>([]);
   // Nobody is preselected: with a short list, a default is a nudge.
   const [selected, setSelected] = useState('');
@@ -89,6 +118,7 @@ export default function App() {
         setSenators(list);
         // A selection the list no longer covers is dropped, not kept.
         setSelected((cur) => (list.some((s) => s.politician_id === cur && s.cached) ? cur : ''));
+        setDailyLimit(typeof d.query_per_day === 'number' && d.query_per_day > 0 ? d.query_per_day : null);
         setModes({
           demo: Boolean(d.demo_mode),
           fixture: Boolean(d.fixture_mode),
@@ -139,6 +169,9 @@ export default function App() {
   const countQuery = (politicianId: string, source: 'starter' | 'typed') => {
     queryCount.current += 1;
     querySource.current = source;
+    // The first check moves this tab from the landing page into the tool.
+    goTo('tool');
+    setBrowseRequest(null);
     track('query_submitted', { politician_id: politicianId, source, nth: queryCount.current });
   };
 
@@ -250,9 +283,30 @@ export default function App() {
           </div>
         ) : null}
 
-        {screen === 'entry' ? (
+        {screen === 'entry' && mode === 'landing' ? (
+          <Landing
+            members={roster}
+            selected={member}
+            onSelect={setSelected}
+            promise={promise}
+            onPromiseChange={setPromise}
+            onSubmit={submit}
+            onStart={start}
+            onBrowse={(name) => {
+              setBrowseRequest(name ?? '');
+              goTo('tool');
+            }}
+            busy={busy}
+            dailyLimit={dailyLimit}
+            showScopeNote={modes.feedback}
+          />
+        ) : null}
+
+        {screen === 'entry' && mode === 'tool' ? (
           <Page width="wide">
             <Entry
+              onHome={() => goTo('landing')}
+              initialBrowse={browseRequest}
               senators={roster}
               selected={selected}
               promise={promise}

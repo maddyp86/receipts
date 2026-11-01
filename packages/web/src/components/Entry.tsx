@@ -1,9 +1,9 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRightIcon, InfoIcon, XIcon } from 'lucide-react';
 import type { Senator } from '@receipts/shared';
 import type { Member } from '../data/roster.js';
 import { BetaNotice } from './entry/BetaNotice.js';
-import { ExampleAnswer, HeroHeadline, Proof, Starters } from './entry/Hero.js';
+import { ExampleAnswer, Proof, Starters } from './entry/Hero.js';
 import { LawmakerSearch } from './entry/LawmakerSearch.js';
 import type { Starter } from '../data/topics.js';
 import { PromiseInput, type StatementKind } from './entry/PromiseInput.js';
@@ -43,6 +43,10 @@ interface Props {
   onStart?: (starter: Starter) => void;
   /** The beta scope note. It points at "Something look wrong?", so only where that exists. */
   showScopeNote?: boolean;
+  /** Back to the landing page (the wordmark). Omitted: the wordmark is plain text. */
+  onHome?: () => void;
+  /** Open with the browse panel showing, at this name ('' = by state). From the landing page's search. */
+  initialBrowse?: string | null;
   /** The reader may assert "this was a campaign promise" (server flag). */
   kindEnabled?: boolean;
   kind?: StatementKind;
@@ -58,6 +62,8 @@ export function Entry({
   onPromiseChange,
   onSubmit,
   onStart,
+  onHome,
+  initialBrowse = null,
   showScopeNote = false,
   kindEnabled = false,
   kind = 'position',
@@ -65,7 +71,13 @@ export function Entry({
 }: Props) {
   const browseRef = useRef<HTMLElement>(null);
   /** The browse panel: closed, or open (at a name, when one was picked from the search). */
-  const [browse, setBrowse] = useState<{ query: string; n: number } | null>(null);
+  const [browse, setBrowse] = useState<{ query: string; n: number } | null>(
+    initialBrowse !== null ? { query: initialBrowse, n: 1 } : null,
+  );
+  useEffect(() => {
+    if (initialBrowse !== null) browseRef.current?.scrollIntoView({ block: 'start' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arriving from the landing page
+  }, []);
 
   const members = useMemo<Member[]>(
     () => senators.map((s) => ('chamber' in s ? s : { ...s, chamber: 'senate' as const })),
@@ -105,7 +117,21 @@ export function Entry({
       className="lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:items-start lg:gap-12"
     >
       <div className="min-w-0">
-        <HeroHeadline />
+        {/* The tool's own header: the landing page did the persuading, so
+            this is a working screen, not a pitch. */}
+        <header>
+          {onHome ? (
+            <button type="button" onClick={onHome} className="font-serif text-[22px] leading-none text-ink hover:text-focus">
+              Receipts
+            </button>
+          ) : (
+            <p className="font-serif text-[22px] leading-none text-ink">Receipts</p>
+          )}
+          <h1 className="mt-4 font-serif text-[30px] leading-tight text-ink sm:text-[36px]">Check the record</h1>
+          <p className="mt-2 max-w-[46ch] text-[16px] leading-snug text-ink-soft sm:text-[17px]">
+            Pick a lawmaker, then ask about a vote, a promise or a position.
+          </p>
+        </header>
 
         <section aria-label="Ask about a lawmaker" className="mt-5 rounded-card border border-rule bg-card p-4 shadow-soft sm:mt-6 sm:p-5">
           <label htmlFor="lawmaker" className="block text-[16px] font-semibold text-ink">
@@ -206,7 +232,7 @@ export function Entry({
 
       {/* What an answer looks like, and why to trust it: beside the card on a
           wide screen, under everything on a phone. */}
-      <aside aria-label="What you get" className="mt-10 space-y-6 lg:mt-[118px]">
+      <aside aria-label="What you get" className="mt-10 space-y-6 lg:mt-[166px]">
         <ExampleAnswer />
         <Proof />
       </aside>

@@ -181,6 +181,9 @@ app.get('/api/senators', async (_req, res) => {
     // box is not offered, because a control the server will refuse is worse
     // than no control.
     followups_available: !config.demoMode,
+    // Checks a day per reader (follow-ups included), for the landing page's
+    // "up to N checks a day" line, so the copy can never drift from the limit.
+    query_per_day: config.rateLimit.queryPerDay,
     // Feedback needs somewhere to go. Without a database the control is
     // hidden rather than offered and then refused.
     feedback_available: feedbackStore.kind === 'supabase',

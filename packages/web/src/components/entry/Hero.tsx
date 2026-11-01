@@ -24,21 +24,6 @@ const PROOF = [
   { Icon: ShieldQuestionIcon, text: 'Says “can’t tell” when the record doesn’t settle it' },
 ];
 
-/** The wordmark, headline and subtitle. */
-export function HeroHeadline() {
-  return (
-    <header>
-      <p className="font-serif text-[22px] leading-none text-ink">Receipts</p>
-      <h1 className="mt-4 text-balance font-serif text-[34px] leading-[1.05] text-ink sm:mt-5 sm:text-[48px]">
-        Hold Congress to its word.
-      </h1>
-      <p className="mt-3 max-w-[46ch] text-[16px] leading-snug text-ink-soft sm:text-[19px]">
-        See whether the people who represent you vote the way they talk, from campaign promises to the bills they back.
-      </p>
-    </header>
-  );
-}
-
 /** The three reasons to trust an answer. */
 export function Proof() {
   return (

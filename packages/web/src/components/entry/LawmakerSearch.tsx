@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { MapIcon, SearchIcon, XIcon } from 'lucide-react';
 import type { Member } from '../../data/roster.js';
-import { memberTitle, stateName } from '../../lib/members.js';
+import { initials, memberTitle, stateName } from '../../lib/members.js';
 import { MemberPortrait } from '../members/MemberPortrait.js';
 
 // ===========================================================================
@@ -54,9 +54,64 @@ interface Props {
   onClear: () => void;
   /** Open the browse panel, at this name if one was given (an unchecked member). */
   onBrowse: (name?: string) => void;
+  /** Light for the tool; dark for the landing page's navy composer. */
+  tone?: 'light' | 'dark';
 }
 
-export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse }: Props) {
+/** Class sets per tone. Light is the tool's look, unchanged; dark is the landing page's. */
+const TONES = {
+  light: {
+    chip: 'flex min-h-[56px] items-center gap-3 rounded-card border border-ink bg-card px-3 py-2 ring-1 ring-ink',
+    chipName: 'block text-[17px] font-semibold leading-snug text-ink',
+    chipSub: 'block text-[14px] leading-snug text-ink-soft',
+    clear: 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink-soft hover:text-ink',
+    field: 'flex items-center rounded-card border border-rule bg-card focus-within:border-focus focus-within:ring-1 focus-within:ring-focus',
+    searchIcon: 'ml-4 h-5 w-5 shrink-0 text-ink-soft',
+    input: 'min-h-[56px] w-full bg-transparent px-3 text-[17px] text-ink placeholder:text-ink-faint focus:outline-none',
+    list: 'absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-card border border-rule bg-card shadow-soft',
+    overline: 'border-b border-rule px-4 py-2 text-[13px] font-medium uppercase tracking-wide text-ink-faint',
+    rowActive: 'bg-paper',
+    name: 'text-ink',
+    nameOff: 'text-ink-soft',
+    sub: 'block text-[14px] leading-snug text-ink-soft',
+    empty: 'px-4 py-3 text-[15px] text-ink-soft',
+    browse: 'flex w-full items-center gap-2 border-t border-rule px-4 py-3 text-left text-[15px] font-medium text-focus hover:bg-paper',
+  },
+  dark: {
+    chip: 'flex min-h-[56px] items-center gap-3 rounded-xl border border-white/10 bg-lp-navy px-3 py-2.5',
+    chipName: 'block truncate text-[15px] font-medium text-white',
+    chipSub: 'block text-xs text-white/55',
+    clear: 'shrink-0 rounded-md px-2 py-1 text-sm font-medium text-lp-signal hover:bg-white/10',
+    field: 'flex items-center rounded-xl border border-white/15 bg-lp-navy transition-[border-color,box-shadow] duration-150 focus-within:border-lp-signal focus-within:ring-4 focus-within:ring-lp-signal/20',
+    searchIcon: 'ml-3.5 h-4 w-4 shrink-0 text-white/50',
+    input: 'min-h-[48px] w-full bg-transparent px-3 text-[15px] text-white placeholder:text-white/40 focus:outline-none',
+    list: 'absolute inset-x-0 top-full z-20 mt-2 overflow-hidden rounded-xl bg-lp-navy2 shadow-2xl ring-1 ring-white/15',
+    overline: 'border-b border-white/10 px-4 py-2 text-[12px] font-medium uppercase tracking-wide text-white/50',
+    rowActive: 'bg-white/10',
+    name: 'text-white',
+    nameOff: 'text-white/55',
+    sub: 'block text-xs text-white/55',
+    empty: 'px-4 py-3 text-sm text-white/60',
+    browse: 'flex w-full items-center gap-2 border-t border-white/10 px-4 py-3 text-left text-sm font-medium text-lp-signal hover:bg-white/5',
+  },
+} as const;
+
+/** The landing page's avatar: initials in a neutral circle, the same for every party. */
+function DarkAvatar({ name, muted }: { name: string; muted?: boolean }) {
+  const ini = initials(name);
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-lp-signal/15 text-xs font-semibold text-lp-signal ${muted ? 'opacity-50' : ''}`}
+    >
+      {ini}
+    </span>
+  );
+}
+
+export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse, tone = 'light' }: Props) {
+  const t = TONES[tone];
+  const dark = tone === 'dark';
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -92,11 +147,11 @@ export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse 
 
   if (selected) {
     return (
-      <div className="flex min-h-[56px] items-center gap-3 rounded-card border border-ink bg-card px-3 py-2 ring-1 ring-ink">
-        <MemberPortrait politicianId={selected.politician_id} name={selected.name} />
+      <div className={t.chip}>
+        {dark ? <DarkAvatar name={selected.name} /> : <MemberPortrait politicianId={selected.politician_id} name={selected.name} />}
         <span className="min-w-0 flex-1">
-          <span className="block text-[17px] font-semibold leading-snug text-ink">{selected.name}</span>
-          <span className="block text-[14px] leading-snug text-ink-soft">{memberTitle(selected)}</span>
+          <span className={t.chipName}>{selected.name}</span>
+          <span className={t.chipSub}>{memberTitle(selected)}</span>
         </span>
         <button
           type="button"
@@ -104,10 +159,10 @@ export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse 
             onClear();
             requestAnimationFrame(() => inputRef.current?.focus());
           }}
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink-soft hover:text-ink"
+          className={t.clear}
           aria-label={`Change from ${selected.name}`}
         >
-          <XIcon className="h-5 w-5" aria-hidden="true" />
+          {dark ? 'Change' : <XIcon className="h-5 w-5" aria-hidden="true" />}
         </button>
       </div>
     );
@@ -117,8 +172,8 @@ export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse 
 
   return (
     <div ref={boxRef} className="relative">
-      <div className="flex items-center rounded-card border border-rule bg-card focus-within:border-focus focus-within:ring-1 focus-within:ring-focus">
-        <SearchIcon className="ml-4 h-5 w-5 shrink-0 text-ink-soft" aria-hidden="true" />
+      <div className={t.field}>
+        <SearchIcon className={t.searchIcon} aria-hidden="true" />
         <input
           ref={inputRef}
           id="lawmaker"
@@ -151,14 +206,14 @@ export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse 
           }}
           placeholder="Type a name or state"
           autoComplete="off"
-          className="min-h-[56px] w-full bg-transparent px-3 text-[17px] text-ink placeholder:text-ink-faint focus:outline-none"
+          className={t.input}
         />
       </div>
 
       {showList ? (
-        <div className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-card border border-rule bg-card shadow-soft">
+        <div className={t.list}>
           {!query.trim() ? (
-            <p className="border-b border-rule px-4 py-2 text-[13px] font-medium uppercase tracking-wide text-ink-faint">
+            <p className={t.overline}>
               Ready to check now
             </p>
           ) : null}
@@ -173,14 +228,18 @@ export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse 
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => choose(m)}
                 onMouseEnter={() => setActive(i)}
-                className={`flex cursor-pointer items-center gap-3 px-3 py-2.5 ${i === active ? 'bg-paper' : ''}`}
+                className={`flex cursor-pointer items-center gap-3 px-3 py-2.5 ${i === active ? t.rowActive : ''}`}
               >
-                <MemberPortrait politicianId={m.politician_id} name={m.name} muted={!m.cached} />
+                {dark ? (
+                  <DarkAvatar name={m.name} muted={!m.cached} />
+                ) : (
+                  <MemberPortrait politicianId={m.politician_id} name={m.name} muted={!m.cached} />
+                )}
                 <span className="min-w-0 flex-1">
-                  <span className={`block text-[16px] font-medium leading-snug ${m.cached ? 'text-ink' : 'text-ink-soft'}`}>
+                  <span className={`block font-medium leading-snug ${dark ? 'text-sm' : 'text-[16px]'} ${m.cached ? t.name : t.nameOff}`}>
                     {shortLabel(m)}
                   </span>
-                  <span className="block text-[14px] leading-snug text-ink-soft">
+                  <span className={t.sub}>
                     {m.cached ? memberTitle(m) : 'Not checked yet · request their record'}
                   </span>
                 </span>
@@ -188,7 +247,7 @@ export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse 
             ))}
           </ul>
           {query.trim() && rows.length === 0 ? (
-            <p className="px-4 py-3 text-[15px] text-ink-soft">Nobody by that name yet. More members are being added.</p>
+            <p className={t.empty}>Nobody by that name yet. More members are being added.</p>
           ) : null}
           <button
             type="button"
@@ -197,7 +256,7 @@ export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse 
               setOpen(false);
               onBrowse();
             }}
-            className="flex w-full items-center gap-2 border-t border-rule px-4 py-3 text-left text-[15px] font-medium text-focus hover:bg-paper"
+            className={t.browse}
           >
             <MapIcon className="h-4 w-4" aria-hidden="true" />
             Browse by state, or find your House district
