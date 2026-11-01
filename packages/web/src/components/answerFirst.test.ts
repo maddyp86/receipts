@@ -86,8 +86,8 @@ describe('the first screen of an answer', () => {
   it('the bar holds the headline, the three numbers and what to do next, not the explanation', () => {
     expect(at('We couldn')).toBeGreaterThanOrEqual(0);
     expect(at('We couldn')).toBeLessThan(at('609 actions in record'));
-    expect(at('2 read closely')).toBeGreaterThan(0);
-    expect(at('0 about your question')).toBeGreaterThan(0);
+    expect(at('2 bills read closely')).toBeGreaterThan(0);
+    expect(at('0 bills about your question')).toBeGreaterThan(0);
     expect(at('about your question')).toBeLessThan(at('Check something else about Schumer'));
     // The explanation is the "Why" tab; the summary sentence is "How we checked".
     expect(at('Here’s why')).toBe(-1);

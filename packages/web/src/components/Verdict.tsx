@@ -437,21 +437,38 @@ function actionKinds(rows: RecordRow[]): string {
  * The bar's meaning in one sentence, since "3 for · 1 against" alone left
  * readers asking for or against what (Matt, 31 Oct). "For" is an action that
  * pushes toward what they asked about; "against" is one that works against it.
+ *
+ * It names the bills as well as the actions, and accounts for every block on
+ * the bar: the chip above says "4 bills about your question" while the bar has
+ * one block per action, and one bill can carry several (Thune, Laken Riley
+ * Act: a co-sponsorship, the vote to end debate and the final vote on S.5).
+ * "Of the 6 actions about your question" under a "4" read as a contradiction
+ * (Matt, 1 Nov).
  */
-export function recordTallySentence(rows: RecordRow[]): string | null {
+export function recordTallySentence(rows: RecordRow[], surname = '', setAside = 0): string | null {
   const fors = rows.filter((r) => r.reading === 'for').length;
   const againsts = rows.filter((r) => r.reading === 'against').length;
   if (!fors && !againsts) return null;
+  const not = rows.length - fors - againsts;
   const total = rows.length;
-  if (total === 1) return `The one action about your question ${fors ? 'pushes toward what you asked about' : 'works against what you asked about'}.`;
-  const lead = `Of the ${total} action${total === 1 ? '' : 's'} about your question, `;
-  const toward = fors ? `${fors} push${fors === 1 ? 'es' : ''} toward what you asked about` : 'none push toward what you asked about';
-  const against = againsts ? `${againsts} work${againsts === 1 ? 's' : ''} against it` : 'none work against it';
-  return `${lead}${toward} and ${against}.`;
+  const bills = new Set(rows.map((r) => r.bill_id)).size;
+  const who = surname.trim() || 'they';
+  const aside = setAside ? ` ${setAside} more ${setAside === 1 ? 'was' : 'were'} set aside by our rules.` : '';
+  if (total === 1) {
+    return `On the one bill about your question, ${who} took one action, and it ${fors ? 'pushes toward what you asked about' : 'works against it'}.${aside}`;
+  }
+  const lead = `On the ${bills === 1 ? 'one bill' : `${bills} bills`} about your question, ${who} took ${total} actions: `;
+  const parts = [
+    fors ? `${fors} push${fors === 1 ? 'es' : ''} toward what you asked about` : 'none push toward what you asked about',
+    againsts ? `${againsts} work${againsts === 1 ? 's' : ''} against it` : 'none work against it',
+    ...(not ? [`${not} ${not === 1 ? "isn't" : "aren't"} counted`] : []),
+  ];
+  const list = parts.length > 2 ? `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}` : parts.join(' and ');
+  return `${lead}${list}.${aside}`;
 }
 
 /** Toward / against / not counted / set aside, one block per vote or sponsorship row. */
-function RecordBar({ answer, setAside }: { answer: NonNullable<QueryResult['record']>; setAside: number }) {
+function RecordBar({ answer, setAside, surname }: { answer: NonNullable<QueryResult['record']>; setAside: number; surname: string }) {
   const forRows = answer.rows.filter((r) => r.reading === 'for');
   const againstRows = answer.rows.filter((r) => r.reading === 'against');
   const fors = forRows.length;
@@ -463,7 +480,7 @@ function RecordBar({ answer, setAside }: { answer: NonNullable<QueryResult['reco
     { key: 'not', n: not + setAside, cls: 'bg-rule' },
   ].filter((x) => x.n > 0);
   if (!segments.length) return null;
-  const sentence = recordTallySentence(answer.rows);
+  const sentence = recordTallySentence(answer.rows, surname, setAside);
   const legend = [
     { cls: 'bg-kept', text: `Toward it: ${fors ? actionKinds(forRows) : 'none'}` },
     { cls: 'bg-broken', text: `Against it: ${againsts ? actionKinds(againstRows) : 'none'}` },
@@ -519,8 +536,8 @@ function RecordCard(props: VerdictProps) {
           <dl className="search-funnel mt-4 flex flex-wrap gap-2">
             {[
               { n: funnel.searched, label: 'actions in record' },
-              { n: funnel.close, label: 'read closely' },
-              { n: funnel.about, label: 'about your question' },
+              { n: funnel.close, label: funnel.close === 1 ? 'bill read closely' : 'bills read closely' },
+              { n: funnel.about, label: funnel.about === 1 ? 'bill about your question' : 'bills about your question' },
             ].map((x) =>
               x.n === null ? null : (
                 <div key={x.label} className="flex items-baseline gap-1.5 rounded-full border border-rule bg-card/80 px-3 py-1">
@@ -532,7 +549,7 @@ function RecordCard(props: VerdictProps) {
             )}
           </dl>
         ) : null}
-        <RecordBar answer={answer} setAside={answer.set_aside} />
+        <RecordBar answer={answer} setAside={answer.set_aside} surname={String(result.senator.name ?? '').split(/\s+/).pop() ?? ''} />
         {summary ? <p className="verdict-tally mt-3 text-[16px] leading-relaxed text-ink">{summary}</p> : null}
         {boundary ? <p className="record-boundary mt-4 text-[16px] leading-relaxed text-ink">{boundary}</p> : null}
         {props.actions ? <div className="result-actions mt-5">{props.actions}</div> : null}
@@ -593,10 +610,10 @@ export function VerdictCard(props: VerdictProps) {
           <dl className="search-funnel mt-4 flex flex-wrap gap-2">
             {[
               { n: funnel.searched, label: 'actions in record' },
-              { n: funnel.close, label: 'read closely' },
+              { n: funnel.close, label: funnel.close === 1 ? 'bill read closely' : 'bills read closely' },
               // The bar's legend splits this into consistent, counter and set
               // aside, so the card adds up without repeating those counts.
-              { n: funnel.about, label: 'about your question' },
+              { n: funnel.about, label: funnel.about === 1 ? 'bill about your question' : 'bills about your question' },
             ].map((x) =>
               x.n === null ? null : (
                 <div key={x.label} className="flex items-baseline gap-1.5 rounded-full border border-rule bg-card/80 px-3 py-1">
