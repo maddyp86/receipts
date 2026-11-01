@@ -346,11 +346,14 @@ export function LandingDialog({
   onClose,
   children,
   wide = false,
+  compact = false,
 }: {
   labelledBy: string;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  /** Less padding, for content that should fit one screen. */
+  compact?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -369,7 +372,9 @@ export function LandingDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-lp-navy/75 px-4 py-6 font-lp-sans backdrop-blur-sm sm:py-12"
+      className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-lp-navy/75 px-4 font-lp-sans backdrop-blur-sm ${
+        compact ? 'py-4 sm:py-8' : 'py-6 sm:py-12'
+      }`}
       onClick={onClose}
     >
       <div
@@ -379,7 +384,9 @@ export function LandingDialog({
         aria-labelledby={labelledBy}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className={`w-full ${wide ? 'max-w-2xl' : 'max-w-xl'} animate-rise-in rounded-2xl bg-white p-5 text-left text-ink shadow-2xl focus:outline-none sm:p-7`}
+        className={`w-full ${wide ? 'max-w-2xl' : 'max-w-xl'} animate-rise-in rounded-2xl bg-white text-left text-ink shadow-2xl focus:outline-none ${
+          compact ? 'flex max-h-[calc(100dvh-2rem)] flex-col p-4 sm:max-h-[calc(100dvh-4rem)] sm:p-5' : 'p-5 sm:p-7'
+        }`}
       >
         {children}
       </div>
@@ -451,11 +458,21 @@ function BrowseDialog({
  * record" does not drop the reader onto a different page mid-wait. The answer
  * opens when it is ready (App.tsx `landingRun`).
  */
-export function RunDialog({ onCancel, children, done = false }: { onCancel: () => void; children: ReactNode; done?: boolean }) {
+export function RunDialog({
+  onCancel,
+  children,
+  done = false,
+  memberName,
+}: {
+  onCancel: () => void;
+  children: ReactNode;
+  done?: boolean;
+  memberName: string;
+}) {
   return (
-    <LandingDialog labelledBy="run-title" onClose={onCancel} wide>
-      <div className="flex items-center justify-between gap-4">
-        <p id="run-title" role="status" className="inline-flex items-center gap-2 text-[15px] font-semibold text-lp-ink">
+    <LandingDialog labelledBy="run-title" onClose={onCancel} wide compact>
+      <div className="flex shrink-0 items-center justify-between gap-4">
+        <p id="run-title" role="status" className="inline-flex min-w-0 items-center gap-2 text-[16px] font-semibold text-lp-ink">
           {done ? (
             <>
               <CheckIcon className="h-4 w-4 text-lp-verified" aria-hidden="true" />
@@ -464,7 +481,7 @@ export function RunDialog({ onCancel, children, done = false }: { onCancel: () =
           ) : (
             <>
               <Loader2Icon className="h-4 w-4 animate-spin text-lp-brand" aria-hidden="true" />
-              Checking the record…
+              Checking {memberName}’s record…
             </>
           )}
         </p>
@@ -476,7 +493,8 @@ export function RunDialog({ onCancel, children, done = false }: { onCancel: () =
           Cancel
         </button>
       </div>
-      <div className="mt-4">{children}</div>
+      {/* Never taller than the window: on a short one the steps scroll here, under a fixed header. */}
+      <div className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto px-1 pb-1">{children}</div>
     </LandingDialog>
   );
 }

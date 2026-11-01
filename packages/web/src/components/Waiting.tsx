@@ -243,6 +243,7 @@ export function QuestionCard({
   done = false,
   onChange,
   className = '',
+  compact = false,
 }: {
   asked: string;
   /** What is being checked; null until it is known. */
@@ -252,24 +253,30 @@ export function QuestionCard({
   done?: boolean;
   onChange: () => void;
   className?: string;
+  /** Tighter, for the landing page's progress pop-up. */
+  compact?: boolean;
 }) {
   const topics = interpretation
     ? [interpretation.primary_issue, interpretation.sub_issue].filter((t, i, all): t is string => Boolean(t) && all.indexOf(t) === i)
     : [];
   return (
-    <section aria-label="Your question" className={`rounded-card border border-rule bg-card p-4 ${className}`}>
-      <p className="text-[14px] font-medium text-ink-soft">You asked</p>
-      <p className="mt-0.5 text-[16px] leading-snug text-ink-soft">“{asked}”</p>
+    <section aria-label="Your question" className={`rounded-card border border-rule bg-card ${compact ? 'px-4 py-3' : 'p-4'} ${className}`}>
+      <p className={`font-medium text-ink-soft ${compact ? 'text-[13px]' : 'text-[14px]'}`}>You asked</p>
+      <p className={`mt-0.5 leading-snug text-ink-soft ${compact ? 'text-[15px]' : 'text-[16px]'}`}>“{asked}”</p>
       {statement ? (
-        <p className={`mt-3 leading-snug text-ink ${done ? 'text-[17px] font-medium' : 'font-serif text-[20px]'}`}>
+        <p
+          className={`leading-snug text-ink ${compact ? 'mt-2' : 'mt-3'} ${
+            done ? 'text-[17px] font-medium' : compact ? 'font-serif text-[17px]' : 'font-serif text-[20px]'
+          }`}
+        >
           {checkingLine(statement, memberName, done)}
         </p>
       ) : null}
       {topics.length ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-[14px] text-ink-soft">
+        <div className={`flex flex-wrap items-center gap-2 text-ink-soft ${compact ? 'mt-2 text-[13px]' : 'mt-3 text-[14px]'}`}>
           <span>Filed under</span>
           {topics.map((t) => (
-            <span key={t} className="rounded-full border border-rule bg-paper px-3 py-1">
+            <span key={t} className={`rounded-full border border-rule bg-paper ${compact ? 'px-2.5 py-0.5' : 'px-3 py-1'}`}>
               {t}
             </span>
           ))}
@@ -279,7 +286,9 @@ export function QuestionCard({
         <button
           type="button"
           onClick={onChange}
-          className="mt-2 inline-flex min-h-[44px] items-center text-[15px] font-medium text-focus underline underline-offset-4"
+          className={`inline-flex items-center font-medium text-focus underline underline-offset-4 ${
+            compact ? 'mt-1 min-h-[36px] text-[14px]' : 'mt-2 min-h-[44px] text-[15px]'
+          }`}
         >
           Not quite right? Change it
         </button>
@@ -360,20 +369,26 @@ export function Waiting({
       </div>
       )}
 
-      <div className={framed ? '' : 'mt-6'}>
-        <SelectedMember member={member} compact />
-      </div>
+      {/* In the pop-up its header names the member: no strip, no heading. */}
+      {framed ? null : (
+        <div className="mt-6">
+          <SelectedMember member={member} compact />
+        </div>
+      )}
 
-      <section aria-live="polite" className={framed ? 'mt-6' : 'mt-8'}>
-        <h1 className="font-serif text-[28px] leading-tight text-ink sm:text-[32px]">
-          Checking {member.name}’s record
-        </h1>
+      <section aria-live="polite" className={framed ? '' : 'mt-8'}>
+        {framed ? null : (
+          <h1 className="font-serif text-[28px] leading-tight text-ink sm:text-[32px]">
+            Checking {member.name}’s record
+          </h1>
+        )}
 
         {/* One card: what they asked, and what we are checking to answer it.
             Shown as soon as each is known — the earliest point at which a
             misread can be caught — with one way to fix it. */}
         <QuestionCard
-          className="mt-4 animate-rise-in shadow-soft"
+          compact={framed}
+          className={`${framed ? '' : 'mt-4'} animate-rise-in shadow-soft`}
           asked={rewritten ? rewritten.original : (asked ?? promise)}
           statement={rewritten ? rewritten.statement : asked ? promise : (interpretation?.restated ?? null)}
           memberName={member.name}
@@ -381,34 +396,38 @@ export function Waiting({
           onChange={() => onChange(rewritten ? rewritten.statement : promise)}
         />
 
-        <p className="mt-4 text-[15px] text-ink-soft">
+        <p className={framed ? 'mt-2 text-[13px] text-ink-soft' : 'mt-4 text-[15px] text-ink-soft'}>
           This usually takes about a minute. <span className="tabular-nums">{elapsed}s</span> so far.
         </p>
       </section>
 
-      <ol className="mt-3 space-y-1 rounded-card border border-rule bg-card p-2 shadow-soft">
+      <ol className={`rounded-card border border-rule bg-card shadow-soft ${framed ? 'mt-2 p-1' : 'mt-3 space-y-1 p-2'}`}>
         {STAGES.map((stage, i) => {
           const status = statuses[i]!;
           const detail = detailFor(stage);
           const tasks = status === 'waiting' ? [] : subtasksFor(notesFor(stage, notes));
           return (
-            <li key={i} className="flex min-h-[56px] items-start gap-4 rounded-lg px-3 py-3" data-status={status}>
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center" aria-hidden="true">
+            <li
+              key={i}
+              className={`flex items-start rounded-lg ${framed ? 'min-h-[40px] gap-3 px-2.5 py-2' : 'min-h-[56px] gap-4 px-3 py-3'}`}
+              data-status={status}
+            >
+              <span className={`flex shrink-0 items-center justify-center ${framed ? 'h-6 w-6' : 'h-8 w-8'}`} aria-hidden="true">
                 {status === 'done' ? (
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-ink text-paper">
-                    <CheckIcon className="h-4 w-4" strokeWidth={3} />
+                  <span className={`flex items-center justify-center rounded-full bg-ink text-paper ${framed ? 'h-5 w-5' : 'h-7 w-7'}`}>
+                    <CheckIcon className={framed ? 'h-3 w-3' : 'h-4 w-4'} strokeWidth={3} />
                   </span>
                 ) : status === 'working' ? (
-                  <Loader2Icon className="h-6 w-6 animate-spin text-ink motion-reduce:animate-none" />
+                  <Loader2Icon className={`${framed ? 'h-5 w-5' : 'h-6 w-6'} animate-spin text-ink motion-reduce:animate-none`} />
                 ) : status === 'error' ? (
                   <TriangleAlertIcon className="h-6 w-6 text-broken" />
                 ) : (
-                  <span className="h-6 w-6 rounded-full border-2 border-rule" />
+                  <span className={`${framed ? 'h-5 w-5' : 'h-6 w-6'} rounded-full border-2 border-rule`} />
                 )}
               </span>
-              <div className="min-w-0 flex-1 pt-1">
+              <div className={`min-w-0 flex-1 ${framed ? 'pt-0.5' : 'pt-1'}`}>
                 <span
-                  className={`block text-[17px] ${
+                  className={`block ${framed ? 'text-[15px]' : 'text-[17px]'} ${
                     status === 'working' ? 'font-semibold text-ink' : status === 'waiting' ? 'text-ink-soft' : 'text-ink'
                   }`}
                 >
@@ -421,7 +440,7 @@ export function Waiting({
                 {/* Three levels: the stage, one line per part of it, and —
                     a tap away — each bill behind that line. */}
                 {tasks.length ? (
-                  <ul className="mt-2 space-y-1.5">
+                  <ul className={framed ? 'mt-1 space-y-1' : 'mt-2 space-y-1.5'}>
                     {tasks.map((t) => <SubtaskLine key={t.key} task={t} />)}
                   </ul>
                 ) : null}
@@ -440,6 +459,7 @@ export function Waiting({
         })}
       </ol>
 
+      {framed ? null : (
       <aside className="mt-6 rounded-card bg-cantsay-wash p-5" aria-label="Good to know">
         <p className="flex items-center gap-2 text-[15px] font-medium text-ink-soft">
           <LightbulbIcon className="h-4 w-4" aria-hidden="true" />
@@ -449,6 +469,7 @@ export function Waiting({
           {EXPLAINERS[tip]}
         </p>
       </aside>
+      )}
     </>
   );
 }

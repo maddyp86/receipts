@@ -359,7 +359,7 @@ export default function App() {
         ) : null}
 
         {runningOnLanding && member ? (
-          <RunDialog onCancel={reword} done={landingHold}>
+          <RunDialog onCancel={reword} done={landingHold} memberName={member.name}>
             <Waiting
               framed
               member={member}
