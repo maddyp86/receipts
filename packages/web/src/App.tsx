@@ -7,7 +7,7 @@ import { useReceiptStream } from './lib/useReceiptStream.js';
 import { apiUrl } from './lib/api.js';
 import { buildRoster, type Member } from './data/roster.js';
 import { Entry } from './components/Entry.js';
-import { Landing } from './components/landing/Landing.js';
+import { Landing, RunDialog } from './components/landing/Landing.js';
 import type { StatementKind } from './components/entry/PromiseInput.js';
 import { QuestionCard, Waiting } from './components/Waiting.js';
 import { EvidenceList, HowWeGotHereToggle, SearchSummary, VerdictCard, WhyPanel } from './components/Verdict.js';
@@ -37,6 +37,8 @@ import { SiteFooter } from './components/policy/PolicyPages.js';
 // ===========================================================================
 
 const MODE_KEY = 'receipts.mode';
+/** The landing page's progress pop-up stays at least this long, so a stored answer does not flash it. */
+const MIN_RUN_MS = 1500;
 
 function Page({ width, children }: { width: 'narrow' | 'wide'; children: ReactNode }) {
   return (
@@ -70,6 +72,11 @@ export default function App() {
       return 'landing';
     }
   });
+  /** The first check, started on the landing page and shown in a progress pop-up over it. */
+  const [landingRun, setLandingRun] = useState(false);
+  /** When it started, and whether a finished run is being held on screen (see below). */
+  const landingRunStart = useRef(0);
+  const [landingHold, setLandingHold] = useState(false);
   const goTo = (next: 'landing' | 'tool') => {
     setMode(next);
     try {
@@ -168,8 +175,12 @@ export default function App() {
   const countQuery = (politicianId: string, source: 'starter' | 'typed') => {
     queryCount.current += 1;
     querySource.current = source;
-    // The first check moves this tab from the landing page into the tool.
-    goTo('tool');
+    // A first check from the landing page runs in a pop-up over it; the tab
+    // moves into the tool when the run ends (see the landingRun effect).
+    if (mode === 'landing') {
+      landingRunStart.current = Date.now();
+      setLandingRun(true);
+    }
     track('query_submitted', { politician_id: politicianId, source, nth: queryCount.current });
   };
 
@@ -264,6 +275,37 @@ export default function App() {
     });
   }, [stream.phase, stream.traceId]);
 
+  // The landing page's first check ends: with an answer or a stop, the tab is
+  // now in the tool and that page shows; cancelled, it stays on the landing page.
+  //
+  // A stored answer comes back at once, and the starters are exactly the
+  // questions most often asked, so most first checks would flash the pop-up
+  // for an instant and jump. The pop-up stays at least MIN_RUN_MS from the
+  // start, saying the answer is ready, so the change of page is never a flicker.
+  useEffect(() => {
+    if (!landingRun || screen === 'waiting') return;
+    if (screen === 'entry') {
+      setLandingHold(false);
+      setLandingRun(false);
+      return;
+    }
+    const finish = () => {
+      setLandingHold(false);
+      setLandingRun(false);
+      goTo('tool');
+    };
+    const left = MIN_RUN_MS - (Date.now() - landingRunStart.current);
+    if (left <= 0) {
+      finish();
+      return;
+    }
+    setLandingHold(true);
+    const t = window.setTimeout(finish, left);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- goTo only sets state
+  }, [landingRun, screen]);
+  const runningOnLanding = landingRun && mode === 'landing' && (screen === 'waiting' || landingHold);
+
   /** Every bill on the Receipts tab: weighed, and set aside. */
   const billCount = (stream.result?.scored.evidence.length ?? 0) + (stream.result?.gated?.length ?? 0);
 
@@ -281,7 +323,7 @@ export default function App() {
           </div>
         ) : null}
 
-        {screen === 'entry' && mode === 'landing' ? (
+        {(screen === 'entry' || runningOnLanding) && mode === 'landing' ? (
           <Landing
             members={roster}
             selected={member}
@@ -316,7 +358,24 @@ export default function App() {
           </Page>
         ) : null}
 
-        {screen === 'waiting' && member ? (
+        {runningOnLanding && member ? (
+          <RunDialog onCancel={reword} done={landingHold}>
+            <Waiting
+              framed
+              member={member}
+              promise={promise.trim()}
+              steps={stream.steps}
+              notes={stream.notes}
+              interpretation={stream.interpretation}
+              rewritten={stream.rewritten}
+              asked={askedText}
+              onCancel={reword}
+              onChange={editStatement}
+            />
+          </RunDialog>
+        ) : null}
+
+        {screen === 'waiting' && member && !runningOnLanding ? (
           <Page width="narrow">
             <Waiting
               member={member}
@@ -332,7 +391,7 @@ export default function App() {
           </Page>
         ) : null}
 
-        {screen === 'stopped' ? (
+        {screen === 'stopped' && !runningOnLanding ? (
           <Page width="narrow">
             <TopBar onBack={reword} backLabel="Go back" />
             {member ? (
@@ -378,7 +437,7 @@ export default function App() {
           </Page>
         ) : null}
 
-        {screen === 'result' && stream.result && stream.interpretation ? (
+        {screen === 'result' && stream.result && stream.interpretation && !runningOnLanding ? (
           <Page width="wide">
             <TopBar onBack={askAnother} backLabel="New question" icon="new" />
 

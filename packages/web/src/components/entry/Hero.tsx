@@ -1,42 +1,15 @@
-import { ArrowRightIcon, CheckIcon, FileTextIcon, ScaleIcon, ShieldQuestionIcon } from 'lucide-react';
+import { ArrowRightIcon } from 'lucide-react';
 import { surnameOf } from '@receipts/shared';
 import { STARTERS, type Starter } from '../../data/topics.js';
 import type { Member } from '../../data/roster.js';
 
 // ===========================================================================
-// The landing hero: what Receipts is, what an answer looks like, and a
-// one-tap way to get a first one.
+// Pieces shared by the entry screens: one-tap starter questions, and the
+// helper that puts a member's name into one.
 //
-// A cold visitor needs three things before they will type: what this does
-// (headline), why to believe it (proof bullets), and what they get (an
-// example answer). Then the cheapest possible first query: a starter chip
-// runs a real question about a real member in one tap.
-//
-// The example card is a REAL answer, labeled as an example: Thune voted Yea on
-// all three Senate votes on S.5 (roll calls 1, 5 and 7 of 2025; passed 64-35),
-// checked in core.member_votes — eval case 35. An invented example would be
-// the fabricated answer this product exists to avoid.
+// Each starter is an eval case (topics.ts STARTERS), so a first answer is a
+// real one, not "nothing found".
 // ===========================================================================
-
-const PROOF = [
-  { Icon: ScaleIcon, text: 'Real votes and bills, not opinions or ratings' },
-  { Icon: FileTextIcon, text: 'Every answer links back to the bill' },
-  { Icon: ShieldQuestionIcon, text: 'Says “can’t tell” when the record doesn’t settle it' },
-];
-
-/** The three reasons to trust an answer. */
-export function Proof() {
-  return (
-    <ul className="space-y-2.5">
-      {PROOF.map(({ Icon, text }) => (
-        <li key={text} className="flex items-start gap-3 text-[16px] leading-snug text-ink">
-          <Icon className="mt-0.5 h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
-          {text}
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 interface StartersProps {
   /** Covered members; a starter shows only when its member is covered. */
@@ -92,32 +65,4 @@ export function withName(text: string, surname: string): string {
     const v = verb === 'Do' ? 'Does' : verb === 'Have' ? 'Has' : verb;
     return `${v} ${surname}`;
   });
-}
-
-export function ExampleAnswer() {
-  return (
-    <figure className="overflow-hidden rounded-card border border-rule bg-card shadow-soft" aria-label="An example answer">
-      <figcaption className="flex items-center justify-between border-b border-rule px-4 py-2 text-[13px] font-medium uppercase tracking-wide text-ink-faint">
-        Example answer
-        <span className="normal-case tracking-normal">Sen. John Thune</span>
-      </figcaption>
-      <div className="px-4 py-4">
-        <p className="text-[15px] text-ink-soft">“Did Thune vote for the Laken Riley Act?”</p>
-        <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-kept-wash px-3 py-1 text-[16px] font-semibold text-kept">
-          <CheckIcon className="h-4 w-4" strokeWidth={3} aria-hidden="true" />
-          Voted for this.
-        </p>
-        <p className="mt-3 text-[16px] leading-relaxed text-ink">
-          Three recorded Senate votes on S.5 in January 2025, all Yea. The bill passed 64–35.
-        </p>
-        <ul className="mt-3 flex flex-wrap gap-2" aria-label="Receipts">
-          {['Roll call 1', 'Roll call 5', 'Roll call 7'].map((r) => (
-            <li key={r} className="rounded-md border border-rule bg-paper px-2.5 py-1 font-mono text-[13px] text-ink-soft">
-              S.5 · {r}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </figure>
-  );
 }

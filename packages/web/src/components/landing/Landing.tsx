@@ -337,21 +337,20 @@ function LandingHero({
 }
 
 /**
- * "Browse by state, or find your House district": everyone in Congress, in a
- * pop-up over the landing page instead of a jump to another screen. The same
- * picker as the tool (MemberPicker): checked members to pick, the rest with
- * request / sponsor on their card.
+ * The landing page's pop-up frame: a white card over the dimmed navy page.
+ * Focus moves in, Esc and the backdrop close it, and the page behind does not
+ * scroll. Used for "Find your lawmaker" and for the first check's progress.
  */
-function BrowseDialog({
-  query,
-  members,
-  onPick,
+export function LandingDialog({
+  labelledBy,
   onClose,
+  children,
+  wide = false,
 }: {
-  query: string;
-  members: readonly Member[];
-  onPick: (id: string) => void;
+  labelledBy: string;
   onClose: () => void;
+  children: ReactNode;
+  wide?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -369,46 +368,116 @@ function BrowseDialog({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-lp-navy/75 px-4 py-6 backdrop-blur-sm sm:py-12" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-lp-navy/75 px-4 py-6 font-lp-sans backdrop-blur-sm sm:py-12"
+      onClick={onClose}
+    >
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="browse-title"
+        aria-labelledby={labelledBy}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl animate-rise-in rounded-2xl bg-white p-5 text-left text-ink shadow-2xl focus:outline-none sm:p-7"
+        className={`w-full ${wide ? 'max-w-2xl' : 'max-w-xl'} animate-rise-in rounded-2xl bg-white p-5 text-left text-ink shadow-2xl focus:outline-none sm:p-7`}
       >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 id="browse-title" className="font-display text-[28px] font-semibold leading-tight text-lp-ink">
-              Find your lawmaker
-            </h2>
-            <p className="mt-1 text-[15px] text-lp-muted">
-              Every member of Congress, by state or by name. Pick one who’s ready, or request a record we haven’t checked yet.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="-mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-lp-muted hover:bg-lp-paper hover:text-lp-ink"
-          >
-            <XIcon className="h-5 w-5" aria-hidden="true" />
-          </button>
-        </div>
-        <div className="mt-5">
-          <MemberPicker
-            members={[...members]}
-            selectedId={null}
-            initialMode={query ? 'name' : 'state'}
-            initialQuery={query}
-            findOnly
-            onSelect={onPick}
-          />
-        </div>
+        {children}
       </div>
     </div>
+  );
+}
+
+function DialogHeader({ id, title, subtitle, onClose, closeLabel = 'Close' }: { id: string; title: string; subtitle?: string; onClose: () => void; closeLabel?: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <h2 id={id} className="font-display text-[28px] font-semibold leading-tight text-lp-ink">
+          {title}
+        </h2>
+        {subtitle ? <p className="mt-1 text-[15px] text-lp-muted">{subtitle}</p> : null}
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={closeLabel}
+        className="-mr-2 inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2 text-[15px] font-medium text-lp-muted hover:bg-lp-paper hover:text-lp-ink"
+      >
+        {closeLabel === 'Close' ? <XIcon className="h-5 w-5" aria-hidden="true" /> : closeLabel}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * "Browse by state, or find your House district": everyone in Congress, in a
+ * pop-up over the landing page instead of a jump to another screen.
+ */
+function BrowseDialog({
+  query,
+  members,
+  onPick,
+  onClose,
+}: {
+  query: string;
+  members: readonly Member[];
+  onPick: (id: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <LandingDialog labelledBy="browse-title" onClose={onClose} wide>
+      <DialogHeader
+        id="browse-title"
+        title="Find your lawmaker"
+        subtitle="Every member of Congress, by state or by name. Pick one who’s ready, or request a record we haven’t checked yet."
+        onClose={onClose}
+      />
+      <div className="mt-5">
+        <MemberPicker
+          members={[...members]}
+          selectedId={null}
+          initialMode={query ? 'name' : 'state'}
+          initialQuery={query}
+          findOnly
+          onSelect={onPick}
+        />
+      </div>
+    </LandingDialog>
+  );
+}
+
+/**
+ * The first check from the landing page, in progress: the same live steps as
+ * the tool's waiting screen, over the landing page, so pressing "Check the
+ * record" does not drop the reader onto a different page mid-wait. The answer
+ * opens when it is ready (App.tsx `landingRun`).
+ */
+export function RunDialog({ onCancel, children, done = false }: { onCancel: () => void; children: ReactNode; done?: boolean }) {
+  return (
+    <LandingDialog labelledBy="run-title" onClose={onCancel} wide>
+      <div className="flex items-center justify-between gap-4">
+        <p id="run-title" role="status" className="inline-flex items-center gap-2 text-[15px] font-semibold text-lp-ink">
+          {done ? (
+            <>
+              <CheckIcon className="h-4 w-4 text-lp-verified" aria-hidden="true" />
+              Your answer is ready
+            </>
+          ) : (
+            <>
+              <Loader2Icon className="h-4 w-4 animate-spin text-lp-brand" aria-hidden="true" />
+              Checking the record…
+            </>
+          )}
+        </p>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="-mr-2 inline-flex min-h-[44px] items-center rounded-lg px-3 text-[15px] font-medium text-lp-muted hover:bg-lp-paper hover:text-lp-ink"
+        >
+          Cancel
+        </button>
+      </div>
+      <div className="mt-4">{children}</div>
+    </LandingDialog>
   );
 }
 

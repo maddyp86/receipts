@@ -3,7 +3,7 @@ import { ArrowRightIcon, InfoIcon, XIcon } from 'lucide-react';
 import type { Senator } from '@receipts/shared';
 import type { Member } from '../data/roster.js';
 import { BetaNotice } from './entry/BetaNotice.js';
-import { ExampleAnswer, Proof, Starters } from './entry/Hero.js';
+import { Starters } from './entry/Hero.js';
 import { LawmakerSearch } from './entry/LawmakerSearch.js';
 import type { Starter } from '../data/topics.js';
 import { PromiseInput, type StatementKind } from './entry/PromiseInput.js';
@@ -106,7 +106,7 @@ export function Entry({
         e.preventDefault();
         handleSubmit();
       }}
-      className="lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:items-start lg:gap-12"
+      className="mx-auto max-w-2xl"
     >
       <div className="min-w-0">
         {/* The tool's own header: the landing page did the persuading, so
@@ -222,12 +222,6 @@ export function Entry({
         ) : null}
       </div>
 
-      {/* What an answer looks like, and why to trust it: beside the card on a
-          wide screen, under everything on a phone. */}
-      <aside aria-label="What you get" className="mt-10 space-y-6 lg:mt-[166px]">
-        <ExampleAnswer />
-        <Proof />
-      </aside>
     </form>
   );
 }

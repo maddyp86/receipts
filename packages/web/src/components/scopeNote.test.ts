@@ -95,9 +95,8 @@ describe('where it shows', () => {
   it('the entry page, right under the query card, when feedback is on', () => {
     const page = entry(true);
     expect(page).toContain(plain(SCOPE_NOTE[0]!));
-    // On the first screen, beside the button: before the browse panel and the example answer.
+    // Under the query card, beside the button.
     expect(page.indexOf('This is a beta')).toBeGreaterThan(page.indexOf('Check their record'));
-    expect(page.indexOf('This is a beta')).toBeLessThan(page.indexOf('Example answer'));
   });
 
   it('not on the entry page without feedback: it would point at a control that is not there', () => {
@@ -125,7 +124,7 @@ describe('the question box', () => {
     // The hero's example answer names Thune, on purpose and labeled as an
     // example; the question box's own help text below it must not.
     const from = page.indexOf('What do you want to check about');
-    const to = page.indexOf('Example answer');
+    const to = page.indexOf('Or try one now');
     const box = page.slice(from, to === -1 ? undefined : to);
     expect(box).not.toMatch(/Schumer|Thune/);
   });

@@ -302,9 +302,25 @@ interface Props {
   onCancel: () => void;
   /** Stop, and put the statement we were checking in the box to edit. */
   onChange: (statement: string) => void;
+  /**
+   * Inside the landing page's progress pop-up: no top bar of its own (the
+   * pop-up has its own header and Cancel).
+   */
+  framed?: boolean;
 }
 
-export function Waiting({ member, promise, steps, notes = [], interpretation, rewritten = null, asked = null, onCancel, onChange }: Props) {
+export function Waiting({
+  member,
+  promise,
+  steps,
+  notes = [],
+  interpretation,
+  rewritten = null,
+  asked = null,
+  onCancel,
+  onChange,
+  framed = false,
+}: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [tip, setTip] = useState(0);
   const statuses = stageStatuses(steps);
@@ -330,6 +346,7 @@ export function Waiting({ member, promise, steps, notes = [], interpretation, re
 
   return (
     <>
+      {framed ? null : (
       <div className="flex items-center justify-between">
         <p className="font-serif text-[24px] text-ink">Receipts</p>
         <button
@@ -341,12 +358,13 @@ export function Waiting({ member, promise, steps, notes = [], interpretation, re
           Go back
         </button>
       </div>
+      )}
 
-      <div className="mt-6">
+      <div className={framed ? '' : 'mt-6'}>
         <SelectedMember member={member} compact />
       </div>
 
-      <section aria-live="polite" className="mt-8">
+      <section aria-live="polite" className={framed ? 'mt-6' : 'mt-8'}>
         <h1 className="font-serif text-[28px] leading-tight text-ink sm:text-[32px]">
           Checking {member.name}’s record
         </h1>
