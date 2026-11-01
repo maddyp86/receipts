@@ -78,8 +78,8 @@ describe('the record card on the page', () => {
     expect(text).toContain("✓ 6 count toward what you asked about · 4 don't count either way");
   });
 
-  it('says one bill can carry several actions when it does, and what the search covered', () => {
-    expect(text).toContain('One bill can carry several actions');
+  it('says what the search covered, and nothing more', () => {
+    expect(text).not.toContain('One bill can carry several actions');
     expect(text).toContain('Searched all 555 of Thune’s recorded actions since January 2023 and read the 10 bills that came closest.');
   });
 
@@ -90,10 +90,9 @@ describe('the record card on the page', () => {
     expect(html).not.toContain('record-list');
   });
 
-  it('drops the several-actions note when every bill has one action, and says "of them" when not every bill has one', () => {
+  it('says "of them" when the actions are on only some of the bills, and shows an against', () => {
     const ossoff = [row('s3385', 'cloture', 'for', 'YEA'), row('s46', 'cosponsor', 'for'), row('s4684', 'cosponsor', 'for'), row('s2556', 'cosponsor', 'against')];
     const t = textOf(renderToStaticMarkup(React.createElement(VerdictCard, { result: result(ossoff, 'Jon Ossoff', { evaluated: 10, admitted: 5 }, 705) })));
-    expect(t).not.toContain('One bill can carry several actions');
     expect(t).toContain('4 actions Ossoff took on 4 of them');
     expect(t).toContain('✕ 1 counts against it');
   });

@@ -484,7 +484,7 @@ function RecordStepsView({ result, surname }: { result: QueryResult; surname: st
   const t = recordStepsTally(s);
   return (
     <div className="record-steps mt-4">
-      <ol className="grid max-w-md grid-cols-2 gap-1.5 text-center" aria-label="How the answer was found">
+      <ol className="grid grid-cols-2 gap-1.5 text-center" aria-label="How the answer was found">
         {steps.map((x, i) => (
           <li key={x.label} className="relative rounded-lg border border-rule px-2 py-2.5">
             {i ? (
@@ -506,9 +506,6 @@ function RecordStepsView({ result, surname }: { result: QueryResult; surname: st
           .filter(Boolean)
           .flatMap((el, i) => (i ? [<span key={`d${i}`} className="text-ink-soft"> · </span>, el] : [el]))}
       </p>
-      {s.actions > s.actionBills ? (
-        <p className="mt-0.5 text-[13px] text-ink-soft">One bill can carry several actions: a co-sponsorship and each vote count separately.</p>
-      ) : null}
       {scope ? <p className="record-scope mt-1.5 text-[13px] text-ink-soft">{scope}</p> : null}
     </div>
   );
