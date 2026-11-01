@@ -160,8 +160,12 @@ export const config = {
      *
      * The explanation is written against a frozen result it cannot alter, so a
      * model change here cannot move a verdict — only how it reads.
+     *
+     * Claude Sonnet 5.5 since 2026-11-01: same price as Sonnet 5, a better
+     * writer. Also answers follow-up questions (followup/followup.ts). It
+     * rejects a forced tool_choice, so no explain call forces one.
      */
-    explain: str(process.env.EXPLAIN_MODEL) || 'claude-sonnet-5',
+    explain: str(process.env.EXPLAIN_MODEL) || 'claude-sonnet-5-5',
 
     /**
      * The adversarial verdict judge. MUST NOT be the same family as `fulfill`.
@@ -172,9 +176,14 @@ export const config = {
      * invariant 4). Overridable, but swapping it to an OpenAI model defeats the
      * layer rather than tuning it.
      *
+     * Claude Opus 5.5 since 2026-11-01: it runs only on a derived accusation
+     * (the minority of checks) and decides whether one is published, so the
+     * strongest model is worth its price here. Effort is set explicitly
+     * (JUDGE_EFFORT): its default is `medium`.
+     *
      * NOTE: this model REJECTS `temperature`. See judge/judge.ts.
      */
-    judge: str(process.env.JUDGE_MODEL) || 'claude-sonnet-5',
+    judge: str(process.env.JUDGE_MODEL) || 'claude-opus-5-5',
   },
 
   /**

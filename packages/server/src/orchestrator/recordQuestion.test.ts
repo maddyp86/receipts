@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { StreamEvent } from '@receipts/shared';
 import { runQuery } from './loop.js';
 import { recordExplanationProblems } from './dispatch.js';
+import { CALL_THE_TOOL, recordExplainParams } from './recordQuestion.js';
+import { RECORD_EXPLANATION_CONSTRAINTS } from './prompts.js';
 import { traceSinks } from '../services.js';
 import { resultCache } from '../data/ResultCache.js';
 import { MemoryTraceSink } from '../trace/TraceStore.js';
@@ -105,5 +107,27 @@ describe('the record-mode wording check', () => {
 
   it('requires the opening to quote the question', () => {
     expect(recordExplanationProblems('You asked whether Collins supports the credits.', q, true).join(' ')).toMatch(/open with the voter's question/);
+  });
+});
+
+// ===========================================================================
+// The record explanation call on Claude Sonnet 5.5 / Opus 5.5: both reject a
+// forced tool_choice with a 400, which would fail every record question.
+// ===========================================================================
+
+describe('record explanation request', () => {
+  const params = recordExplainParams([{ role: 'user', content: 'record' }]);
+
+  it('never forces a tool: tool_choice is auto', () => {
+    expect(params.tool_choice).toEqual({ type: 'auto' });
+  });
+
+  it('offers only explain_result, strict, and asks for it in the prompt', () => {
+    expect(params.tools).toHaveLength(1);
+    const tool = params.tools![0] as { name: string; strict?: boolean };
+    expect(tool.name).toBe('explain_result');
+    expect(tool.strict).toBe(true);
+    expect(RECORD_EXPLANATION_CONSTRAINTS).toContain('Answer ONLY by calling the explain_result tool');
+    expect(CALL_THE_TOOL).toContain('explain_result');
   });
 });

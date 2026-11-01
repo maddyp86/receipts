@@ -282,6 +282,9 @@ export function liveJudgeFetcher(): JudgeFetcher {
   return async (input) => callJudgeModel(buildJudgeUserMessage(input), input.bill_id);
 }
 
+/** The judge's effort level: the top of the everyday range, for the highest-stakes call. */
+export const JUDGE_EFFORT = 'high';
+
 /**
  * One judge call on a prepared user message: traced, parsed, never a content
  * verdict on failure. Exported so a recorded judge input can be replayed
@@ -294,16 +297,23 @@ export async function callJudgeModel(userMessage: string, subject: string | null
   const end = traceBegin();
   let message: Anthropic.Message;
   try {
-    // NOTE the absence of `temperature`. claude-sonnet-5 400s on it; this is
-    // not an omission to be tidied up. Streamed because the SDK refuses a
+    // NOTE the absence of `temperature`: current models 400 on it, and this
+    // is not an omission to be tidied up. Streamed because the SDK refuses a
     // non-streaming request with an output ceiling this large.
+    //
+    // Effort is set, not left to the default: on Claude Opus 5.5 the default
+    // is `medium`, one level below what the judge ran at before, and this is
+    // the call that decides whether an accusation is published. Thinking is
+    // always on there; the 32k ceiling covers it. `output_config` is not in
+    // this SDK's types yet, hence the cast.
     message = await client.messages
       .stream({
         model: config.models.judge,
         max_tokens: config.judge.maxTokens,
         system: JUDGE_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }],
-      })
+        output_config: { effort: JUDGE_EFFORT },
+      } as Anthropic.MessageStreamParams)
       .finalMessage();
   } catch (err) {
     end({
