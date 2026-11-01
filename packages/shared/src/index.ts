@@ -1886,6 +1886,22 @@ function recordStart(coverage: CoverageWindow | undefined): string | null {
  * nothing: an empty search is a fact about our record, which the coverage
  * line bounds. Null when no search ran.
  */
+/**
+ * What the search covered, and nothing about relevance: "Searched all 555 of
+ * Thune’s recorded actions since January 2023." Shown under the record card's
+ * steps, where it says what a "no" or a short list is measured against
+ * without posing as a step that judged all 555 (Matt, 1 Nov).
+ */
+export function searchScopeSentence(result: QueryResult): string | null {
+  const f = searchFunnel(result);
+  if (!f) return null;
+  const surname = surnameOf(result.senator.name);
+  const since = recordStart(result.coverage);
+  return (f.searched
+    ? `Searched all ${f.searched.toLocaleString('en-US')} of ${surname}’s recorded actions`
+    : `Searched ${surname}’s recorded actions`) + (since ? ` since ${since}.` : '.');
+}
+
 export function searchSummarySentence(result: QueryResult): string | null {
   const f = searchFunnel(result);
   if (!f) return null;
@@ -1895,14 +1911,17 @@ export function searchSummarySentence(result: QueryResult): string | null {
     (f.searched
       ? `We searched all ${f.searched.toLocaleString('en-US')} of ${surname}’s recorded actions`
       : `We searched ${surname}’s recorded actions`) + (since ? ` since ${since}.` : '.');
-  if (f.close === 0) return `${lead} None came close to your question.`;
+  // "bills": the search reads bills, and a bare "Ten came close" under
+  // "555 recorded actions" read as ten actions (Matt, 1 Nov).
+  const bills = (n: number) => `${countWord(n)} ${n === 1 ? 'bill' : 'bills'}`;
+  if (f.close === 0) return `${lead} No bills came close to your question.`;
   if (f.about === 0) {
     const none = f.close === 1 ? 'it wasn’t' : f.close === 2 ? 'neither was' : 'none was';
-    return `${lead} ${countWord(f.close)} came close, but ${none} actually about this.`;
+    return `${lead} ${bills(f.close)} came close, but ${none} actually about this.`;
   }
   const s = result.search!;
-  if (!s.relevance_applied) return `${lead} ${countWord(f.close)} came close to your question.`;
-  return `${lead} ${countWord(f.close)} came close to your question, and ${countWord(f.about).toLowerCase()} ${f.about === 1 ? 'was' : 'were'} actually about it.`;
+  if (!s.relevance_applied) return `${lead} ${bills(f.close)} came close to your question.`;
+  return `${lead} ${bills(f.close)} came close to your question, and ${countWord(f.about).toLowerCase()} ${f.about === 1 ? 'was' : 'were'} actually about it.`;
 }
 
 /**
