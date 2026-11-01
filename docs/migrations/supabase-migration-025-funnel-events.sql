@@ -62,8 +62,35 @@ begin
   end if;
 end $$;
 
--- Check:
---   select grantee, string_agg(privilege_type, ', ' order by privilege_type)
---     from information_schema.role_table_grants
---    where table_schema = 'app' and table_name = 'app_funnel_events'
---    group by grantee;
+-- ---------------------------------------------------------------------------
+-- RLS — enabled WITH an insert policy, so nothing lands in a deny-all state.
+-- Same pattern as app_feedback (012). RLS on with no policy would refuse the
+-- app's own inserts and every count would be lost; RLS off would leave this
+-- the one app table without it.
+-- ---------------------------------------------------------------------------
+alter table app.app_funnel_events enable row level security;
+
+drop policy if exists app_funnel_events_insert on app.app_funnel_events;
+
+create policy app_funnel_events_insert on app.app_funnel_events
+  for insert to receipts_app with check (true);
+
+
+-- ---------------------------------------------------------------------------
+-- VERIFY
+-- ---------------------------------------------------------------------------
+
+-- Expect 1 row, rls_enabled true, policy_count 1.
+select c.relname as table_name,
+       c.relrowsecurity as rls_enabled,
+       (select count(*) from pg_policy p where p.polrelid = c.oid) as policy_count
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'app' and c.relname = 'app_funnel_events';
+
+-- Expect receipts_app: INSERT only. No row for anon or authenticated.
+select grantee, string_agg(privilege_type, ', ' order by privilege_type) as privileges
+  from information_schema.role_table_grants
+ where table_schema = 'app' and table_name = 'app_funnel_events'
+ group by grantee
+ order by grantee;
