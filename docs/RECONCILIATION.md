@@ -2876,7 +2876,7 @@ branch.
 **Given up.** Nothing changed here. The next publish of the members workflow
 from the repo ships the cross-check and the terms write (entry below) together;
 the next orchestrator publish from `build.py` would make members daily. Both
-are the owner's call; the rollout in #TBD says so.
+are the owner's call; the rollout in #114 says so.
 
 Sources: n8n `get_workflow_details` on 4 November 2026; `core.ingest_runs`.
 
@@ -2918,4 +2918,4 @@ written, verified in a rolled-back transaction against production as
 `postgres` (DDL, grants, RLS, a 56-row upsert and the view output), and **not
 applied**; the workflow is **not published**.
 
-Sources: #TBD, migration 026, `docs/v2/congress-120-transition.md`.
+Sources: #114, migration 026, `docs/v2/congress-120-transition.md`.

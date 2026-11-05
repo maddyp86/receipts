@@ -132,7 +132,7 @@ congress of service. This is the false-absence risk at its sharpest.
    one-off write run per the usual TEMP-draft procedure, with Matt's yes). Grant
    `receipts_app` SELECT per the 014 pattern. Add `Left At`, `First Term Start` and
    `Served Congresses` to `compat.mirror_politicians` (migration 015 shape).
-   *Status (2026-11-04, branch `worktree-member-terms`):* written. Migration 026 adds
+   *Status (2026-11-04, PR #114):* written. Migration 026 adds
    the table, `core.congress_of(date)`, the `core.member_tenure` view and four keys
    on the compat view (`Left At`, `First Term Start`, `Last Term End`, `Served
    Congresses`). `members.js` upserts every term of every member in `core.members`
