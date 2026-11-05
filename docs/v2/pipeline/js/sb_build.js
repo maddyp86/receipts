@@ -355,10 +355,16 @@ const previews = [
   preview('action_uids', AU, ['action_uid'], actionUids),
 ];
 
+const parsed = $('Parse Member Bills').first().json;
 return emit(statements, previews, {
   workflow: 'sponsorships and bills',
   pairs_listed: work.pairs_listed,
   files_listed: work.files_listed,
+  // Congresses listed with no bill files yet (a brand-new congress inside its grace window).
+  not_yet_published: $('List Bill Files').first().json.not_yet_published || [],
+  // Bills on the member lists from a congress newer than any collected: not loaded, but not silent.
+  future_congress: (parsed.counts || {}).future_congress || 0,
+  future_congress_by_member: (parsed.counts || {}).future_congress_by_member || {},
   new_pairs: (work.new_pairs || []).length,
   bills_to_read: (work.bills || []).length,
   read_this_run: batch.length,

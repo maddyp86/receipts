@@ -128,6 +128,8 @@ const previews = [
 return emit(statements, previews, {
   workflow: 'roll calls',
   congresses: $('List Vote Files').first().json.congresses,
+  // Congresses listed with no vote files yet (a brand-new congress inside its grace window).
+  not_yet_published: $('List Vote Files').first().json.not_yet_published || [],
   listed: $('List Vote Files').first().json.listing.length,
   unread: unread.length,
   read_this_run: batch.length,

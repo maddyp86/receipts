@@ -2843,3 +2843,35 @@ next unused number.
 **Given up.** Not recorded. Every reference inside the repo was updated.
 
 Source: #98.
+
+---
+
+## 2026-11-04 — the live sponsorships Result node was never in the repo
+
+**What.** The live **v2 Pipeline: sponsorships and bills** workflow
+(`pSMxbhgKiNuT8k7J`) has a `Result` node that holds the 17 Oct change: a bill
+whose file 404s within `PENDING_DAYS = 3` of its `introduced_date` is listed
+under `not_yet_published` and retried next run instead of failing the run. The
+repo's `docs/v2/pipeline/build.py` generated the generic `Result` of `tail()`
+for every workflow, with no such logic, so `python3 build.py sponsorships` and
+a publish would have put the old node back and brought the daily failures back.
+Found while making the brand-new-congress change (Phase 1 step 2 of
+`docs/v2/congress-120-transition.md`), by diffing every Code node of the live
+workflow against the repo's sources: `Member Queries`, `Parse Member Bills`,
+`Text Requests`, `Build Bills` and `Find Work` matched; `List Bill Files`
+differed only in the shared helpers (the repo's are newer); `Result` differed
+in logic. The roll-calls workflow (`afD0D175IIvQq6JE`) matched the repo apart
+from the helpers.
+
+**Done.** The live `Result` code is now `docs/v2/pipeline/js/sb_result.js`,
+verbatim under a header, and `tail()` / `assemble()` take a `result=` file
+that only the sponsorships section passes. Nothing was published.
+
+**Given up.** The live sponsorships workflow also has an unpublished draft
+(`versionId c4ce9db5…` ≠ `activeVersionId 618daaa5…`, saved 31 Oct) whose
+contents were not compared. Check `get_workflow_history` before publishing.
+
+**Why it matters.** "The node code is generated from build.py" is only true
+while every hand edit in n8n is carried back. This one was not, for 18 days.
+
+Source: the 120th-Congress pipeline-tolerance PR.

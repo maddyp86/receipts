@@ -101,10 +101,11 @@ def config(fields):
             f"assignments: {{ assignments: [{', '.join(parts)}] }}, options: {{}} }} }}, output: [{{ dry_run: true }}] }});")
 
 
-def tail(build):
+def tail(build, result=None):
     """Preview what the run changes, then (write runs only) open a run row, write
     every statement in one transaction, and close the row. A run that stops part
-    way leaves its row as failed / 'in progress'."""
+    way leaves its row as failed / 'in progress'.
+    result: a js/ file that replaces the generic Result node (sponsorships)."""
     previews_js = (
         "// One item per preview query built by " + build + ".\n"
         f"const p = $({J(build)}).first().json.previews || [];\n"
@@ -149,15 +150,16 @@ def tail(build):
            "{{ [$('Open Run').first().json.run_id, ($('Report').first().json.summary.errors || []).length ? 'failed' : 'ok', "
            "JSON.stringify(Object.assign({}, $('Report').first().json.summary, { changes: $('Report').first().json.changes })), "
            "JSON.stringify($('Report').first().json.summary.errors || [])] }}", extra=', executeOnce: true'),
-        code('result', 'Result', result_js, helpers=False, extra=', executeOnce: true'),
+        code('result', 'Result', js(result) if result else result_js, helpers=False, extra=', executeOnce: true'),
     ])
 
 
-def assemble(wid, title, inputs, cfg_fields, body_parts, chain, sticky_text, after=''):
+def assemble(wid, title, inputs, cfg_fields, body_parts, chain, sticky_text, after='', result=None):
     """chain: node variable names from Config to the build node, in order.
-    after: SDK chain code run from Result (e.g. '.to(x)'), on both branches."""
+    after: SDK chain code run from Result (e.g. '.to(x)'), on both branches.
+    result: see tail()."""
     parts = ["import { workflow, node, trigger, sticky, ifElse, expr } from '@n8n/workflow-sdk';",
-             triggers(inputs), config(cfg_fields)] + body_parts + [tail(chain[-1][1])]
+             triggers(inputs), config(cfg_fields)] + body_parts + [tail(chain[-1][1], result)]
     parts.append(f"const note = sticky({J(sticky_text)}, [config], {{ color: 4 }});")
     flow = ''.join(f"\n  .to({v})" for v, _ in chain)
     parts.append(f"""export default workflow({J(wid)}, {J(title)})
@@ -224,8 +226,8 @@ def rollcalls():
     unread_sql = ("SELECT count(*) AS listed, coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.path) FILTER (WHERE f.path IS NULL), '[]') AS unread "
                   "FROM jsonb_to_recordset($1::jsonb) AS x(path text, md5 text, size bigint) "
                   "LEFT JOIN core.source_files f ON f.path = x.path;")
-    return assemble('v2-pipeline-roll-calls', 'v2 Pipeline: roll calls', ['dry_run', 'max_files', 'congresses'],
-        [('dry_run', 'boolean', True), ('max_files', 'number', 400), ('congresses', 'string', '')],
+    return assemble('v2-pipeline-roll-calls', 'v2 Pipeline: roll calls', ['dry_run', 'max_files', 'congresses', 'grace_days'],
+        [('dry_run', 'boolean', True), ('max_files', 'number', 400), ('congresses', 'string', ''), ('grace_days', 'number', 45)],
         [pg('getScope', 'Get Scope', scope_sql, extra=', executeOnce: true'),
          code('listFiles', 'List Vote Files', js('rollcalls_list.js'), extra=', executeOnce: true'),
          pg('findUnread', 'Find Unread Files', unread_sql, '{{ [JSON.stringify($json.listing)] }}', extra=', executeOnce: true'),
@@ -233,7 +235,8 @@ def rollcalls():
         [('getScope', 'Get Scope'), ('listFiles', 'List Vote Files'), ('findUnread', 'Find Unread Files'), ('buildRollCalls', 'Build Roll Calls')],
         '## v2 pipeline: roll calls\nLists the Senate vote files in the bucket, reads only the ones never read, keeps '
         "today's filter (passage and cloture votes on a bill) and loads each kept vote whole, every member's position. "
-        'max_files caps one run; the rest wait for the next. ' + NOTE)
+        'max_files caps one run; the rest wait for the next. A congress listed for a member but with no vote files yet is '
+        'counted as not_yet_published, not failed, while today is within grace_days (default 45) of its first day. ' + NOTE)
 
 
 def sponsorships():
@@ -255,8 +258,8 @@ def sponsorships():
         "parameters: { method: 'GET', url: expr('{{ $json.url }}'), authentication: 'genericCredentialType', genericAuthType: 'httpQueryAuth', "
         "options: { batching: { batch: { batchSize: 5, batchInterval: 300 } }, response: { response: { responseFormat: 'json' } } } }, "
         f"credentials: {CRED['congress']} }}, output: [{{}}] }});")
-    return assemble('v2-pipeline-sponsorships-bills', 'v2 Pipeline: sponsorships and bills', ['dry_run', 'max_bill_files', 'members'],
-        [('dry_run', 'boolean', True), ('max_bill_files', 'number', 300), ('members', 'string', '')],
+    return assemble('v2-pipeline-sponsorships-bills', 'v2 Pipeline: sponsorships and bills', ['dry_run', 'max_bill_files', 'members', 'grace_days'],
+        [('dry_run', 'boolean', True), ('max_bill_files', 'number', 300), ('members', 'string', ''), ('grace_days', 'number', 45)],
         [pg('getMembers', 'Get Members', members_sql, extra=', executeOnce: true'),
          code('memberQueries', 'Member Queries', js('sb_queries.js'), helpers=False),
          fetch_members,
@@ -273,7 +276,10 @@ def sponsorships():
         '## v2 pipeline: sponsorships and bills\nFor each in_scope member: sponsored and cosponsored bills from congress.gov, '
         "back to the oldest congress collected (fails loudly if a list is cut off). New bills and bills whose file changed are "
         "read from the bucket: WF2/WF4 fields for a new bill, WF2b status and WF2c progress, sponsor tier, true cosponsor dates and "
-        'withdrawals. max_bill_files caps one run. ' + NOTE)
+        'withdrawals. max_bill_files caps one run. A congress listed for a member but with no bill files yet is counted as '
+        'not_yet_published, not failed, while today is within grace_days (default 45) of its first day; bills a member sponsored '
+        'in a congress newer than any collected are counted as future_congress and not loaded. ' + NOTE,
+        result='sb_result.js')
 
 
 def obj(o, ind='    '):
