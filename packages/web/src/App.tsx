@@ -39,6 +39,12 @@ import { SiteFooter } from './components/policy/PolicyPages.js';
 const MODE_KEY = 'receipts.mode';
 /** The landing page's progress pop-up stays at least this long, so a stored answer does not flash it. */
 const MIN_RUN_MS = 1500;
+/**
+ * Off: a first check from the landing page goes straight to the tool's full
+ * waiting page, like every later check. On: it runs in the progress pop-up
+ * over the landing page (RunDialog). Kept so the pop-up can come back.
+ */
+const FIRST_CHECK_POPUP = false;
 
 function Page({ width, children }: { width: 'narrow' | 'wide'; children: ReactNode }) {
   return (
@@ -175,11 +181,17 @@ export default function App() {
   const countQuery = (politicianId: string, source: 'starter' | 'typed') => {
     queryCount.current += 1;
     querySource.current = source;
-    // A first check from the landing page runs in a pop-up over it; the tab
-    // moves into the tool when the run ends (see the landingRun effect).
+    // A first check from the landing page moves this tab into the tool, where
+    // it runs on the full waiting page. With FIRST_CHECK_POPUP it runs in a
+    // pop-up over the landing page instead, and the tab moves when it ends
+    // (see the landingRun effect).
     if (mode === 'landing') {
-      landingRunStart.current = Date.now();
-      setLandingRun(true);
+      if (FIRST_CHECK_POPUP) {
+        landingRunStart.current = Date.now();
+        setLandingRun(true);
+      } else {
+        goTo('tool');
+      }
     }
     track('query_submitted', { politician_id: politicianId, source, nth: queryCount.current });
   };
