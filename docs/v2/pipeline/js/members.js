@@ -25,6 +25,12 @@
 // ended on 3 Jan 2023 (Portman, Leahy, ...), who cast no vote in the record.
 // Former House members are never added. An added row is never refreshed by
 // the upsert below; the updates for departed members keep it current.
+//
+// TERMS (migration 026). Every term each of these members ever held, in
+// both chambers, goes to core.member_terms from the same two files, so the
+// app can say when a member's record starts and ends (a freshman sworn in
+// on 3 Jan 2027, a senator who lost, a senator back after a gap) instead of
+// reading only the last term from core.members. See TERMS below.
 // ===================================================================
 const legis = await getJson('https://unitedstates.github.io/congress-legislators/legislators-current.json');
 if (!Array.isArray(legis) || legis.length < 500) throw new Error('[v2 members] legislators-current returned ' + (Array.isArray(legis) ? legis.length : typeof legis) + ' rows; expected about 540.');
@@ -249,6 +255,58 @@ const membership = {
   } : null,
 };
 
+// -------------------------------------------------------------------
+// TERMS. One row per member and term, both chambers, every year, for every
+// member who is in core.members by the time the statements run: the current
+// members (upserted first), the former senators added above, and anyone
+// already there who legislators-historical lists. core.member_terms has a
+// foreign key to core.members, so a former House member, who is never added,
+// gets none. Upsert on (member_id, term_start), changed rows only; a term the
+// source later re-dates or removes is NOT deleted here (the verify query in
+// migration 026 shows such a case).
+// -------------------------------------------------------------------
+const TERM_SPEC = {
+  member_id: 'text', term_start: 'date', term_end: 'date', chamber: 'text', state: 'text', district: 'text',
+  senate_class: 'smallint', party: 'text', how: 'text', end_type: 'text',
+};
+const termByKey = new Map();
+const termsOf = (l, id) => {
+  for (const t of l.terms || []) {
+    const start = S(t.start);
+    const end = S(t.end);
+    if (!start || !end) { problem(id, 'term', start + '..' + end, 'term with no start or end; skipped'); continue; }
+    if (end < start) { problem(id, 'term', start + '..' + end, 'term ends before it starts; skipped'); continue; }
+    if (!S(t.state)) { problem(id, 'term', start, 'term with no state; skipped'); continue; }
+    const senate = t.type === 'sen';
+    const key = id + '|' + start;
+    // Two terms starting the same day would make the upsert hit one row
+    // twice; the later entry in the file wins and the clash is reported.
+    if (termByKey.has(key)) problem(id, 'term', start, 'two terms start on this day; the later one kept');
+    termByKey.set(key, {
+      member_id: id,
+      term_start: start,
+      term_end: end,
+      chamber: senate ? 'Senate' : 'House',
+      state: S(t.state),
+      district: senate ? null : (t.district === undefined || t.district === null ? null : String(t.district)),
+      senate_class: senate && t.class ? Number(t.class) : null,
+      party: S(t.party) || null,
+      how: S(t.how) || null,
+      end_type: S(t['end-type']) || null,
+    });
+  }
+};
+const formerIds = new Set(formerSenators.map((r) => r.member_id));
+for (const l of legis) {
+  const id = S(l.id && l.id.bioguide).toUpperCase();
+  if (id) termsOf(l, id);
+}
+for (const l of hist) {
+  const id = S(l.id && l.id.bioguide).toUpperCase();
+  if (id && !serving.has(id) && (coreById.has(id) || formerIds.has(id))) termsOf(l, id);
+}
+const termRows = Array.from(termByKey.values());
+
 const LEFT = { member_id: 'text', term_end: 'date', left_at: 'date' };
 // A former member's LIS id only fills a blank; it never replaces one.
 const departedLis = departed.filter((r) => r.lis_id);
@@ -262,7 +320,10 @@ const statements = []
   // Updates only: a former member not in core.members by now (House, or gone
   // before the record) is skipped.
   .concat(update('members', LEFT, ['member_id'], departed.map((r) => ({ member_id: r.member_id, term_end: r.term_end, left_at: r.left_at }))))
-  .concat(update('members', { member_id: 'text', lis_id: 'text' }, ['member_id'], departedLis.map((r) => ({ member_id: r.member_id, lis_id: r.lis_id })), { where: 't.lis_id IS NULL' }));
+  .concat(update('members', { member_id: 'text', lis_id: 'text' }, ['member_id'], departedLis.map((r) => ({ member_id: r.member_id, lis_id: r.lis_id })), { where: 't.lis_id IS NULL' }))
+  // Last, so every member it names exists: the statements above inserted
+  // the new current members and the former senators.
+  .concat(upsert('member_terms', TERM_SPEC, ['member_id', 'term_start'], termRows, { guard: true }));
 const previews = [
   preview('members', SPEC, ['member_id'], rows, { onlyCols: REFRESHED }),
   preview('members', { member_id: 'text', lis_id: 'text' }, ['member_id'], withLis, { onlyCols: ['lis_id'] }),
@@ -272,6 +333,9 @@ const previews = [
   // them. On a dry run this still lists the former senators the insert would add.
   preview('members', LEFT, ['member_id'], departed, { onlyCols: ['term_end', 'left_at'] }),
   preview('members', { member_id: 'text', lis_id: 'text' }, ['member_id'], departedLis, { onlyCols: ['lis_id'] }),
+  // new_keys here are terms not yet in core.member_terms: on the first write
+  // run, all of them.
+  preview('member_terms', TERM_SPEC, ['member_id', 'term_start'], termRows),
 ];
 
 return emit(statements, previews, {
@@ -283,6 +347,8 @@ return emit(statements, previews, {
   historical_rows: hist.length,
   left_since_record_start: departed.length,
   former_senators: formerSenators.length,
+  terms: termRows.length,
+  terms_members: new Set(termRows.map((r) => r.member_id)).size,
   arrived: arrived.length,
   left: leftNow.length,
   disagreements: disagreements.length,
