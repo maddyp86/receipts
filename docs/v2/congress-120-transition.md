@@ -149,6 +149,24 @@ congress of service. This is the false-absence risk at its sharpest.
    member's array as `future_congress` and put it in the run's `counts` so the alert
    can flag it rather than drop it silently. This lets us add 120 to arrays before
    3 January so day one is automatic.
+
+   **Shipped (4 Nov 2026, PR #113, not yet published to n8n).** Both list
+   nodes skip a congress with no files while today is within `grace_days` (new Config
+   field on the roll-calls and sponsorships workflows, default 45, passed by the
+   orchestrator only if set) either side of its first day, 3 January of 1789 + 2(N−1),
+   and report it as `not_yet_published` in the run's counts; outside that window they
+   fail as before. For the 120th the window is 19 Nov 2026 to 17 Feb 2027. `Parse Member
+   Bills` counts `future_congress` (and `future_congress_by_member`) in the summary and
+   still loads nothing from it. The live sponsorships `Result` node (the 17 Oct 3-day
+   404 grace) was never in the repo; it is now `js/sb_result.js`, so a rebuild keeps it.
+   **The operator still has to:** (a) rebuild and publish the roll-calls and
+   sponsorships workflows (steps in the PR), checking `get_workflow_history` first,
+   since the sponsorships workflow has an unpublished draft; (b) do a manual dry run of
+   each and confirm `not_yet_published: []` and `future_congress: 0` in the Result today;
+   (c) from 19 Nov, add 120 to the continuing members' arrays whenever convenient
+   (Phase 2 step 2); (d) still confirm the scraper will write `data/120/` paths (Phase
+   0), because once 120 is in an array its first bills 404 until the files exist, and
+   the 3-day grace covers a per-bill lag, not a missing congress folder.
 3. **Picker and cards.** `SenatorCache`/`Senator` carry `left_at`, `first_term_start`,
    `served_congresses`. `MemberDirectory` lists former *covered* members too (they are
    checkable). `memberTitle`: "Former U.S. Senator for Maine (2023–2027)" when
