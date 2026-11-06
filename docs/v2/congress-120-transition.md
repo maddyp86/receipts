@@ -138,10 +138,16 @@ congress of service. This is the false-absence risk at its sharpest.
    Congresses`). `members.js` upserts every term of every member in `core.members`
    (local dry run: 2,922 terms for 566 members, 0 problems). **Migration 026 APPLIED
    to production 2026-11-06** (Matt's yes; catalog `20261106164838 026_member_terms`;
-   verify queries clean; every member has 0 terms until the first write run). **Workflow
-   not published.** Remaining operator steps: rebuild and publish the members workflow, which also ships the congress.gov cross-check from #88 that was never
-   published (the live workflow is still the 15 Oct version, called on Mondays only);
-   one dry run by hand; then one write run.
+   verify queries clean; every member has 0 terms until the first write run). **Members
+   workflow PUBLISHED 2026-11-06** (`Ruy16Yem9fYBSnMt`, with the #88 cross-check that had
+   never been published; the failure-alert workflow gained its notice entry point the
+   same day). Manual dry run 15046 matched the local preview: 2,922 terms for 566
+   members, 0 member changes, cross-check 539 = 539, no alert. The orchestrator still
+   calls it on Mondays only. **First write run DONE 2026-11-06** (execution 15047,
+   ingest run 235, Matt's yes): `core.member_terms` holds 2,922 rows for all 566
+   members (313 Senate terms, 2,609 House), `member_tenure` has 0 members without
+   terms, 0 mismatches against `core.members.term_end`. The TEMP draft was reverted.
+   The Monday run keeps the table current from here. Step 1 is complete.
 2. **Pipeline tolerance for a brand-new congress.** In `rollcalls_list.js` and
    `sb_list.js`, a listed congress with no files is a quiet `not_yet_published` skip for
    45 days after its `CONGRESS_START`, and a failure after that (mirrors the 3-day 404
