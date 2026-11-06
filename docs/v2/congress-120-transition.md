@@ -136,9 +136,10 @@ congress of service. This is the false-absence risk at its sharpest.
    the table, `core.congress_of(date)`, the `core.member_tenure` view and four keys
    on the compat view (`Left At`, `First Term Start`, `Last Term End`, `Served
    Congresses`). `members.js` upserts every term of every member in `core.members`
-   (local dry run: 2,922 terms for 566 members, 0 problems). **Not applied and not
-   published.** Operator steps: run 026 as postgres; rebuild and publish the members
-   workflow, which also ships the congress.gov cross-check from #88 that was never
+   (local dry run: 2,922 terms for 566 members, 0 problems). **Migration 026 APPLIED
+   to production 2026-11-06** (Matt's yes; catalog `20261106164838 026_member_terms`;
+   verify queries clean; every member has 0 terms until the first write run). **Workflow
+   not published.** Remaining operator steps: rebuild and publish the members workflow, which also ships the congress.gov cross-check from #88 that was never
    published (the live workflow is still the 15 Oct version, called on Mondays only);
    one dry run by hand; then one write run.
 2. **Pipeline tolerance for a brand-new congress.** In `rollcalls_list.js` and

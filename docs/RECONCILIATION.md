@@ -2918,4 +2918,12 @@ written, verified in a rolled-back transaction against production as
 `postgres` (DDL, grants, RLS, a 56-row upsert and the view output), and **not
 applied**; the workflow is **not published**.
 
+**2026-11-06, correction.** Migration 026 was applied to production that day,
+on the owner's yes, as `postgres` through the Supabase MCP (catalog entry
+`20261106164838 026_member_terms`). The verify queries came back as expected:
+`congress_of` 118, 119, 120, 120; the three roles in the 014 posture; RLS on
+with two policies; the compat view with its 16 old keys and the 4 new ones;
+every member at 0 terms until the first write run. The workflow is still not
+published.
+
 Sources: #114, migration 026, `docs/v2/congress-120-transition.md`.
