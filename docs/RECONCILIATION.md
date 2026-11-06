@@ -2938,9 +2938,17 @@ US Gov credential, Membership alert?, Email Membership Alert), Build Members
 carries the exact build output (md5 `679599c5…`, 27,755 characters), and the
 name stays "(weekly)" because the orchestrator still calls it on Mondays.
 Manual dry run 15046 matched the local preview: 2,922 terms for 566 members,
-all new; 0 changes to member rows; cross-check 539 = 539; no alert. The first
-write run, which fills `core.member_terms`, had not been run at the time of
-this note. The permission for a session to edit n8n needed an explicit allow
-rule in the local settings; the owner approved it.
+all new; 0 changes to member rows; cross-check 539 = 539; no alert. The
+permission for a session to edit n8n needed an explicit allow rule in the
+local settings; the owner approved it.
+
+**2026-11-06, evening, correction.** The first write run was done the same
+day on the owner's yes, by the usual route: a TEMP draft with `dry_run` forced
+to false, one manual run (execution 15047, ingest run 235), then the draft
+reverted to the published Config. `core.member_terms` now holds 2,922 rows for
+all 566 members (313 Senate terms, 2,609 House); `core.member_tenure` reports 0
+members without terms; the verify query comparing `core.members.term_end` with
+the latest term returns 0 rows. No member row changed. From here the Monday
+members run keeps the table current.
 
 Sources: #114, migration 026, `docs/v2/congress-120-transition.md`.

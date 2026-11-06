@@ -143,8 +143,11 @@ congress of service. This is the false-absence risk at its sharpest.
    never been published; the failure-alert workflow gained its notice entry point the
    same day). Manual dry run 15046 matched the local preview: 2,922 terms for 566
    members, 0 member changes, cross-check 539 = 539, no alert. The orchestrator still
-   calls it on Mondays only. **Remaining:** one write run (TEMP draft, Matt's yes) to
-   fill `core.member_terms`; after that the Monday run keeps it current.
+   calls it on Mondays only. **First write run DONE 2026-11-06** (execution 15047,
+   ingest run 235, Matt's yes): `core.member_terms` holds 2,922 rows for all 566
+   members (313 Senate terms, 2,609 House), `member_tenure` has 0 members without
+   terms, 0 mismatches against `core.members.term_end`. The TEMP draft was reverted.
+   The Monday run keeps the table current from here. Step 1 is complete.
 2. **Pipeline tolerance for a brand-new congress.** In `rollcalls_list.js` and
    `sb_list.js`, a listed congress with no files is a quiet `not_yet_published` skip for
    45 days after its `CONGRESS_START`, and a failure after that (mirrors the 3-day 404
