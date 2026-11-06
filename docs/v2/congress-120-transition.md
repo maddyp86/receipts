@@ -101,7 +101,7 @@ cost is near zero at first (~$0.04 per new bill). Suggested order once results a
 Warner and Luján stay on the old queue if confirmed re-elected.
 
 **DECIDED 3 (Matt, 2026-11-04) — Tenure model: add `core.member_terms`** (migration
-023): `member_id, chamber, state, party, senate_class, term_start, term_end`, one row
+026): `member_id, chamber, state, party, senate_class, term_start, term_end`, one row
 per term, written by the members workflow from the `terms[]` array both legislators
 files already carry. From it derive, per member: first Senate day, last Senate day,
 congresses *served*. Keep `congresses` meaning *collected*. This is the one schema
@@ -128,10 +128,20 @@ congress of service. This is the false-absence risk at its sharpest.
   Check `get_workflow_history` before any publish and say so in the version description.
 
 ### Phase 1 — code and schema prep (Nov, one PR per task, all target `main`)
-1. **Migration 023 `core.member_terms`** + members workflow writes it (dry-run first,
+1. **Migration 026 `core.member_terms`** + members workflow writes it (dry-run first,
    one-off write run per the usual TEMP-draft procedure, with Matt's yes). Grant
    `receipts_app` SELECT per the 014 pattern. Add `Left At`, `First Term Start` and
    `Served Congresses` to `compat.mirror_politicians` (migration 015 shape).
+   *Status (2026-11-04, PR #114):* written. Migration 026 adds
+   the table, `core.congress_of(date)`, the `core.member_tenure` view and four keys
+   on the compat view (`Left At`, `First Term Start`, `Last Term End`, `Served
+   Congresses`). `members.js` upserts every term of every member in `core.members`
+   (local dry run: 2,922 terms for 566 members, 0 problems). **Migration 026 APPLIED
+   to production 2026-11-06** (Matt's yes; catalog `20261106164838 026_member_terms`;
+   verify queries clean; every member has 0 terms until the first write run). **Workflow
+   not published.** Remaining operator steps: rebuild and publish the members workflow, which also ships the congress.gov cross-check from #88 that was never
+   published (the live workflow is still the 15 Oct version, called on Mondays only);
+   one dry run by hand; then one write run.
 2. **Pipeline tolerance for a brand-new congress.** In `rollcalls_list.js` and
    `sb_list.js`, a listed congress with no files is a quiet `not_yet_published` skip for
    45 days after its `CONGRESS_START`, and a failure after that (mirrors the 3-day 404
@@ -140,7 +150,7 @@ congress of service. This is the false-absence risk at its sharpest.
    can flag it rather than drop it silently. This lets us add 120 to arrays before
    3 January so day one is automatic.
 
-   **Shipped (4 Nov 2026, PR against `main`, not yet published to n8n).** Both list
+   **Shipped (4 Nov 2026, PR #113, not yet published to n8n).** Both list
    nodes skip a congress with no files while today is within `grace_days` (new Config
    field on the roll-calls and sponsorships workflows, default 45, passed by the
    orchestrator only if set) either side of its first day, 3 January of 1789 + 2(N−1),

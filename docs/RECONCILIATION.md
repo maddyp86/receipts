@@ -2846,6 +2846,90 @@ Source: #98.
 
 ---
 
+## 2026-11-04 — the live members workflow is not the one in the repo
+
+**What.** Read from n8n on 4 November, the day after the midterms:
+
+- The published **members** workflow (`Ruy16Yem9fYBSnMt`, active version
+  `003ae1a8…`, updated 15 October) is the version from #86: left_at, former
+  senators, one Config field (`dry_run`). It has no `Read Members`, `Read Last
+  Report` or `Fetch congress.gov Members` node, no membership report and no
+  alert. The congress.gov cross-check that #88 merged on 15 October (entry
+  above) was never published. The workflow's draft differs from its active
+  version only in metadata; neither has the cross-check.
+- The published **orchestrator** (`7QF697TzBBToCLMg`, version `6f43ba1f…`, 17
+  October) runs members on **Mondays only**: a `Monday?` If node on a Config
+  field `members_day`, and a `Members (Mondays)` step that its `Result` names.
+  `build.py` builds a daily, unconditional `Members` step ("Daily since 15 Oct
+  2026"). `core.ingest_runs` agrees with n8n: two members runs in the ten days
+  to 4 November, both Mondays, named "v2 Pipeline: members (weekly)".
+
+So the repo has said "daily, cross-checked" since 15 October and the pipeline
+has done "weekly, no cross-check" throughout. Nothing was wrong with the data;
+the gap is in what was published.
+
+**Why.** #88's rollout steps each needed the owner's yes and were not taken.
+The 17 October orchestrator publish (the `continueRegularOutput` fix) was made
+from the live workflow, not rebuilt from `build.py`, so it kept the Monday
+branch.
+
+**Given up.** Nothing changed here. The next publish of the members workflow
+from the repo ships the cross-check and the terms write (entry below) together;
+the next orchestrator publish from `build.py` would make members daily. Both
+are the owner's call; the rollout in #114 says so.
+
+Sources: n8n `get_workflow_details` on 4 November 2026; `core.ingest_runs`.
+
+---
+
+## 2026-11-04 — the 120th Congress: former members stay checkable, and members get terms
+
+**What.** Two decisions from the transition plan
+(`docs/v2/congress-120-transition.md`), taken by the owner on 4 November, the
+day after an election that unseated Collins (one of five live senators) and
+left Sullivan uncalled:
+
+1. A senator who leaves office keeps a checkable record, shown as a former
+   member with a closing date. Nothing is hidden or deleted.
+2. Tenure gets its own table. Migration 026 adds `core.member_terms` (one row
+   per member and term, both chambers, from the `terms[]` arrays of
+   legislators-current and legislators-historical), `core.congress_of(date)`
+   (120 from 2027-01-03; the 1st and 2nd of January stay with the Congress
+   ending) and the view `core.member_tenure` (first and last day in the
+   member's chamber, congresses served there and per chamber).
+   `compat.mirror_politicians` gains `Left At`, `First Term Start`, `Last Term
+   End` and `Served Congresses`; every existing key keeps its name and format.
+   The members workflow writes the terms on every run (local dry run: 2,922
+   terms for all 566 members, 0 problems). `core.members.congresses` keeps
+   meaning *collected*; `member_tenure` says *served*; the app will compare the
+   two to describe a gap (Brown: 118th yes, 119th no, 120th yes).
+
+**Why.** The app has no idea when a member served. `term_start` is the last
+term only (Collins reads 2021 though she has served since 1997), the picker's
+view does not expose `left_at`, and the "no bills or votes in this senator's
+analyzed record" copy cannot tell a freshman with no votes from a senator who
+dodged an issue. On 3 January 2027 all three matter at once.
+
+**Given up.** Terms are upserted, never deleted: a term the source re-dates or
+removes leaves its old row, and 026's last verify query is how that would show.
+Former House members get no terms (they are never in `core.members`). Peltola's
+House service would appear only if she is added as a senator. Migration 026 is
+written, verified in a rolled-back transaction against production as
+`postgres` (DDL, grants, RLS, a 56-row upsert and the view output), and **not
+applied**; the workflow is **not published**.
+
+**2026-11-06, correction.** Migration 026 was applied to production that day,
+on the owner's yes, as `postgres` through the Supabase MCP (catalog entry
+`20261106164838 026_member_terms`). The verify queries came back as expected:
+`congress_of` 118, 119, 120, 120; the three roles in the 014 posture; RLS on
+with two policies; the compat view with its 16 old keys and the 4 new ones;
+every member at 0 terms until the first write run. The workflow is still not
+published.
+
+Sources: #114, migration 026, `docs/v2/congress-120-transition.md`.
+
+---
+
 ## 2026-11-04 — the live sponsorships Result node was never in the repo
 
 **What.** The live **v2 Pipeline: sponsorships and bills** workflow
@@ -2874,4 +2958,4 @@ contents were not compared. Check `get_workflow_history` before publishing.
 **Why it matters.** "The node code is generated from build.py" is only true
 while every hand edit in n8n is carried back. This one was not, for 18 days.
 
-Source: the 120th-Congress pipeline-tolerance PR.
+Source: #113.
