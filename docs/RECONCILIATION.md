@@ -2926,4 +2926,21 @@ with two policies; the compat view with its 16 old keys and the 4 new ones;
 every member at 0 terms until the first write run. The workflow is still not
 published.
 
+**2026-11-06, later, correction.** Both workflows were published that
+afternoon, on the owner's yes, through the n8n MCP. The failure alert
+(`mRReCVsl8NW9mWCU`, version `8bcd2a90…`) gained the "When Called with a
+Notice" entry point and "Email Notice"; its failure path, including the live
+footer text that differs from `build.py`, was left alone. The members workflow
+(`Ruy16Yem9fYBSnMt`) was rebuilt from `main 3bd7bde` by node operations: Config
+gains `disagree_days`, the orchestrator trigger gains that input, five nodes
+were added (Read Members, Read Last Report, Fetch congress.gov Members with the
+US Gov credential, Membership alert?, Email Membership Alert), Build Members
+carries the exact build output (md5 `679599c5…`, 27,755 characters), and the
+name stays "(weekly)" because the orchestrator still calls it on Mondays.
+Manual dry run 15046 matched the local preview: 2,922 terms for 566 members,
+all new; 0 changes to member rows; cross-check 539 = 539; no alert. The first
+write run, which fills `core.member_terms`, had not been run at the time of
+this note. The permission for a session to edit n8n needed an explicit allow
+rule in the local settings; the owner approved it.
+
 Sources: #114, migration 026, `docs/v2/congress-120-transition.md`.
