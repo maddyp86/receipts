@@ -211,7 +211,9 @@ def members(ids):
         '## v2 pipeline: members\nDaily. Names, parties, states, districts, Senate class, LIS id and terms from '
         'congress-legislators. A member already here who has left gets left_at and term_end from legislators-historical, and a blank '
         'LIS id filled, so their votes still join. A former senator who served since 3 Jan 2023 and is not here is added, not in scope '
-        'and not live, so their stored votes join. Never touches in_scope, live, the congresses collected, roles, OpenSecrets id or website. '
+        'and not live, so their stored votes join. Every term each of these members ever held, both chambers, goes to core.member_terms '
+        '(migration 026), which the app reads for when a record starts and ends. Never touches in_scope, live, the congresses collected, '
+        'roles, OpenSecrets id or website. '
         'Cross-check: the congress.gov list of current members is compared on bioguide id, chamber, state, district and party (never written). '
         'Arrivals, departures and disagreements go into the run\'s ingest_runs counts (membership); a write run emails Matt through the alert '
         'workflow when one touches an in_scope member or a disagreement lasts disagree_days days (default 3). ' + NOTE,

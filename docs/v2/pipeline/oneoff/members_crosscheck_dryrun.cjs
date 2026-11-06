@@ -57,8 +57,12 @@ const getJson = async (url) => {
   const s = items[0].json.summary;
   if (process.argv[2]) fs.writeFileSync(process.argv[2], JSON.stringify(s.membership, null, 1));
   const m = s.membership;
+  // One line per table the write run would touch, with the row count.
+  const byTable = {};
+  for (const it of items) if (it.json.table) byTable[it.json.table] = (byTable[it.json.table] || 0) + it.json.rows;
   console.log(JSON.stringify({
     checked_on: m.checked_on, legislators_current: s.rows_out, congress_gov: m.congress_gov_members, core_members: members.length,
+    terms: s.terms, terms_members: s.terms_members, rows_by_table: byTable, problems: s.problems,
     errors: s.errors, arrived: m.arrived, left: m.left, disagreements: m.disagreements, alert: m.alert && m.alert.reasons,
   }, null, 1));
 })().catch((e) => { console.error(String(e && e.message || e).replace(/postgres(ql)?:\/\/\S+/g, '[url]')); process.exit(1); });
