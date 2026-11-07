@@ -56,12 +56,15 @@ const congressOf = (billId: unknown): string => /-(\d{3})$/.exec(S(billId))?.[1]
 const FLOOR_LEADERS: Record<string, Record<string, string>> = {
   '118': { S000148: 'MAJORITY_LEADER', M000355: 'MINORITY_LEADER' },
   '119': { T000250: 'MAJORITY_LEADER', S000148: 'MINORITY_LEADER' },
+  // 120: not until the caucuses elect their leaders (late November 2026).
 };
 
+// The president's term runs to 20 January 2029, so the 120th is known now.
 const PRESIDENT_BY_CONGRESS: Record<string, string> = {
   '117': 'BIDEN',
   '118': 'BIDEN',
   '119': 'TRUMP',
+  '120': 'TRUMP',
 };
 
 const BROAD_VEHICLE_RE =

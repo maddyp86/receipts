@@ -74,7 +74,7 @@ export const glossary: GlossaryEntry[] = [
   {
     id: 'congress',
     term: 'Congress numbers',
-    definition: 'Each Congress lasts two years. The 118th Congress was 2023–24. The 119th is 2025–26.',
+    definition: 'Each Congress lasts two years. The 118th Congress was 2023–24, the 119th is 2025–26, and the 120th begins on January 3, 2027.',
   },
   {
     id: 'strength',

@@ -86,9 +86,12 @@ describe('buildRoster with the server directory', () => {
   });
 });
 
-describe('the midterm list', () => {
-  it('is eight senators and six House members, every House member with a district', () => {
-    expect(MIDTERM_ROSTER.filter((m) => m.chamber === 'senate')).toHaveLength(8);
+describe('the fallback list', () => {
+  it('is six senators (five covered, Brown queued) and six House members, every House member with a district', () => {
+    expect(MIDTERM_ROSTER.filter((m) => m.chamber === 'senate')).toHaveLength(6);
+    expect(MIDTERM_ROSTER.map((m) => m.politician_id)).toContain('B000944');
+    // Lost on 3 November 2026: not coming.
+    expect(MIDTERM_ROSTER.map((m) => m.politician_id)).not.toContain('M001198');
     const house = MIDTERM_ROSTER.filter((m) => m.chamber === 'house');
     expect(house).toHaveLength(6);
     expect(house.every((m) => typeof m.district === 'number' && m.district > 0)).toBe(true);
