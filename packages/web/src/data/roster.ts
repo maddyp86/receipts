@@ -36,6 +36,14 @@ export interface Member {
   cached: boolean;
   /** On the November 2026 ballot. */
   on_ballot_2026?: boolean;
+  /**
+   * Tenure, from the server (core.member_terms). `left_at` set means a former
+   * member: still checkable when covered, shown as former with the day they
+   * left. Dates are YYYY-MM-DD.
+   */
+  left_at?: string;
+  first_term_start?: string;
+  last_term_end?: string;
 }
 
 type Planned = Omit<Member, 'cached'>;
@@ -94,6 +102,11 @@ export function buildRoster(covered: readonly Senator[], directory: readonly Dir
       party: s.party ?? listed?.party ?? meta?.party,
       state: s.state ?? listed?.state ?? meta?.state,
       cached: Boolean(s.cached),
+      // Tenure rides with the covered row only: the directory lists the
+      // serving, and a former covered member is here through this list alone.
+      ...(s.left_at ? { left_at: s.left_at } : {}),
+      ...(s.first_term_start ? { first_term_start: s.first_term_start } : {}),
+      ...(s.last_term_end ? { last_term_end: s.last_term_end } : {}),
     });
   }
   for (const d of directory) {

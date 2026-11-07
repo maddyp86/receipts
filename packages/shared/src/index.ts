@@ -392,6 +392,22 @@ export interface Senator {
    * means the default window (COVERAGE_CONGRESSES) applies.
    */
   coverage_congresses?: number[];
+  /**
+   * Tenure, from core.member_terms (migration 026) through the compat view.
+   * Absent when the record does not carry it (demo, fixtures, a member whose
+   * terms have not been written). Dates are YYYY-MM-DD.
+   *
+   * `left_at`: the day they left office. Set means former member: the record
+   * is still checkable (decision 1, 2026-11-04) and ends there.
+   * `first_term_start`: first day of their first term in this chamber.
+   * `last_term_end`: last day of their current or last term.
+   * `served_congresses`: the congresses they sat in this chamber. Distinct
+   * from `coverage_congresses`, which is what was COLLECTED.
+   */
+  left_at?: string;
+  first_term_start?: string;
+  last_term_end?: string;
+  served_congresses?: number[];
 }
 
 /**
@@ -1085,6 +1101,95 @@ const congressSpan = (list: number[]): string =>
     ? `the ${ordinal(list[0]!)} Congress`
     : `the ${list.slice(0, -1).map(ordinal).join(', ')} and ${ordinal(list[list.length - 1]!)} Congress`;
 
+// ---------------------------------------------------------------------------
+// Tenure: when the member's record starts and ends.
+//
+// The coverage window says what WE collected. Tenure says when THEY sat. The
+// two part ways three times, and each time the plain coverage sentence would
+// mislead on its own:
+//   - a member who has left: the record is still checkable (decision 1,
+//     2026-11-04), but it ENDS on the day they left;
+//   - a member who took office after our records begin (a freshman sworn in
+//     on 3 January 2027, or an appointee): their record STARTS there, and an
+//     empty search for an earlier year is not "no record on this";
+//   - a member who was out for a Congress inside the window (Brown, OH: 118th,
+//     not the 119th, 120th): nothing from that Congress can be theirs.
+// All three come from core.member_terms (migration 026) on the Senator.
+// ---------------------------------------------------------------------------
+
+export interface Tenure {
+  /** The day the member left office, when they have. The record ends there. */
+  left_at: string | null;
+  /** The day they took office, when that is after our records begin. The record starts there. */
+  joined_after_start: string | null;
+  /** Congresses inside the searched span (first to last) the member did not sit in. */
+  absent: number[];
+}
+
+/** YYYY-MM-DD, as the record writes it. Anything else is not a date here. `longDate` (below) renders it. */
+const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** The first day of the nth Congress: 3 January of 1789 + 2(n−1). */
+const congressFirstDay = (n: number): string => `${1789 + 2 * (n - 1)}-01-03`;
+
+const windowOf = (coverage: CoverageWindow | undefined): number[] =>
+  !coverage || coverage.unknown
+    ? []
+    : coverage.congresses.length
+      ? coverage.congresses
+      : coverage.observed
+        ? Array.from({ length: coverage.observed.max - coverage.observed.min + 1 }, (_, i) => coverage.observed!.min + i)
+        : [];
+
+type TenureSource = Pick<Senator, 'left_at' | 'first_term_start' | 'served_congresses'>;
+
+export function tenureOf(senator: TenureSource | null | undefined, coverage?: CoverageWindow): Tenure {
+  const left = ISO_DAY.test(senator?.left_at ?? '') ? senator!.left_at! : null;
+  const window = windowOf(coverage);
+  const first = senator?.first_term_start && ISO_DAY.test(senator.first_term_start) ? senator.first_term_start : null;
+  // Later than our first day for the first Congress in the window: an
+  // appointee or a freshman sworn in after day one. Equal is not "after".
+  const joined = first && window.length && first > congressFirstDay(Math.min(...window)) ? first : null;
+  const served = senator?.served_congresses ?? [];
+  // A gap INSIDE their service. A Congress after they left, or before they
+  // took office, is explained by that date already and is not named twice.
+  const absent =
+    served.length && window.length
+      ? Array.from({ length: Math.max(...window) - Math.min(...window) + 1 }, (_, i) => Math.min(...window) + i)
+          .filter((c) => !served.includes(c))
+          .filter((c) => !(left && congressFirstDay(c) >= left))
+          .filter((c) => !(first && congressFirstDay(c + 1) <= first))
+      : [];
+  return { left_at: left, joined_after_start: joined, absent };
+}
+
+/**
+ * The tenure clause(s) for a coverage note, or null when the member served
+ * throughout the window. Each names the member and says only where their
+ * record starts or stops; none says what they did.
+ */
+export function tenureSentence(senator: (TenureSource & Pick<Senator, 'name'>) | null | undefined, coverage?: CoverageWindow): string | null {
+  if (!senator) return null;
+  const t = tenureOf(senator, coverage);
+  const surname = surnameOf(senator.name);
+  const parts: string[] = [];
+  if (t.joined_after_start) parts.push(`${surname} took office on ${longDate(t.joined_after_start)}, so their record starts there, not when ours does.`);
+  if (t.absent.length) parts.push(`${surname} was not in the Senate during ${congressSpan(t.absent)}, so nothing from then is in their record.`);
+  if (t.left_at) parts.push(`${surname} left the Senate on ${longDate(t.left_at)}, and their record ends there.`);
+  return parts.length ? parts.join(' ') : null;
+}
+
+/**
+ * The coverage sentence with the member's tenure after it, when the member
+ * is known. `coverageSentence(coverage)` alone is unchanged for every caller
+ * that has no member in hand.
+ */
+export function coverageNote(coverage: CoverageWindow, senator?: (TenureSource & Pick<Senator, 'name'>) | null): string {
+  const base = coverageSentence(coverage);
+  const tenure = tenureSentence(senator, coverage);
+  return tenure ? `${base} ${tenure}` : base;
+}
+
 export const ordinal = (n: number): string => {
   const rem100 = n % 100;
   if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
@@ -1209,7 +1314,26 @@ export function notDeterminableReason(result: QueryResult): string | null {
     const sentence = judgeDispositionSentence(result.judge?.disposition);
     if (sentence) return sentence;
   }
+  if (s.nd_reason === 'NO_MATCHES') return noMatchesCopy(result);
   return s.nd_reason ? (ND_REASON_COPY[s.nd_reason] ?? ND_NO_REASON_COPY) : ND_NO_REASON_COPY;
+}
+
+/**
+ * The NO_MATCHES sentence, with the record's own edge when the member has
+ * one: a freshman's record began when they took office, a former member's
+ * ended when they left. Without either it is the fixed copy. Said this way
+ * because "in this senator's analyzed record" reads as "in their career" to
+ * a voter, and for these two members the career and the record part ways.
+ */
+export function noMatchesCopy(result: Pick<QueryResult, 'senator' | 'coverage'>): string {
+  const t = tenureOf(result.senator, result.coverage);
+  const edge = t.joined_after_start
+    ? `, which only began on ${longDate(t.joined_after_start)}, when they took office`
+    : t.left_at
+      ? `, which ends on ${longDate(t.left_at)}, when they left the Senate`
+      : '';
+  if (!edge) return ND_REASON_COPY.NO_MATCHES;
+  return `We didn't find any bills or votes that relate to this statement in this senator's analyzed record${edge}. Our search can miss things, so that isn't proof there are none.`;
 }
 
 /**
@@ -1878,6 +2002,23 @@ function recordStart(coverage: CoverageWindow | undefined): string | null {
 }
 
 /**
+ * The stretch of the member's record the search covered, as a phrase that
+ * follows "recorded actions": "since January 2023" for a member who served
+ * throughout; "since they took office on January 3, 2027" for one who joined
+ * after our records begin; "from January 2023 to January 3, 2027, when they
+ * left the Senate" for one who has left. Null when the start is unknown.
+ */
+function recordSpan(result: Pick<QueryResult, 'senator' | 'coverage'>): string | null {
+  const since = recordStart(result.coverage);
+  const t = tenureOf(result.senator, result.coverage);
+  const from = t.joined_after_start ? `they took office on ${longDate(t.joined_after_start)}` : since;
+  if (!from) return null;
+  if (!t.left_at) return `since ${from}`;
+  const to = `${longDate(t.left_at)}, when they left the Senate`;
+  return t.joined_after_start ? `from the day ${from} to ${to}` : `from ${from} to ${to}`;
+}
+
+/**
  * What the search did, in one or two sentences at the top of an answer:
  * "We searched all 609 of Schumer's recorded actions since January 2023. Two
  * came close, but neither was actually about this."
@@ -1896,21 +2037,21 @@ export function searchScopeSentence(result: QueryResult): string | null {
   const f = searchFunnel(result);
   if (!f) return null;
   const surname = surnameOf(result.senator.name);
-  const since = recordStart(result.coverage);
+  const span = recordSpan(result);
   return (f.searched
     ? `Searched all ${f.searched.toLocaleString('en-US')} of ${surname}’s recorded actions`
-    : `Searched ${surname}’s recorded actions`) + (since ? ` since ${since}.` : '.');
+    : `Searched ${surname}’s recorded actions`) + (span ? ` ${span}.` : '.');
 }
 
 export function searchSummarySentence(result: QueryResult): string | null {
   const f = searchFunnel(result);
   if (!f) return null;
   const surname = surnameOf(result.senator.name);
-  const since = recordStart(result.coverage);
+  const span = recordSpan(result);
   const lead =
     (f.searched
       ? `We searched all ${f.searched.toLocaleString('en-US')} of ${surname}’s recorded actions`
-      : `We searched ${surname}’s recorded actions`) + (since ? ` since ${since}.` : '.');
+      : `We searched ${surname}’s recorded actions`) + (span ? ` ${span}.` : '.');
   // "bills": the search reads bills, and a bare "Ten came close" under
   // "555 recorded actions" read as ten actions (Matt, 1 Nov).
   const bills = (n: number) => `${countWord(n)} ${n === 1 ? 'bill' : 'bills'}`;
@@ -1939,7 +2080,21 @@ export function searchSummarySentence(result: QueryResult): string | null {
 export function recordBoundarySentence(result: QueryResult): string | null {
   if (result.scored.verdict !== 'NOT_DETERMINABLE' || result.scored.nd_reason !== 'NO_MATCHES') return null;
   const since = recordStart(result.coverage);
-  return since ? `Our records start in ${since}. If they acted on this before then, it isn’t in what we searched.` : null;
+  if (!since) return null;
+  // The member's own edges, where they differ from the record's: a freshman's
+  // record cannot reach before they took office, and a former member's stops
+  // when they left. Said beside the boundary, never instead of it.
+  const t = tenureOf(result.senator, result.coverage);
+  const surname = surnameOf(result.senator.name);
+  const parts: string[] = [];
+  if (t.joined_after_start) {
+    parts.push(`${surname} took office on ${longDate(t.joined_after_start)}, so their record starts there. Anything the Senate did on this before then happened without them.`);
+  } else {
+    parts.push(`Our records start in ${since}. If they acted on this before then, it isn’t in what we searched.`);
+  }
+  if (t.absent.length) parts.push(`${surname} was not in the Senate during ${congressSpan(t.absent)}.`);
+  if (t.left_at) parts.push(`${surname} left the Senate on ${longDate(t.left_at)}, and their record ends there.`);
+  return parts.join(' ');
 }
 
 /**

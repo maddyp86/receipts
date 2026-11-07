@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { ArrowRightIcon, ChevronDownIcon, TriangleAlertIcon } from 'lucide-react';
 import {
-  coverageSentence,
+  coverageNote,
   enrichmentGapSentence,
   type ClarifyOption,
   type CoverageWindow,
@@ -105,7 +105,7 @@ export function DemoBanner({ demo, fixture }: { demo: boolean; fixture: boolean 
  * The copy comes from `coverageSentence` in shared rather than from this file,
  * so the sentence the user reads is the same one the server persists.
  */
-export function CoverageNote({ coverage }: { coverage?: CoverageWindow }) {
+export function CoverageNote({ coverage, senator }: { coverage?: CoverageWindow; senator?: Senator }) {
   // Absent is not the same as unknown. An older result that predates the field
   // says nothing here rather than asserting a window it never recorded.
   if (!coverage) return null;
@@ -115,7 +115,10 @@ export function CoverageNote({ coverage }: { coverage?: CoverageWindow }) {
       className="coverage-note border-t border-rule pt-4 text-[15px] leading-relaxed text-ink-soft"
       data-unknown={coverage.unknown ? 'true' : undefined}
     >
-      {coverageSentence(coverage)}
+      {/* With the member, the note also says where THEIR record starts or
+          ends: a freshman's began when they took office, a former member's
+          ended when they left (migration 026). */}
+      {coverageNote(coverage, senator)}
     </p>
   );
 }

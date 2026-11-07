@@ -686,7 +686,7 @@ export function WhyPanel(props: VerdictProps) {
           a KEPT drawn from two 118th-Congress bills is scoped by the same
           window as a no-match, and the reader is owed it either way. On the
           tab that opens first, so it is never a click away. */}
-      <CoverageNote coverage={result.coverage} />
+      <CoverageNote coverage={result.coverage} senator={result.senator} />
 
       {/* Reads that failed for this answer. Beside the coverage boundary
           because it is the same kind of fact — a limit on what this answer

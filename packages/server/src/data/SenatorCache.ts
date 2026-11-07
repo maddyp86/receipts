@@ -30,6 +30,10 @@ const { Pool } = pg;
 // covered so far are the ones you can pick below", and a pickable senator we
 // have not analysed would make that false.
 //
+// A covered senator who has LEFT office stays listed (decision 1, 2026-11-04):
+// the record does not stop being true when the member loses, and nothing new
+// arrives for them. `Left At` rides on the row so the web can say "former".
+//
 // Every other senator in the table still RESOLVES, as uncached: a direct API
 // call for one gets the honest "we haven't analysed them" stop and is queued
 // as demand (ADR-004), exactly as before.
@@ -65,6 +69,12 @@ export interface PoliticianRow {
   actions?: number | null;
   /** The `Coverage Congresses` value as written, e.g. "119" or "118, 119". */
   coverage_congresses?: string | null;
+  /** Tenure keys (migration 026): dates as YYYY-MM-DD, blank when unknown. */
+  left_at?: string | null;
+  first_term_start?: string | null;
+  last_term_end?: string | null;
+  /** The `Served Congresses` value as written, same format as `Coverage Congresses`. */
+  served_congresses?: string | null;
 }
 
 export type LoadPoliticians = () => Promise<PoliticianRow[]>;
@@ -76,6 +86,10 @@ export const PICKER_SQL = `
          p.row->>'Party' as party,
          p.row->>'State' as state,
          p.row->>'Coverage Congresses' as coverage_congresses,
+         p.row->>'Left At' as left_at,
+         p.row->>'First Term Start' as first_term_start,
+         p.row->>'Last Term End' as last_term_end,
+         p.row->>'Served Congresses' as served_congresses,
          coalesce(lower(p.row->>'In Scope') = 'true', false)
            and (not (p.row ? 'Live') or coalesce(lower(p.row->>'Live') = 'true', false))
            and coalesce(a.n, 0) > 0 as covered,
@@ -101,6 +115,12 @@ export function parseCongresses(cell: string | null | undefined): number[] {
   return [...new Set(found)].sort((a, b) => a - b);
 }
 
+/** A date as the record writes it (YYYY-MM-DD), or undefined. Never reinterpreted. */
+export function parseDay(cell: string | null | undefined): string | undefined {
+  const s = String(cell ?? '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined;
+}
+
 /** One record row as the picker shows it. */
 export function toSenator(r: PoliticianRow): Senator | null {
   const id = (r.politician_id ?? '').trim();
@@ -110,6 +130,12 @@ export function toSenator(r: PoliticianRow): Senator | null {
   const state = (r.state ?? '').trim();
   const actions = Number(r.actions);
   const congresses = parseCongresses(r.coverage_congresses);
+  // Tenure (migration 026). Each rides on the senator only when the record
+  // has it: a blank is "not known", never "serving" or "day one".
+  const leftAt = parseDay(r.left_at);
+  const firstTermStart = parseDay(r.first_term_start);
+  const lastTermEnd = parseDay(r.last_term_end);
+  const served = parseCongresses(r.served_congresses);
   return {
     politician_id: id,
     name,
@@ -118,6 +144,10 @@ export function toSenator(r: PoliticianRow): Senator | null {
     ...(state ? { state } : {}),
     ...(r.covered && Number.isFinite(actions) && actions > 0 ? { record_actions: actions } : {}),
     ...(congresses.length ? { coverage_congresses: congresses } : {}),
+    ...(leftAt ? { left_at: leftAt } : {}),
+    ...(firstTermStart ? { first_term_start: firstTermStart } : {}),
+    ...(lastTermEnd ? { last_term_end: lastTermEnd } : {}),
+    ...(served.length ? { served_congresses: served } : {}),
   };
 }
 
