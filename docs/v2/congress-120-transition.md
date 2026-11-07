@@ -183,10 +183,22 @@ sharpest.
    Add 120 floor leaders to both tables and to `core.members.roles` (leaders, whips)
    only after the caucus elections, in one PR, with the source cited. Add the 120th line
    to `glossary.ts` and `Waiting.tsx`.
+   *Status (2026-11-07, PR #117):* president rows and the two copy lines done. The
+   floor-leader rows (code tables and `core.members.roles`) are still owed, after the
+   caucus votes.
 6. **Web roster.** Replace `MIDTERM_ROSTER`'s wave lists with the post-election plan
    (Decide 2) and drop `on_ballot_2026`; fix `roster.test.ts` counts.
+   *Status (2026-11-07, PR #117):* done as far as the facts allow: the covered five plus
+   Brown; Marshall out; `on_ballot_2026` dropped. Warner and Luján are not asserted
+   (results unconfirmed) and wait for decision 2; a freshman has no member id until
+   sworn in and cannot be listed before January.
 7. **Tests and evals.** Unit tests for the three tenure cases; keep Collins cases
    52–54; add one Brown gap case and one freshman case once they have records.
+   *Status:* the unit tests shipped in #116 (`tenure.test.ts`, `senatorTenure.test.ts`,
+   `members.test.ts`). Eval cases wait for the records.
+
+**Phase 1 is complete in code** as of 2026-11-07 (PRs #113, #114, #116, #117; #115 is
+the record), except the 120th floor leaders, which need the caucus elections.
 
 ### Phase 2 — the switch (Jan 3–10, 2027)
 1. Members workflow (automatic, daily): arrivals appear with `in_scope=false`;
