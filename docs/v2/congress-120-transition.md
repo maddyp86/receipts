@@ -160,11 +160,22 @@ congress of service. This is the false-absence risk at its sharpest.
    checkable). `memberTitle`: "Former U.S. Senator for Maine (2023–2027)" when
    `left_at` is set. `MemberPicker` groups "Former members" last. `MemberCard` gets a
    "Served until January 3, 2027" line. Funding stays refused (already is).
+   *Status (2026-11-07, PR #116):* done, with two changes from the sketch above:
+   `MemberDirectory` is untouched (a former covered senator reaches the picker through
+   `/api/senators`, which the web already merges in), and the title is "Former U.S.
+   Senator for Maine" with the years on the card's "Served until" line instead.
 4. **Tenure-aware copy** (`packages/shared/src/index.ts`): `coverageSentence`,
    `searchSummarySentence`, `recordBoundarySentence` and `ND_REASON_COPY.NO_MATCHES`
    take the member's served window. Three cases: *closed* ("…record through January 3,
    2027"), *freshman* (Decide 4), *gap* ("not in the Senate during the 119th Congress").
    Record-question mode reuses the same sentences.
+   *Status (2026-11-07, PR #116):* done. `tenureOf(senator, coverage)` in shared derives
+   the three cases from the four compat keys; `coverageNote` wraps the unchanged
+   `coverageSentence`; the searched-actions lines, the empty-search boundary and the
+   `NO_MATCHES` reason (`noMatchesCopy`) say the member's own edges. The freshman
+   wording has no vote count (not on the result); it reads "since they took office on
+   June 15, 2027". A member who served throughout reads exactly as before. Decision 4's
+   final wording is still Matt's to sign off; it ships in #116 as written there.
 5. **Per-congress tables.** Add `'120': 'TRUMP'` to both `PRESIDENT_BY_CONGRESS` now.
    Add 120 floor leaders to both tables and to `core.members.roles` (leaders, whips)
    only after the caucus elections, in one PR, with the source cited. Add the 120th line
