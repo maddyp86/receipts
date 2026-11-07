@@ -109,12 +109,15 @@ change in the plan and it unblocks every honest sentence below. The lighter
 alternative (expose `left_at` and `term_start` in the compat view) covers departures
 and pure freshmen but cannot describe Brown's 119th gap or Collins's pre-2023 service.
 
-**DECIDE 4 — Freshman empty state.** When a covered member's first Senate day is
-after our record start, and the retrieved record is empty, say: "{Name} took office on
-January 3, 2027. The Senate has recorded {N} roll-call votes since then, and none of
-them, or any bill {surname} has sponsored, relates to this." Never the generic
-"no bills or votes in this senator's analyzed record" for a member with under a
-congress of service. This is the false-absence risk at its sharpest.
+**DECIDED 4 (Matt, 2026-11-07) — Freshman empty state.** As shipped in #116: when a
+covered member took office after our records begin and the search is empty, the
+boundary says "{Surname} took office on {date}, so their record starts there. Anything
+the Senate did on this before then happened without them." and the reason says the
+record "only began on {date}, when they took office". The searched-actions line reads
+"since they took office on {date}". No vote count (it is not on the result; the sketch
+had "{N} roll-call votes since then"). Never the generic "no bills or votes in this
+senator's analyzed record" for such a member. This is the false-absence risk at its
+sharpest.
 
 ## Phases
 
@@ -138,10 +141,16 @@ congress of service. This is the false-absence risk at its sharpest.
    Congresses`). `members.js` upserts every term of every member in `core.members`
    (local dry run: 2,922 terms for 566 members, 0 problems). **Migration 026 APPLIED
    to production 2026-11-06** (Matt's yes; catalog `20261106164838 026_member_terms`;
-   verify queries clean; every member has 0 terms until the first write run). **Workflow
-   not published.** Remaining operator steps: rebuild and publish the members workflow, which also ships the congress.gov cross-check from #88 that was never
-   published (the live workflow is still the 15 Oct version, called on Mondays only);
-   one dry run by hand; then one write run.
+   verify queries clean; every member has 0 terms until the first write run). **Members
+   workflow PUBLISHED 2026-11-06** (`Ruy16Yem9fYBSnMt`, with the #88 cross-check that had
+   never been published; the failure-alert workflow gained its notice entry point the
+   same day). Manual dry run 15046 matched the local preview: 2,922 terms for 566
+   members, 0 member changes, cross-check 539 = 539, no alert. The orchestrator still
+   calls it on Mondays only. **First write run DONE 2026-11-06** (execution 15047,
+   ingest run 235, Matt's yes): `core.member_terms` holds 2,922 rows for all 566
+   members (313 Senate terms, 2,609 House), `member_tenure` has 0 members without
+   terms, 0 mismatches against `core.members.term_end`. The TEMP draft was reverted.
+   The Monday run keeps the table current from here. Step 1 is complete.
 2. **Pipeline tolerance for a brand-new congress.** In `rollcalls_list.js` and
    `sb_list.js`, a listed congress with no files is a quiet `not_yet_published` skip for
    45 days after its `CONGRESS_START`, and a failure after that (mirrors the 3-day 404
@@ -172,19 +181,42 @@ congress of service. This is the false-absence risk at its sharpest.
    checkable). `memberTitle`: "Former U.S. Senator for Maine (2023–2027)" when
    `left_at` is set. `MemberPicker` groups "Former members" last. `MemberCard` gets a
    "Served until January 3, 2027" line. Funding stays refused (already is).
+   *Status (2026-11-07, PR #116):* done, with two changes from the sketch above:
+   `MemberDirectory` is untouched (a former covered senator reaches the picker through
+   `/api/senators`, which the web already merges in), and the title is "Former U.S.
+   Senator for Maine" with the years on the card's "Served until" line instead.
 4. **Tenure-aware copy** (`packages/shared/src/index.ts`): `coverageSentence`,
    `searchSummarySentence`, `recordBoundarySentence` and `ND_REASON_COPY.NO_MATCHES`
    take the member's served window. Three cases: *closed* ("…record through January 3,
    2027"), *freshman* (Decide 4), *gap* ("not in the Senate during the 119th Congress").
    Record-question mode reuses the same sentences.
+   *Status (2026-11-07, PR #116):* done. `tenureOf(senator, coverage)` in shared derives
+   the three cases from the four compat keys; `coverageNote` wraps the unchanged
+   `coverageSentence`; the searched-actions lines, the empty-search boundary and the
+   `NO_MATCHES` reason (`noMatchesCopy`) say the member's own edges. The freshman
+   wording has no vote count (not on the result); it reads "since they took office on
+   June 15, 2027". A member who served throughout reads exactly as before. Decision 4's
+   wording was signed off by Matt on 2026-11-07 (decision 4) and ships in #116.
 5. **Per-congress tables.** Add `'120': 'TRUMP'` to both `PRESIDENT_BY_CONGRESS` now.
    Add 120 floor leaders to both tables and to `core.members.roles` (leaders, whips)
    only after the caucus elections, in one PR, with the source cited. Add the 120th line
    to `glossary.ts` and `Waiting.tsx`.
+   *Status (2026-11-07, PR #117):* president rows and the two copy lines done. The
+   floor-leader rows (code tables and `core.members.roles`) are still owed, after the
+   caucus votes.
 6. **Web roster.** Replace `MIDTERM_ROSTER`'s wave lists with the post-election plan
    (Decide 2) and drop `on_ballot_2026`; fix `roster.test.ts` counts.
+   *Status (2026-11-07, PR #117):* done as far as the facts allow: the covered five plus
+   Brown; Marshall out; `on_ballot_2026` dropped. Warner and Luján are not asserted
+   (results unconfirmed) and wait for decision 2; a freshman has no member id until
+   sworn in and cannot be listed before January.
 7. **Tests and evals.** Unit tests for the three tenure cases; keep Collins cases
    52–54; add one Brown gap case and one freshman case once they have records.
+   *Status:* the unit tests shipped in #116 (`tenure.test.ts`, `senatorTenure.test.ts`,
+   `members.test.ts`). Eval cases wait for the records.
+
+**Phase 1 is complete in code** as of 2026-11-07 (PRs #113, #114, #116, #117; #115 is
+the record), except the 120th floor leaders, which need the caucus elections.
 
 ### Phase 2 — the switch (Jan 3–10, 2027)
 1. Members workflow (automatic, daily): arrivals appear with `in_scope=false`;
