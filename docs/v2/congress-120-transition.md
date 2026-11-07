@@ -109,12 +109,15 @@ change in the plan and it unblocks every honest sentence below. The lighter
 alternative (expose `left_at` and `term_start` in the compat view) covers departures
 and pure freshmen but cannot describe Brown's 119th gap or Collins's pre-2023 service.
 
-**DECIDE 4 — Freshman empty state.** When a covered member's first Senate day is
-after our record start, and the retrieved record is empty, say: "{Name} took office on
-January 3, 2027. The Senate has recorded {N} roll-call votes since then, and none of
-them, or any bill {surname} has sponsored, relates to this." Never the generic
-"no bills or votes in this senator's analyzed record" for a member with under a
-congress of service. This is the false-absence risk at its sharpest.
+**DECIDED 4 (Matt, 2026-11-07) — Freshman empty state.** As shipped in #116: when a
+covered member took office after our records begin and the search is empty, the
+boundary says "{Surname} took office on {date}, so their record starts there. Anything
+the Senate did on this before then happened without them." and the reason says the
+record "only began on {date}, when they took office". The searched-actions line reads
+"since they took office on {date}". No vote count (it is not on the result; the sketch
+had "{N} roll-call votes since then"). Never the generic "no bills or votes in this
+senator's analyzed record" for such a member. This is the false-absence risk at its
+sharpest.
 
 ## Phases
 
@@ -175,7 +178,7 @@ congress of service. This is the false-absence risk at its sharpest.
    `NO_MATCHES` reason (`noMatchesCopy`) say the member's own edges. The freshman
    wording has no vote count (not on the result); it reads "since they took office on
    June 15, 2027". A member who served throughout reads exactly as before. Decision 4's
-   final wording is still Matt's to sign off; it ships in #116 as written there.
+   wording was signed off by Matt on 2026-11-07 (decision 4) and ships in #116.
 5. **Per-congress tables.** Add `'120': 'TRUMP'` to both `PRESIDENT_BY_CONGRESS` now.
    Add 120 floor leaders to both tables and to `core.members.roles` (leaders, whips)
    only after the caucus elections, in one PR, with the source cited. Add the 120th line
