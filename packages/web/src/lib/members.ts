@@ -1,3 +1,4 @@
+import { longDate } from '@receipts/shared';
 import { usStates } from '../data/states.js';
 import type { Member, Party } from '../data/roster.js';
 
@@ -23,13 +24,33 @@ export function partyName(party: Party | undefined): string {
   return '';
 }
 
-/** “U.S. Senator for New York” / “U.S. Representative for New York’s 17th District”. */
+/**
+ * “U.S. Senator for New York” / “U.S. Representative for New York’s 17th
+ * District”. A member who has left office is “Former U.S. Senator for Maine”:
+ * their record is still here to check, and the title must not say they hold
+ * the seat.
+ */
 export function memberTitle(m: Member): string {
+  const former = isFormer(m) ? 'Former ' : '';
   const state = stateName(m.state);
-  if (m.chamber === 'senate') return state ? `U.S. Senator for ${state}` : 'U.S. Senator';
-  if (!state) return 'U.S. Representative';
-  if (!m.district || districtCount(m.state) === 1) return `U.S. Representative for ${state}`;
-  return `U.S. Representative for ${state}’s ${ordinal(m.district)} District`;
+  if (m.chamber === 'senate') return state ? `${former}U.S. Senator for ${state}` : `${former}U.S. Senator`;
+  if (!state) return `${former}U.S. Representative`;
+  if (!m.district || districtCount(m.state) === 1) return `${former}U.S. Representative for ${state}`;
+  return `${former}U.S. Representative for ${state}’s ${ordinal(m.district)} District`;
+}
+
+/** True when the server says the member has left office. */
+export function isFormer(m: Pick<Member, 'left_at'>): boolean {
+  return Boolean(m.left_at);
+}
+
+/**
+ * “Served until January 3, 2027”, for a former member's card. Says when the
+ * seat was left, not why: the record does not say, and neither do we.
+ */
+export function tenureLine(m: Pick<Member, 'left_at'>): string | null {
+  const day = longDate(m.left_at);
+  return day ? `Served until ${day}` : null;
 }
 
 export function memberArea(m: Member): string | null {
