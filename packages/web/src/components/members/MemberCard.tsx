@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 import { CheckIcon } from 'lucide-react';
 import type { Member } from '../../data/roster.js';
-import { memberArea, memberTitle, partyName } from '../../lib/members.js';
+import { memberArea, memberTitle, partyName, tenureLine } from '../../lib/members.js';
 import { MemberPortrait } from './MemberPortrait.js';
 import { FunderCredit, FundRecord } from './FundRecord.js';
 
@@ -24,10 +24,13 @@ export function MemberCard({ member, selected, onSelect, coveredAlternative }: P
   const showMark = useContext(MemberCardSelectMark);
   const area = memberArea(member);
   const party = partyName(member.party);
+  const served = tenureLine(member);
 
   const details = (
     <>
       <span className="block text-[15px] leading-snug text-ink-soft">{memberTitle(member)}</span>
+      {/* A former member: the day they left, beside the record that is still here. */}
+      {served ? <span className="block text-[14px] leading-snug text-ink-soft" data-former="true">{served}</span> : null}
       {area ? <span className="block text-[14px] leading-snug text-ink-soft">{area}</span> : null}
       {party ? <span className="mt-0.5 block text-[15px] text-ink-soft">{party}</span> : null}
     </>

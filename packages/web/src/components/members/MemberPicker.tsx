@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowLeftIcon, ExternalLinkIcon, SearchIcon } from 'lucide-react';
 import type { Member } from '../../data/roster.js';
-import { districtCount, stateName } from '../../lib/members.js';
+import { districtCount, isFormer, stateName } from '../../lib/members.js';
 import { GlossaryTerm } from '../glossary/GlossaryTerm.js';
 import { MemberCard, MemberCardSelectMark } from './MemberCard.js';
 import { StateCombobox } from './StateCombobox.js';
@@ -45,6 +45,10 @@ export function MemberPicker({ members, selectedId, onSelect, initialMode = 'sta
   const [nameQuery, setNameQuery] = useState(initialQuery);
 
   const covered = useMemo(() => members.filter((m) => m.cached), [members]);
+  // A covered member who has left office is still checkable, and is listed
+  // after the serving ones under its own heading, never as if in office.
+  const serving = useMemo(() => covered.filter((m) => !isFormer(m)), [covered]);
+  const former = useMemo(() => covered.filter((m) => isFormer(m)), [covered]);
   const coveredCountByState = useMemo(
     () =>
       covered.reduce<Record<string, number>>((acc, m) => {
@@ -71,10 +75,25 @@ export function MemberPicker({ members, selectedId, onSelect, initialMode = 'sta
           We couldn’t load the list of members just now. Try refreshing the page.
         </p>
       ) : covered.length <= GRID_LIMIT ? (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {covered.map((m) => (
-            <MemberCard key={m.politician_id} member={m} selected={m.politician_id === selectedId} onSelect={onSelect} />
-          ))}
+        <div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {serving.map((m) => (
+              <MemberCard key={m.politician_id} member={m} selected={m.politician_id === selectedId} onSelect={onSelect} />
+            ))}
+          </div>
+          {former.length ? (
+            <section className="mt-6" aria-labelledby="former-heading" data-former-members={former.length}>
+              <h3 id="former-heading" className="text-[16px] font-semibold text-ink">Former members</h3>
+              <p className="mt-1 text-[15px] text-ink-soft">
+                They’ve left office. Their record is still here to check, and it ends on the day they left.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {former.map((m) => (
+                  <MemberCard key={m.politician_id} member={m} selected={m.politician_id === selectedId} onSelect={onSelect} />
+                ))}
+              </div>
+            </section>
+          ) : null}
         </div>
       ) : (
         <div>
@@ -206,7 +225,10 @@ function StateView({ stateCode, members, selectedId, onSelect, onBack, coveredSt
   const [district, setDistrict] = useState<number | null>(null);
   const totalDistricts = districtCount(stateCode);
   const atLarge = totalDistricts === 1;
+  // Former senators (covered, left office) are shown with the state's senators
+  // but do not fill one of its two seats.
   const senators = members.filter((m) => m.chamber === 'senate');
+  const seated = senators.filter((m) => !isFormer(m));
   const reps = members.filter((m) => m.chamber === 'house');
   const rep = atLarge ? reps[0] : reps.find((r) => r.district === district);
   const coveredHere = members.find((m) => m.cached) ?? null;
@@ -272,10 +294,10 @@ function StateView({ stateCode, members, selectedId, onSelect, onBack, coveredSt
                 ))}
               </div>
             ) : null}
-            {senators.length < 2 ? (
+            {seated.length < 2 ? (
               <p className="mt-3 text-[15px] text-ink-soft">
                 Every state has 2 senators.{' '}
-                {senators.length === 0
+                {seated.length === 0
                   ? `We haven’t added either of ${name}’s yet.`
                   : `We haven’t added ${name}’s other senator yet.`}
               </p>

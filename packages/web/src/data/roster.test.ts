@@ -50,6 +50,14 @@ describe('buildRoster', () => {
     const ids = buildRoster([SCHUMER, THUNE]).map((m) => m.politician_id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  it('a covered member who has left office is listed, with the day they left', () => {
+    // Decision 1 (2026-11-04): the record is still checkable; the title says former.
+    const collins: Senator = { politician_id: 'C001035', name: 'Susan M. Collins', cached: true, party: 'R', state: 'ME', left_at: '2027-01-03', first_term_start: '1997-01-07', last_term_end: '2027-01-03' };
+    const m = buildRoster([collins]).find((x) => x.politician_id === 'C001035')!;
+    expect(m).toMatchObject({ cached: true, chamber: 'senate', left_at: '2027-01-03', first_term_start: '1997-01-07', last_term_end: '2027-01-03' });
+    expect(buildRoster([SCHUMER]).find((x) => x.politician_id === 'S000148')).not.toHaveProperty('left_at');
+  });
 });
 
 describe('buildRoster with the server directory', () => {
