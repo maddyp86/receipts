@@ -475,14 +475,20 @@ function RecordStepsView({ result, surname }: { result: QueryResult; surname: st
     ...(s.against ? [{ key: 'against', n: s.against, label: of(s.against, 'counts against it', 'count against it'), tone: 'text-broken', wash: 'bg-broken-wash/60' }] : []),
     ...(s.notCounted ? [{ key: 'not', n: s.notCounted, label: of(s.notCounted, 'doesn’t count', 'don’t count'), tone: 'text-ink-soft', wash: '' }] : []),
   ];
-  const cols = boxes.length === 4 ? 'grid-cols-2 sm:grid-cols-4' : boxes.length === 3 ? 'grid-cols-3' : 'grid-cols-2';
+  // A phone stacks the boxes, number beside label: side by side, three are
+  // about 100px each and the labels wrap to four lines.
+  const cols = boxes.length === 4 ? 'sm:grid-cols-4' : boxes.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2';
   return (
     <div className="record-steps mt-4">
-      <ul className={`grid ${cols} gap-1.5 text-center`} aria-label="What the record holds on your question">
+      <ul className={`grid grid-cols-1 ${cols} gap-1.5 sm:text-center`} aria-label="What the record holds on your question">
         {boxes.map((x) => (
-          <li key={x.key} className={`rounded-lg border border-rule px-2 py-2.5 ${x.wash}`} data-box={x.key}>
-            <p className={`text-[22px] font-semibold leading-none ${x.tone}`}>{x.n.toLocaleString('en-US')}</p>
-            <p className="mt-1 text-[13px] leading-tight text-ink-soft">{x.label}</p>
+          <li
+            key={x.key}
+            className={`flex items-center gap-3 rounded-lg border border-rule px-3 py-2.5 sm:block sm:px-2 ${x.wash}`}
+            data-box={x.key}
+          >
+            <p className={`min-w-[2ch] text-center text-[22px] font-semibold leading-none ${x.tone}`}>{x.n.toLocaleString('en-US')}</p>
+            <p className="text-[14px] leading-tight text-ink-soft sm:mt-1 sm:text-[13px]">{x.label}</p>
           </li>
         ))}
       </ul>

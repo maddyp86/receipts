@@ -50,9 +50,9 @@ function Notice({
 }
 
 const BTN_PRIMARY =
-  'inline-flex min-h-[48px] items-center justify-center rounded-card bg-ink px-5 text-[16px] font-semibold text-paper transition-colors duration-150 hover:bg-[#33312D] disabled:bg-rule disabled:text-ink-soft';
+  'inline-flex min-h-[48px] items-center justify-center rounded-card bg-ink px-4 py-2.5 text-center text-[16px] font-semibold leading-snug text-paper sm:px-5 transition-colors duration-150 hover:bg-[#33312D] disabled:bg-rule disabled:text-ink-soft';
 const BTN_SECONDARY =
-  'inline-flex min-h-[48px] items-center justify-center rounded-card border border-rule bg-card px-5 text-[16px] font-medium text-ink transition-colors duration-150 hover:border-ink-faint disabled:text-ink-faint';
+  'inline-flex min-h-[48px] items-center justify-center rounded-card border border-rule bg-card px-4 py-2.5 text-center text-[16px] font-medium leading-snug text-ink sm:px-5 transition-colors duration-150 hover:border-ink-faint disabled:text-ink-faint';
 
 export function DemoBanner({ demo, fixture }: { demo: boolean; fixture: boolean }) {
   if (!demo && !fixture) return null;

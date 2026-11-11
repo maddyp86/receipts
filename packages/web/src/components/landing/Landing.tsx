@@ -254,7 +254,7 @@ function LandingHero({
                   value={promise}
                   onChange={(e) => onPromiseChange(e.target.value)}
                   placeholder={selected ? 'e.g., Did they vote for the Laken Riley Act?' : 'Pick a lawmaker first'}
-                  className="block max-h-[12rem] min-h-[100px] w-full resize-none overflow-y-auto rounded-xl border border-white/15 bg-lp-navy px-3.5 py-3 text-[15px] text-white outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-white/40 focus:border-lp-signal focus:ring-4 focus:ring-lp-signal/20"
+                  className="block max-h-[12rem] min-h-[100px] w-full resize-none overflow-y-auto rounded-xl border border-white/15 bg-lp-navy px-3.5 py-3 text-[16px] text-white outline-none sm:text-[15px] transition-[border-color,box-shadow] duration-150 placeholder:text-white/40 focus:border-lp-signal focus:ring-4 focus:ring-lp-signal/20"
                 />
                 <PhrasingHelp
                   tone="dark"
