@@ -88,10 +88,10 @@ describe('the record card on the page', () => {
     expect(textOf(h)).toContain('1 of Ossoff’s actions counts against it');
   });
 
-  it('all four when every kind is there, two columns on a phone', () => {
+  it('all four when every kind is there; stacked on a phone, side by side from sm up', () => {
     const rows = [row('a', 'cloture', 'for', 'YEA'), row('b', 'cosponsor', 'against'), row('c', 'passage', 'not_counted', 'YEA')];
     const h = renderToStaticMarkup(React.createElement(VerdictCard, { result: result(rows, 'John Thune', { evaluated: 10, admitted: 3 }) }));
     expect(boxes(h)).toEqual(['bills', 'toward', 'against', 'not']);
-    expect(h).toContain('grid-cols-2 sm:grid-cols-4');
+    expect(h).toContain('grid-cols-1 sm:grid-cols-4');
   });
 });

@@ -73,6 +73,7 @@ const TONES = {
     clear: 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink-soft hover:text-ink',
     field: 'flex items-center rounded-card border border-rule bg-card focus-within:border-focus focus-within:ring-1 focus-within:ring-focus',
     searchIcon: 'ml-4 h-5 w-5 shrink-0 text-ink-soft',
+    close: 'mr-1.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink-soft hover:text-ink',
     input: 'min-h-[56px] w-full bg-transparent px-3 text-[17px] text-ink placeholder:text-ink-faint focus:outline-none',
     list: 'absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-card border border-rule bg-card shadow-soft',
     overline: 'border-b border-rule px-4 py-2 text-[13px] font-medium uppercase tracking-wide text-ink-faint',
@@ -90,7 +91,8 @@ const TONES = {
     clear: 'shrink-0 rounded-md px-2 py-1 text-sm font-medium text-lp-signal hover:bg-white/10',
     field: 'flex items-center rounded-xl border border-white/15 bg-lp-navy transition-[border-color,box-shadow] duration-150 focus-within:border-lp-signal focus-within:ring-4 focus-within:ring-lp-signal/20',
     searchIcon: 'ml-3.5 h-4 w-4 shrink-0 text-white/50',
-    input: 'min-h-[48px] w-full bg-transparent px-3 text-[15px] text-white placeholder:text-white/40 focus:outline-none',
+    close: 'mr-1 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-white/60 hover:bg-white/10 hover:text-white',
+    input: 'min-h-[48px] w-full bg-transparent px-3 text-[16px] text-white sm:text-[15px] placeholder:text-white/40 focus:outline-none',
     list: 'absolute inset-x-0 top-full z-20 mt-2 overflow-hidden rounded-xl bg-lp-navy2 shadow-2xl ring-1 ring-white/15',
     overline: 'border-b border-white/10 px-4 py-2 text-[12px] font-medium uppercase tracking-wide text-white/50',
     rowActive: 'bg-white/10',
@@ -124,17 +126,27 @@ export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse,
   const inputRef = useRef<HTMLInputElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const listId = useId();
+  /** Whether the list was open when a press on the input began (see the input's onClick). */
+  const wasOpen = useRef(false);
+
+  /** Close the list and let go of the field, which also puts a phone's keyboard away. */
+  const dismiss = (clear = false) => {
+    setOpen(false);
+    if (clear) setQuery('');
+    inputRef.current?.blur();
+  };
 
   const rows = useMemo(() => rankMatches(members, query), [members, query]);
 
   // Close when focus or a click leaves the field and its list.
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
+    // pointerdown, not mousedown: a phone sends no mousedown for a tap on plain page.
+    const onDown = (e: PointerEvent) => {
       if (!boxRef.current?.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
   }, [open]);
 
   useEffect(() => setActive(0), [query]);
@@ -196,6 +208,13 @@ export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse,
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
+          // Pressing the field again closes the list, and once more opens it.
+          // The state is read when the press begins, because the first press
+          // focuses the field (which opens the list) before its click arrives.
+          onPointerDown={() => {
+            wasOpen.current = open;
+          }}
+          onClick={() => setOpen(!wasOpen.current)}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') {
               e.preventDefault();
@@ -209,13 +228,25 @@ export function LawmakerSearch({ members, selected, onSelect, onClear, onBrowse,
               e.preventDefault();
               if (showList && rows[active]) choose(rows[active]!);
             } else if (e.key === 'Escape') {
-              setOpen(false);
+              dismiss();
             }
           }}
           placeholder="Type a name or state"
           autoComplete="off"
           className={t.input}
         />
+        {open || query ? (
+          <button
+            type="button"
+            // Keep the press from moving focus first: the list would close and reopen.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => dismiss(true)}
+            className={t.close}
+            aria-label="Close the list"
+          >
+            <XIcon className={dark ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
 
       {showList ? (
