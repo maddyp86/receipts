@@ -15,9 +15,11 @@ import type {
   ScoredResult,
   StatementType,
   Verdict,
+  VoteTally,
 } from '@receipts/shared';
 import { DECISIVE_ENRICHMENT_GAPS, EFFECT_UNREAD, TEXT_AT_ACTION_UNAVAILABLE, toVerdict } from '@receipts/shared';
 import {
+  ACTION_WEIGHT,
   EVIDENCE_TYPE_FACTOR,
   MEANINGFUL_MINORITY_SHARE,
   SIMILARITY,
@@ -31,6 +33,7 @@ import {
 } from './deriveAlignment.js';
 import { PATTERN_MULTIPLIER, actionTier, votePattern } from './votePattern.js';
 import { applyWithholding } from './withholding.js';
+import { voteMarginFlags } from './voteMargin.js';
 
 // ===========================================================================
 // The deterministic scoring service.
@@ -147,6 +150,17 @@ const mean = (xs: number[]): number =>
   xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
 
 const round = (n: number, dp = 4): number => Number.parseFloat(n.toFixed(dp));
+
+/**
+ * The action's own weight: a vote over a sponsorship over a co-sponsorship,
+ * and a vote scaled by its pattern (a vote to end debate alone, a switch
+ * between the two votes). Anything else, procedural or associative, keeps 1:
+ * EVIDENCE_TYPE_FACTOR already discounts it.
+ */
+function actionWeight(tier: string, pattern: string | null | undefined): number {
+  const base = ACTION_WEIGHT[tier] ?? 1;
+  return tier === 'VOTED' ? base * (PATTERN_MULTIPLIER[pattern as keyof typeof PATTERN_MULTIPLIER] ?? 1) : base;
+}
 
 /**
  * Classify a match's evidence weight class.
@@ -428,6 +442,11 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
     // sides and must not be listed twice.
     const voteFlags: string[] = [...(m.vote_flags ?? [])];
     if (derived.split && !voteFlags.includes('SPLIT_VOTE')) voteFlags.push('SPLIT_VOTE');
+    // Show votes: party-line, and not close. Facts from the tallies, never a
+    // motive, and never a weight (voteMargin.ts).
+    for (const f of voteMarginFlags((m as { vote_context?: VoteTally[] }).vote_context)) {
+      if (!voteFlags.includes(f)) voteFlags.push(f);
+    }
     // The evaluator read a LATER version of this bill than the one the senator
     // acted on, because the one in effect was unusable. Disclosed on the row,
     // and read below by the band dial and by the withholding step.
@@ -454,7 +473,7 @@ export function scoreMatches(input: ScoreInput): ScoredResult {
       evidence_type,
       action_tier: tier,
       vote_pattern: pattern,
-      weight: directed ? round(m.score * EVIDENCE_TYPE_FACTOR[evidence_type]) : 0,
+      weight: directed ? round(m.score * EVIDENCE_TYPE_FACTOR[evidence_type] * actionWeight(tier, pattern)) : 0,
       scoring_flags: rowFlags,
       vote_governing: derived.governing,
       vote_flags: voteFlags,

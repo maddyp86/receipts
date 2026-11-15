@@ -2398,6 +2398,9 @@ export const EFFECT_UNREAD = 'EFFECT_UNREAD';
  */
 export const VOTE_FLAG_COPY: Record<string, string> = {
   SPLIT_VOTE: 'Split vote: the two votes on this bill went different ways.',
+  // Show votes (Matt, 15 Nov). What the tally shows, never why anyone voted.
+  PARTY_LINE: 'Party-line vote: nearly all Democrats voted one way and nearly all Republicans the other.',
+  NOT_CLOSE: 'Not a close vote: it cleared or missed the votes it needed by 5 or more.',
   // Institutional fact, not a motive. The platform's non-goals rule out intent
   // attribution, so this says what the role involves and leaves the reading to
   // the reader.

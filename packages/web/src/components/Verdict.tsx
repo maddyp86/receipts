@@ -442,6 +442,19 @@ export interface RecordSteps {
   toward: number;
   against: number;
   notCounted: number;
+  /** "2 votes · 4 co-sponsorships": what the counted actions were, votes first (Matt, 15 Nov). */
+  towardKinds: string;
+  againstKinds: string;
+}
+
+/** "2 votes · 4 co-sponsorships", votes first: a vote weighs more than a sponsorship. */
+export function actionKindsLine(rows: NonNullable<QueryResult['record']>['rows']): string {
+  const n = { vote: 0, sponsorship: 0, 'co-sponsorship': 0 };
+  for (const r of rows) n[r.stage === 'sponsor' ? 'sponsorship' : r.stage === 'cosponsor' ? 'co-sponsorship' : 'vote'] += 1;
+  return Object.entries(n)
+    .filter(([, c]) => c > 0)
+    .map(([k, c]) => `${c} ${k}${c === 1 ? '' : 's'}`)
+    .join(' · ');
 }
 
 export function recordSteps(result: QueryResult): RecordSteps | null {
@@ -458,6 +471,8 @@ export function recordSteps(result: QueryResult): RecordSteps | null {
     toward,
     against,
     notCounted: rows.length - toward - against,
+    towardKinds: actionKindsLine(rows.filter((r) => r.reading === 'for')),
+    againstKinds: actionKindsLine(rows.filter((r) => r.reading === 'against')),
   };
 }
 
@@ -471,8 +486,8 @@ function RecordStepsView({ result, surname }: { result: QueryResult; surname: st
   // category with nothing in it gets no box (Matt, 1 Nov: option G).
   const boxes = [
     { key: 'bills', n: s.about, label: s.about === 1 ? 'bill on your question' : 'bills on your question', tone: 'text-ink', wash: '' },
-    ...(s.toward ? [{ key: 'toward', n: s.toward, label: of(s.toward, 'counts toward it', 'count toward it'), tone: 'text-kept', wash: 'bg-kept-wash/60' }] : []),
-    ...(s.against ? [{ key: 'against', n: s.against, label: of(s.against, 'counts against it', 'count against it'), tone: 'text-broken', wash: 'bg-broken-wash/60' }] : []),
+    ...(s.toward ? [{ key: 'toward', n: s.toward, label: of(s.toward, 'counts toward it', 'count toward it'), kinds: s.towardKinds, tone: 'text-kept', wash: 'bg-kept-wash/60' }] : []),
+    ...(s.against ? [{ key: 'against', n: s.against, label: of(s.against, 'counts against it', 'count against it'), kinds: s.againstKinds, tone: 'text-broken', wash: 'bg-broken-wash/60' }] : []),
     ...(s.notCounted ? [{ key: 'not', n: s.notCounted, label: of(s.notCounted, 'doesn’t count', 'don’t count'), tone: 'text-ink-soft', wash: '' }] : []),
   ];
   // A phone stacks the boxes, number beside label: side by side, three are
@@ -488,7 +503,10 @@ function RecordStepsView({ result, surname }: { result: QueryResult; surname: st
             data-box={x.key}
           >
             <p className={`min-w-[2ch] text-center text-[22px] font-semibold leading-none ${x.tone}`}>{x.n.toLocaleString('en-US')}</p>
-            <p className="text-[14px] leading-tight text-ink-soft sm:mt-1 sm:text-[13px]">{x.label}</p>
+            <div className="sm:mt-1">
+              <p className="text-[14px] leading-tight text-ink-soft sm:text-[13px]">{x.label}</p>
+              {'kinds' in x && x.kinds ? <p className={`record-kinds mt-0.5 text-[12px] font-medium leading-tight ${x.tone}`}>{x.kinds}</p> : null}
+            </div>
           </li>
         ))}
       </ul>

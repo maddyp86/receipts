@@ -91,6 +91,27 @@ export const EVIDENCE_TYPE_FACTOR: Record<EvidenceType, number> = {
 };
 
 /**
+ * How much each kind of action weighs against the others (Matt, 15 Nov: "a
+ * vote weighs more than a cosponsored bill"). Multiplies EVIDENCE_TYPE_FACTOR.
+ *
+ * Weight decides one thing: which side wins when the evidence points both
+ * ways (G2), and how big the dissent is. Before this a co-sponsorship of an
+ * early version counted exactly as much as a final vote.
+ *
+ * The ratios are WF11's (decisionScore.ts BASE_VOTED / BASE_SPONSOR /
+ * BASE_COSPONSOR, KEPT with no party data: 0.9 / 0.45 / 0.3): sponsorship is
+ * about half a vote, co-sponsorship about a third. Symmetric on purpose: it
+ * softens a sponsorship's credit and its blame alike, so it can never make an
+ * accusation stronger. Votes are further scaled by PATTERN_MULTIPLIER, so a
+ * vote to end debate alone counts a little less than a final vote.
+ */
+export const ACTION_WEIGHT: Record<string, number> = {
+  VOTED: 1.0,
+  SPONSOR: 0.5,
+  CO_SPONSOR: 0.3,
+};
+
+/**
  * Share of total directed weight the minority side must reach before the
  * conflict is described as meaningful in the Level-2 trace.
  *

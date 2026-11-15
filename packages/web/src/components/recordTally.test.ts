@@ -49,7 +49,7 @@ const textOf = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g
 
 describe('the record steps', () => {
   it('the Thune case: 10 bills read, 8 about it, 10 actions on those 8, 6 counted', () => {
-    expect(recordSteps(result(THUNE))).toEqual({ read: 10, about: 8, actions: 10, actionBills: 8, toward: 6, against: 0, notCounted: 4 });
+    expect(recordSteps(result(THUNE))).toEqual({ read: 10, about: 8, actions: 10, actionBills: 8, toward: 6, against: 0, notCounted: 4, towardKinds: '2 votes · 4 co-sponsorships', againstKinds: '' });
   });
 
   it('nothing to step through when no bill was about the question', () => {
@@ -64,7 +64,7 @@ describe('the record card on the page', () => {
 
   it('three boxes: the bills, then the actions split by how they count', () => {
     expect(boxes(html)).toEqual(['bills', 'toward', 'not']);
-    expect(text).toMatch(/8 bills on your question 6 of Thune’s actions count toward it 4 of Thune’s actions don’t count/);
+    expect(text).toMatch(/8 bills on your question 6 of Thune’s actions count toward it 2 votes · 4 co-sponsorships 4 of Thune’s actions don’t count/);
     expect(text).not.toMatch(/read closely|actions Thune took/);
   });
 
